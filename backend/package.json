@@ -1,0 +1,21 @@
+{
+  "name": "student-crm-backend",
+  "version": "1.0.0",
+  "description": "Student CRM Platform API — Neon + Express + Clerk",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "@clerk/express": "^1.0.0",
+    "@neondatabase/serverless": "^0.9.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "uuid": "^10.0.0"
+  }
+}
