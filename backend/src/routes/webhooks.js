@@ -4,7 +4,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 
 const router = Router();
@@ -26,22 +26,23 @@ router.post('/clerk', async (req, res, next) => {
       }
 
       // Upsert user
-      await sql`
-        INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
-        VALUES (${uuid()}, ${clerkId}, ${email}, ${first_name || null}, ${last_name || null}, ${image_url || null})
+      await query(
+        `INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (clerk_id) 
         DO UPDATE SET 
           email = EXCLUDED.email,
           first_name = COALESCE(EXCLUDED.first_name, users.first_name),
           last_name = COALESCE(EXCLUDED.last_name, users.last_name),
-          avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)
-      `;
+          avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)`,
+        [uuid(), clerkId, email, first_name || null, last_name || null, image_url || null]
+      );
 
       console.log(`Clerk webhook: user ${type} — ${email}`);
     } else if (type === 'user.deleted') {
       const { id: clerkId } = data;
       if (clerkId) {
-        await sql`DELETE FROM users WHERE clerk_id = ${clerkId}`;
+        await query('DELETE FROM users WHERE clerk_id = $1', [clerkId]);
         console.log(`Clerk webhook: user deleted — ${clerkId}`);
       }
     }
@@ -61,27 +62,29 @@ router.post('/rabbitsign', async (req, res, next) => {
     const { folderId, status, signers } = req.body;
 
     // Find the contract by RabbitSign envelope ID
-    const contract = await sql`
-      SELECT * FROM contracts WHERE rabbitsign_envelope_id = ${folderId}
-    `;
+    const contract = await query(
+      'SELECT * FROM contracts WHERE rabbitsign_envelope_id = $1',
+      [folderId]
+    );
 
     if (contract.length > 0) {
-      await sql`
-        UPDATE contracts SET rabbitsign_status = ${status} WHERE id = ${contract[0].id}
-      `;
+      await query(
+        'UPDATE contracts SET rabbitsign_status = $1 WHERE id = $2',
+        [status, contract[0].id]
+      );
 
       if (status === 'completed') {
         // Update lead stage to UNDER_CONTRACT if not already
-        await sql`
-          UPDATE leads SET stage = 'UNDER_CONTRACT' 
-          WHERE id = ${contract[0].lead_id} AND stage != 'UNDER_CONTRACT'
-        `;
+        await query(
+          'UPDATE leads SET stage = $1 WHERE id = $2 AND stage != $3',
+          ['UNDER_CONTRACT', contract[0].lead_id, 'UNDER_CONTRACT']
+        );
 
         // Log activity
-        await sql`
-          INSERT INTO activity_log (user_id, lead_id, action, details)
-          VALUES (${contract[0].user_id}, ${contract[0].lead_id}, 'contract_signed', ${JSON.stringify({ folderId, status })})
-        `;
+        await query(
+          'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+          [contract[0].user_id, contract[0].lead_id, 'contract_signed', JSON.stringify({ folderId, status })]
+        );
       }
 
       console.log(`RabbitSign webhook: folder ${folderId} — ${status}`);

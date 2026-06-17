@@ -3,7 +3,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { generateContract, formatForTelegram, generateRabbitSignPayload } = require('../../../../lead-tracking/contract-generator');
 
@@ -122,7 +122,7 @@ router.get('/templates/:id', async (req, res) => {
 router.post('/generate-from-template', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, template_id, custom_fields } = req.body;
@@ -134,7 +134,7 @@ router.post('/generate-from-template', async (req, res, next) => {
     if (!tpl) return res.status(400).json({ error: 'Invalid template_id' });
 
     // Fetch lead
-    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const l = lead[0];
@@ -189,32 +189,34 @@ router.post('/generate-from-template', async (req, res, next) => {
     };
 
     // Store contract
-    const contract = await sql`
-      INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
-      VALUES (
-        ${uuid()}, ${lead_id}, ${user[0].id}, ${tpl.type},
-        ${tpl.name}, ${tpl.addenda || []}, ${tpl.clauses || []},
-        ${JSON.stringify({ template_id, mergedFields, generatedAt: new Date().toISOString() })}
-      )
-      RETURNING *
-    `;
+    const contract = await query(
+      `INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
+      [
+        uuid(), lead_id, user[0].id, tpl.type,
+        tpl.name, JSON.stringify(tpl.addenda || []), JSON.stringify(tpl.clauses || []),
+        JSON.stringify({ template_id, mergedFields, generatedAt: new Date().toISOString() })
+      ]
+    );
 
     // Update lead
-    await sql`
-      UPDATE leads SET 
-        contract = ${tpl.type},
+    await query(
+      `UPDATE leads SET 
+        contract = $1,
         stage = CASE WHEN stage = 'LOI_APPROVED' THEN 'UNDER_CONTRACT' ELSE stage END,
         updated_at = NOW()
-      WHERE id = ${lead_id}
-    `;
+      WHERE id = $2`,
+      [tpl.type, lead_id]
+    );
 
     // Log activity
-    await sql`
-      INSERT INTO activity_log (id, user_id, lead_id, action, details)
-      VALUES (gen_random_uuid(), ${user[0].id}, ${lead_id}, 'contract_generated',
-        ${JSON.stringify({ template_id, template_name: tpl.name, contract_type: tpl.type })}
-      )
-    `;
+    await query(
+      'INSERT INTO activity_log (id, user_id, lead_id, action, details) VALUES (gen_random_uuid(), $1, $2, $3, $4)',
+      [user[0].id, lead_id, 'contract_generated',
+        JSON.stringify({ template_id, template_name: tpl.name, contract_type: tpl.type })
+      ]
+    );
 
     res.json({
       success: true,
@@ -230,7 +232,7 @@ router.post('/generate-from-template', async (req, res, next) => {
 // GET /api/contracts/clauses — List all clauses
 router.get('/clauses', async (req, res, next) => {
   try {
-    const clauses = await sql`SELECT * FROM clauses ORDER BY category, id`;
+    const clauses = await query('SELECT * FROM clauses ORDER BY category, id');
     res.json({ clauses });
   } catch (err) {
     next(err);
@@ -240,7 +242,7 @@ router.get('/clauses', async (req, res, next) => {
 // GET /api/contracts/clauses/:id — Get single clause
 router.get('/clauses/:id', async (req, res, next) => {
   try {
-    const clause = await sql`SELECT * FROM clauses WHERE id = ${req.params.id}`;
+    const clause = await query('SELECT * FROM clauses WHERE id = $1', [req.params.id]);
     if (clause.length === 0) return res.status(404).json({ error: 'Clause not found' });
     res.json({ clause: clause[0] });
   } catch (err) {
@@ -252,7 +254,7 @@ router.get('/clauses/:id', async (req, res, next) => {
 router.post('/generate', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, contract_type } = req.body;
@@ -261,7 +263,7 @@ router.post('/generate', async (req, res, next) => {
     }
 
     // Fetch lead
-    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     // Map DB lead to contract-generator format
@@ -297,35 +299,46 @@ router.post('/generate', async (req, res, next) => {
     if (pkg.error) return res.status(400).json({ error: pkg.error });
 
     // Store in contracts table
-    const contract = await sql`
-      INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
-      VALUES (
-        ${uuid()}, ${lead_id}, ${user[0].id}, ${contract_type},
-        ${pkg.template}, ${pkg.addenda}, ${pkg.clauses.map(c => c.id)},
-        ${JSON.stringify(pkg)}
-      )
-      RETURNING *
-    `;
+    const contract = await query(
+      `INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
+      [
+        uuid(), lead_id, user[0].id, contract_type,
+        pkg.template, JSON.stringify(pkg.addenda), JSON.stringify(pkg.clauses.map(c => c.id)),
+        JSON.stringify(pkg)
+      ]
+    );
 
     // Update lead with contract type
-    await sql`
-      UPDATE leads SET 
-        contract = ${contract_type},
-        psa_signed_date = ${pkg.timeline.psaSignedDate},
-        coe_date = ${pkg.timeline.coeDate},
-        inspection_end_date = ${pkg.timeline.inspectionEndDate},
-        inspection_period_days = ${pkg.timeline.inspectionPeriodDays},
-        emd_amount = ${pkg.financials.emdAmount},
-        has_subto_addendum = ${pkg.addenda.includes('SubjectToAddendum')},
+    await query(
+      `UPDATE leads SET 
+        contract = $1,
+        psa_signed_date = $2,
+        coe_date = $3,
+        inspection_end_date = $4,
+        inspection_period_days = $5,
+        emd_amount = $6,
+        has_subto_addendum = $7,
         stage = 'UNDER_CONTRACT'
-      WHERE id = ${lead_id}
-    `;
+      WHERE id = $8`,
+      [
+        contract_type,
+        pkg.timeline.psaSignedDate,
+        pkg.timeline.coeDate,
+        pkg.timeline.inspectionEndDate,
+        pkg.timeline.inspectionPeriodDays,
+        pkg.financials.emdAmount,
+        pkg.addenda.includes('SubjectToAddendum'),
+        lead_id
+      ]
+    );
 
     // Log activity
-    await sql`
-      INSERT INTO activity_log (user_id, lead_id, action, details)
-      VALUES (${user[0].id}, ${lead_id}, 'contract_generated', ${JSON.stringify({ contract_type, template: pkg.template })})
-    `;
+    await query(
+      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+      [user[0].id, lead_id, 'contract_generated', JSON.stringify({ contract_type, template: pkg.template })]
+    );
 
     res.json({
       contract: contract[0],
@@ -341,14 +354,14 @@ router.post('/generate', async (req, res, next) => {
 router.post('/send-rabbitsign', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { contract_id } = req.body;
     if (!contract_id) return res.status(400).json({ error: 'contract_id is required' });
 
     // Fetch contract
-    const contract = await sql`SELECT * FROM contracts WHERE id = ${contract_id}`;
+    const contract = await query('SELECT * FROM contracts WHERE id = $1', [contract_id]);
     if (contract.length === 0) return res.status(404).json({ error: 'Contract not found' });
 
     const pkg = contract[0].payload;
@@ -382,16 +395,17 @@ router.post('/send-rabbitsign', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
-    const contracts = await sql`
-      SELECT c.*, l.address, l.stage
+    const contracts = await query(
+      `SELECT c.*, l.address, l.stage
       FROM contracts c
       JOIN leads l ON c.lead_id = l.id
-      WHERE c.user_id = ${user[0].id}
-      ORDER BY c.created_at DESC
-    `;
+      WHERE c.user_id = $1
+      ORDER BY c.created_at DESC`,
+      [user[0].id]
+    );
 
     res.json({ contracts });
   } catch (err) {
@@ -402,7 +416,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/contracts/:id — Get single contract
 router.get('/:id', async (req, res, next) => {
   try {
-    const contract = await sql`SELECT * FROM contracts WHERE id = ${req.params.id}`;
+    const contract = await query('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
     if (contract.length === 0) return res.status(404).json({ error: 'Contract not found' });
     res.json({ contract: contract[0] });
   } catch (err) {
@@ -411,4 +425,3 @@ router.get('/:id', async (req, res, next) => {
 });
 
 module.exports = router;
-

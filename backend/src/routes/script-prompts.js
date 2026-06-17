@@ -4,7 +4,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { getTransitionScripts, getScriptsForStage, getTemplateByShortcut, listAllShortcuts } = require('../services/script-prompts');
 const { getStagePrompt } = require('../services/stage-automations');
 
@@ -14,10 +14,10 @@ const router = Router();
 router.get('/prompts/:lead_id', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
-    const lead = await sql`SELECT * FROM leads WHERE id = ${req.params.lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [req.params.lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const scripts = getScriptsForStage(lead[0].stage, lead[0]);
@@ -31,7 +31,7 @@ router.get('/prompts/:lead_id', async (req, res, next) => {
 router.post('/prompts/transition', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, from_stage, to_stage } = req.body;
@@ -39,7 +39,7 @@ router.post('/prompts/transition', async (req, res, next) => {
       return res.status(400).json({ error: 'lead_id, from_stage, and to_stage required' });
     }
 
-    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const scripts = getTransitionScripts(from_stage, to_stage, lead[0]);
@@ -53,10 +53,10 @@ router.post('/prompts/transition', async (req, res, next) => {
 router.get('/prompts/stage/:lead_id/:stage', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
-    const lead = await sql`SELECT * FROM leads WHERE id = ${req.params.lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [req.params.lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const prompt = getStagePrompt(req.params.stage, lead[0]);
@@ -87,7 +87,7 @@ router.get('/prompts/shortcuts', async (req, res, next) => {
 router.post('/prompts/fill', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, shortcut } = req.body;
@@ -95,7 +95,7 @@ router.post('/prompts/fill', async (req, res, next) => {
       return res.status(400).json({ error: 'lead_id and shortcut required' });
     }
 
-    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const result = getTemplateByShortcut(shortcut, lead[0]);

@@ -3,7 +3,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 
 const router = Router();
 
@@ -11,18 +11,19 @@ const router = Router();
 router.get('/', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const userId = user[0].id;
 
     // Get all active leads grouped by stage
-    const leads = await sql`
-      SELECT * FROM leads 
-      WHERE user_id = ${userId} 
+    const leads = await query(
+      `SELECT * FROM leads 
+      WHERE user_id = $1 
       AND stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')
-      ORDER BY updated_at DESC
-    `;
+      ORDER BY updated_at DESC`,
+      [userId]
+    );
 
     // Group by stage
     const byStage = {};
@@ -46,14 +47,15 @@ router.get('/', async (req, res, next) => {
     });
 
     // Stats
-    const stats = await sql`
-      SELECT 
+    const stats = await query(
+      `SELECT 
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active,
         COUNT(*) FILTER (WHERE stage = 'CLOSED') AS closed,
         COUNT(*) FILTER (WHERE stage = 'DEAD') AS dead
-      FROM leads WHERE user_id = ${userId}
-    `;
+      FROM leads WHERE user_id = $1`,
+      [userId]
+    );
 
     const conversionRate = stats[0].total > 0 
       ? Math.round((stats[0].closed / (stats[0].closed + stats[0].dead)) * 100) 
@@ -108,15 +110,16 @@ router.get('/', async (req, res, next) => {
 
     // Reminders due today
     const today = new Date().toISOString().split('T')[0];
-    const reminders = await sql`
-      SELECT r.*, l.address 
+    const reminders = await query(
+      `SELECT r.*, l.address 
       FROM reminders r 
       JOIN leads l ON r.lead_id = l.id 
-      WHERE r.user_id = ${userId} 
+      WHERE r.user_id = $1 
       AND r.completed = false 
-      AND r.due_date::date <= ${today}
-      ORDER BY r.due_date
-    `;
+      AND r.due_date::date <= $2
+      ORDER BY r.due_date`,
+      [userId, today]
+    );
 
     res.json({
       pipeline: byStage,
@@ -133,7 +136,7 @@ router.get('/', async (req, res, next) => {
 router.get('/today', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const userId = user[0].id;
@@ -141,32 +144,34 @@ router.get('/today', async (req, res, next) => {
 
     // AM tasks by stage
     const amTasks = {
-      contract_out: await sql`SELECT id, address FROM leads WHERE user_id = ${userId} AND stage = 'UNDER_CONTRACT'`,
-      awaiting_info: await sql`SELECT id, address FROM leads WHERE user_id = ${userId} AND stage = 'NEGOTIATING'`,
-      terms_agreed: await sql`SELECT id, address FROM leads WHERE user_id = ${userId} AND stage = 'LOI_APPROVED'`,
-      active_negotiation: await sql`SELECT id, address FROM leads WHERE user_id = ${userId} AND stage = 'NEGOTIATING'`,
+      contract_out: await query('SELECT id, address FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'UNDER_CONTRACT']),
+      awaiting_info: await query('SELECT id, address FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'NEGOTIATING']),
+      terms_agreed: await query('SELECT id, address FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'LOI_APPROVED']),
+      active_negotiation: await query('SELECT id, address FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'NEGOTIATING']),
     };
 
     // Follow-ups due
-    const followUps = await sql`
-      SELECT r.*, l.address 
+    const followUps = await query(
+      `SELECT r.*, l.address 
       FROM reminders r 
       JOIN leads l ON r.lead_id = l.id 
-      WHERE r.user_id = ${userId} 
+      WHERE r.user_id = $1 
       AND r.completed = false 
-      AND r.due_date::date <= ${today}
-      ORDER BY r.due_date
-    `;
+      AND r.due_date::date <= $2
+      ORDER BY r.due_date`,
+      [userId, today]
+    );
 
     // Overdue 48hr offers
-    const overdue = await sql`
-      SELECT id, address, follow_up_48hr_due 
+    const overdue = await query(
+      `SELECT id, address, follow_up_48hr_due 
       FROM leads 
-      WHERE user_id = ${userId} 
+      WHERE user_id = $1 
       AND stage = 'OFFER_SENT' 
       AND follow_up_48hr_done = false 
-      AND follow_up_48hr_due < now()
-    `;
+      AND follow_up_48hr_due < now()`,
+      [userId]
+    );
 
     res.json({
       am_tasks: amTasks,
@@ -182,33 +187,32 @@ router.get('/today', async (req, res, next) => {
 router.get('/stats', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const userId = user[0].id;
 
-    const stats = await sql`
-      SELECT 
+    const stats = await query(
+      `SELECT 
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active,
         COUNT(*) FILTER (WHERE stage = 'CLOSED') AS closed,
         COUNT(*) FILTER (WHERE stage = 'DEAD') AS dead,
         AVG(EXTRACT(DAY FROM (closed_date - created_at))) FILTER (WHERE stage = 'CLOSED') AS avg_days_to_close,
         COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS added_today
-      FROM leads WHERE user_id = ${userId}
-    `;
+      FROM leads WHERE user_id = $1`,
+      [userId]
+    );
 
-    const bySource = await sql`
-      SELECT source, COUNT(*) AS count 
-      FROM leads WHERE user_id = ${userId} 
-      GROUP BY source ORDER BY count DESC
-    `;
+    const bySource = await query(
+      'SELECT source, COUNT(*) AS count FROM leads WHERE user_id = $1 GROUP BY source ORDER BY count DESC',
+      [userId]
+    );
 
-    const byStage = await sql`
-      SELECT stage, COUNT(*) AS count 
-      FROM leads WHERE user_id = ${userId} 
-      GROUP BY stage ORDER BY count DESC
-    `;
+    const byStage = await query(
+      'SELECT stage, COUNT(*) AS count FROM leads WHERE user_id = $1 GROUP BY stage ORDER BY count DESC',
+      [userId]
+    );
 
     res.json({
       ...stats[0],
@@ -239,19 +243,20 @@ function getNextAction(lead) {
 router.get('/health', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const userId = user[0].id;
 
-    const leads = await sql`
-      SELECT id, address, stage, price, created_at, last_stage_change_at,
+    const leads = await query(
+      `SELECT id, address, stage, price, created_at, last_stage_change_at,
              follow_up_48hr_due, follow_up_48hr_done, updated_at
       FROM leads 
-      WHERE user_id = ${userId} 
+      WHERE user_id = $1 
       AND stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')
-      ORDER BY last_stage_change_at ASC
-    `;
+      ORDER BY last_stage_change_at ASC`,
+      [userId]
+    );
 
     const now = new Date();
     const alerts = [];
@@ -295,7 +300,8 @@ router.get('/health', async (req, res, next) => {
     const loiApprovedCount = stats.byStage['LOI_APPROVED'] || 0;
     const underContractCount = stats.byStage['UNDER_CONTRACT'] || 0;
 
-    const closedCount = (await sql`SELECT COUNT(*) as c FROM leads WHERE user_id = ${userId} AND stage = 'CLOSED'`)[0].c;
+    const closedResult = await query('SELECT COUNT(*) as c FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'CLOSED']);
+    const closedCount = closedResult[0].c;
 
     if (offerSentCount > 5 && loiApprovedCount === 0) {
       alerts.push({ type: 'offer_cliff', severity: 'red', detail: `${offerSentCount} offers sent, 0 approved. Sellers are ghosting.` });
@@ -316,4 +322,3 @@ router.get('/health', async (req, res, next) => {
 });
 
 module.exports = router;
-

@@ -1,8 +1,9 @@
 // =============================================================
 // Divinity CRM Platform — Database Connection (Neon Serverless)
+// Uses Pool for standard parameterized queries ($1, $2, ...)
 // =============================================================
 
-const { neon } = require('@neondatabase/serverless');
+const { Pool } = require('@neondatabase/serverless');
 require('dotenv').config();
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -12,12 +13,29 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const sql = neon(DATABASE_URL);
+const pool = new Pool({ connectionString: DATABASE_URL });
+
+// Query helper — standard pg parameterized queries
+async function query(text, params) {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(text, params);
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
+// Single-row query helper
+async function queryOne(text, params) {
+  const rows = await query(text, params);
+  return rows[0] || null;
+}
 
 // Test connection on startup
 async function testConnection() {
   try {
-    const result = await sql`SELECT 1 AS connected`;
+    const result = await query('SELECT 1 AS connected');
     console.log('Neon database connected:', result[0].connected === 1 ? 'OK' : 'FAIL');
     return true;
   } catch (err) {
@@ -26,5 +44,4 @@ async function testConnection() {
   }
 }
 
-module.exports = { sql, testConnection };
-
+module.exports = { pool, query, queryOne, testConnection };

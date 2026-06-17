@@ -3,7 +3,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
 
@@ -12,21 +12,28 @@ const router = Router();
 // GET /api/leads — List all leads for the authenticated user
 router.get('/', async (req, res, next) => {
   try {
-    const userId = req.user.userId; // Clerk user ID
+    const userId = req.user.userId;
     const { stage, search, limit = 50, offset = 0 } = req.query;
 
-    let query = sql`SELECT * FROM leads WHERE user_id = ${userId}`;
-    
+    let sqlText = 'SELECT * FROM leads WHERE user_id = $1';
+    const params = [userId];
+    let idx = 2;
+
     if (stage) {
-      query = sql`${query} AND stage = ${stage}`;
+      sqlText += ` AND stage = $${idx}`;
+      params.push(stage);
+      idx++;
     }
     if (search) {
-      query = sql`${query} AND (address ILIKE ${'%' + search + '%'} OR agent_name ILIKE ${'%' + search + '%'} OR seller_name ILIKE ${'%' + search + '%'})`;
+      sqlText += ` AND (address ILIKE $${idx} OR agent_name ILIKE $${idx + 1} OR seller_name ILIKE $${idx + 2})`;
+      params.push('%' + search + '%', '%' + search + '%', '%' + search + '%');
+      idx += 3;
     }
 
-    query = sql`${query} ORDER BY updated_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    sqlText += ` ORDER BY updated_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+    params.push(Number(limit), Number(offset));
 
-    const leads = await query;
+    const leads = await query(sqlText, params);
     res.json({ leads, total: leads.length });
   } catch (err) {
     next(err);
@@ -37,25 +44,26 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const lead = await sql`
-      SELECT * FROM leads 
-      WHERE id = ${req.params.id} 
-      AND user_id = ${userId}
-    `;
+    const lead = await query(
+      'SELECT * FROM leads WHERE id = $1 AND user_id = $2',
+      [req.params.id, userId]
+    );
 
     if (lead.length === 0) {
       return res.status(404).json({ error: 'Lead not found' });
     }
 
     // Get history
-    const history = await sql`
-      SELECT * FROM lead_history WHERE lead_id = ${req.params.id} ORDER BY created_at DESC
-    `;
+    const history = await query(
+      'SELECT * FROM lead_history WHERE lead_id = $1 ORDER BY created_at DESC',
+      [req.params.id]
+    );
 
     // Get reminders
-    const reminders = await sql`
-      SELECT * FROM reminders WHERE lead_id = ${req.params.id} ORDER BY due_date
-    `;
+    const reminders = await query(
+      'SELECT * FROM reminders WHERE lead_id = $1 ORDER BY due_date',
+      [req.params.id]
+    );
 
     res.json({ lead: lead[0], history, reminders });
   } catch (err) {
@@ -79,30 +87,39 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    const lead = await sql`
-      INSERT INTO leads (
+    const lead = await query(
+      `INSERT INTO leads (
         id, user_id, address, city, state, zip, price, source,
         beds, baths, sqft, year_built, condition,
         agent_name, agent_phone, agent_email,
         seller_name, seller_phone, seller_email,
         notes, stage
       ) VALUES (
-        ${uuid()}, ${userId}, ${address}, ${city || null}, ${state || null}, ${zip || null},
-        ${price || null}, ${source || 'other'},
-        ${beds || null}, ${baths || null}, ${sqft || null}, ${year_built || null},
-        ${condition || 'unknown'},
-        ${agent_name || null}, ${agent_phone || null}, ${agent_email || null},
-        ${seller_name || null}, ${seller_phone || null}, ${seller_email || null},
-        ${notes || ''}, 'NEW_LEAD'
+        $1, $2, $3, $4, $5, $6,
+        $7, $8,
+        $9, $10, $11, $12,
+        $13,
+        $14, $15, $16,
+        $17, $18, $19,
+        $20, $21
       )
-      RETURNING *
-    `;
+      RETURNING *`,
+      [
+        uuid(), userId, address, city || null, state || null, zip || null,
+        price || null, source || 'other',
+        beds || null, baths || null, sqft || null, year_built || null,
+        condition || 'unknown',
+        agent_name || null, agent_phone || null, agent_email || null,
+        seller_name || null, seller_phone || null, seller_email || null,
+        notes || '', 'NEW_LEAD',
+      ]
+    );
 
     // Log activity
-    await sql`
-      INSERT INTO activity_log (user_id, lead_id, action, details)
-      VALUES (${userId}, ${lead[0].id}, 'lead_created', ${JSON.stringify({ address, price, source })})
-    `;
+    await query(
+      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+      [userId, lead[0].id, 'lead_created', JSON.stringify({ address, price, source })]
+    );
 
     res.status(201).json({ lead: lead[0] });
   } catch (err) {
@@ -117,7 +134,7 @@ router.patch('/:id', async (req, res, next) => {
     const leadId = req.params.id;
 
     // Verify ownership
-    const existing = await sql`SELECT id FROM leads WHERE id = ${leadId} AND user_id = ${userId}`;
+    const existing = await query('SELECT id, stage FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
     if (existing.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     // Build dynamic UPDATE — only set fields that are provided
@@ -146,37 +163,38 @@ router.patch('/:id', async (req, res, next) => {
       'notes',
     ];
 
-    // Build SET clause using Neon template literals
-    const setFragments = [];
+    const setClauses = [];
+    const params = [];
+    let idx = 1;
     for (const [key, value] of Object.entries(req.body)) {
       if (allowedFields.includes(key) && value !== undefined) {
-        setFragments.push(sql`${sql.unsafe(key)} = ${value}`);
+        setClauses.push(`${key} = $${idx}`);
+        params.push(value);
+        idx++;
       }
     }
 
-    if (setFragments.length === 0) {
+    if (setClauses.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    // Compose fragments into single query
-    let setQuery = setFragments[0];
-    for (let i = 1; i < setFragments.length; i++) {
-      setQuery = sql`${setQuery}, ${setFragments[i]}`;
-    }
+    params.push(leadId);
+    const result = await query(
+      `UPDATE leads SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
 
-    const result = await sql`UPDATE leads SET ${setQuery} WHERE id = ${leadId} RETURNING *`;
-    
     // Stage change automation — fires GHL-equivalent workflows
     let automation = null;
     if (req.body.stage && existing[0].stage !== req.body.stage) {
       automation = await executeStageAutomations(leadId, userId, existing[0].stage, req.body.stage, existing[0]);
     }
-    
+
     // Log activity
-    await sql`
-      INSERT INTO activity_log (user_id, lead_id, action, details)
-      VALUES (${userId}, ${leadId}, 'lead_updated', ${JSON.stringify(req.body)})
-    `;
+    await query(
+      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+      [userId, leadId, 'lead_updated', JSON.stringify(req.body)]
+    );
 
     res.json({ lead: result[0], automation });
   } catch (err) {
@@ -188,8 +206,11 @@ router.patch('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const result = await sql`DELETE FROM leads WHERE id = ${req.params.id} AND user_id = ${userId} RETURNING id`;
-    
+    const result = await query(
+      'DELETE FROM leads WHERE id = $1 AND user_id = $2 RETURNING id',
+      [req.params.id, userId]
+    );
+
     if (result.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     res.json({ deleted: true, id: result[0].id });
@@ -210,23 +231,24 @@ router.get('/:id/transitions', async (req, res, next) => {
     }
 
     // Get current lead
-    const existing = await sql`SELECT * FROM leads WHERE id = ${leadId} AND user_id = ${userId}`;
+    const existing = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
     if (existing.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const fromStage = existing[0].stage;
     const validTransitions = getAvailableTransitions(fromStage);
 
     if (!validTransitions.includes(to_stage)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: `Invalid transition: ${fromStage} → ${to_stage}`,
-        available_transitions: validTransitions 
+        available_transitions: validTransitions
       });
     }
 
     // Update stage
-    const result = await sql`
-      UPDATE leads SET stage = ${to_stage} WHERE id = ${leadId} RETURNING *
-    `;
+    const result = await query(
+      'UPDATE leads SET stage = $1 WHERE id = $2 RETURNING *',
+      [to_stage, leadId]
+    );
 
     // Execute automations
     const automation = await executeStageAutomations(leadId, userId, fromStage, to_stage, existing[0]);
@@ -247,11 +269,10 @@ router.post('/:id/reminders', async (req, res, next) => {
       return res.status(400).json({ error: 'type and due_date are required' });
     }
 
-    const reminder = await sql`
-      INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
-      VALUES (${uuid()}, ${req.params.id}, ${userId}, ${type}, ${due_date}, ${notes || null})
-      RETURNING *
-    `;
+    const reminder = await query(
+      'INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [uuid(), req.params.id, userId, type, due_date, notes || null]
+    );
 
     res.status(201).json({ reminder: reminder[0] });
   } catch (err) {
@@ -262,12 +283,10 @@ router.post('/:id/reminders', async (req, res, next) => {
 // PATCH /api/leads/:id/reminders/:reminderId — Complete reminder
 router.patch('/:id/reminders/:reminderId', async (req, res, next) => {
   try {
-    const result = await sql`
-      UPDATE reminders 
-      SET completed = true, completed_at = now()
-      WHERE id = ${req.params.reminderId} AND lead_id = ${req.params.id}
-      RETURNING *
-    `;
+    const result = await query(
+      'UPDATE reminders SET completed = true, completed_at = now() WHERE id = $1 AND lead_id = $2 RETURNING *',
+      [req.params.reminderId, req.params.id]
+    );
 
     if (result.length === 0) return res.status(404).json({ error: 'Reminder not found' });
     res.json({ reminder: result[0] });
@@ -285,11 +304,12 @@ router.get('/:id/followups', async (req, res, next) => {
   try {
     const userId = req.user.userId;
 
-    const lead = await sql`
-      SELECT id, address, stage, offer_sent_date, follow_up_48hr_due, follow_up_48hr_done,
+    const lead = await query(
+      `SELECT id, address, stage, offer_sent_date, follow_up_48hr_due, follow_up_48hr_done,
              dom, dom_181_reminder_date, created_at, closed_date, updated_at
-      FROM leads WHERE id = ${req.params.id} AND user_id = ${userId}
-    `;
+      FROM leads WHERE id = $1 AND user_id = $2`,
+      [req.params.id, userId]
+    );
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const l = lead[0];
@@ -325,9 +345,10 @@ router.get('/:id/followups', async (req, res, next) => {
     } : null;
 
     // Get all reminders for this lead
-    const reminders = await sql`
-      SELECT * FROM reminders WHERE lead_id = ${req.params.id} ORDER BY due_date
-    `;
+    const reminders = await query(
+      'SELECT * FROM reminders WHERE lead_id = $1 ORDER BY due_date',
+      [req.params.id]
+    );
 
     res.json({
       success: true,
@@ -360,24 +381,25 @@ router.post('/:id/followups', async (req, res, next) => {
       return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
     }
 
-    const reminder = await sql`
-      INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
-      VALUES (${uuid()}, ${req.params.id}, ${userId}, ${type}, ${due_date}, ${notes || null})
-      RETURNING *
-    `;
+    const reminder = await query(
+      'INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [uuid(), req.params.id, userId, type, due_date, notes || null]
+    );
 
     // If 48hr follow-up, also update lead record
     if (type === '48hr_followup') {
-      await sql`
-        UPDATE leads SET follow_up_48hr_due = ${due_date} WHERE id = ${req.params.id}
-      `;
+      await query(
+        'UPDATE leads SET follow_up_48hr_due = $1 WHERE id = $2',
+        [due_date, req.params.id]
+      );
     }
 
     // If listing expiry, update DOM reminder
     if (type === 'listing_expiry') {
-      await sql`
-        UPDATE leads SET dom_181_reminder_date = ${due_date} WHERE id = ${req.params.id}
-      `;
+      await query(
+        'UPDATE leads SET dom_181_reminder_date = $1 WHERE id = $2',
+        [due_date, req.params.id]
+      );
     }
 
     res.status(201).json({ success: true, reminder: reminder[0] });
@@ -393,35 +415,42 @@ router.patch('/:id/followups/:followUpId', async (req, res, next) => {
     const followUpId = req.params.followUpId;
     const leadId = req.params.id;
 
-    const setFragments = [];
+    const setClauses = [];
+    const params = [];
+    let idx = 1;
+
     if (completed !== undefined) {
-      setFragments.push(sql`completed = ${completed}`);
+      setClauses.push(`completed = $${idx}`);
+      params.push(completed);
+      idx++;
       if (completed) {
-        setFragments.push(sql`completed_at = now()`);
+        setClauses.push(`completed_at = now()`);
       }
     }
     if (notes !== undefined) {
-      setFragments.push(sql`notes = ${notes}`);
+      setClauses.push(`notes = $${idx}`);
+      params.push(notes);
+      idx++;
     }
 
-    if (setFragments.length === 0) {
+    if (setClauses.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    let setQuery = setFragments[0];
-    for (let i = 1; i < setFragments.length; i++) {
-      setQuery = sql`${setQuery}, ${setFragments[i]}`;
-    }
-
-    const result = await sql`UPDATE reminders SET ${setQuery} WHERE id = ${followUpId} AND lead_id = ${leadId} RETURNING *`;
+    params.push(followUpId, leadId);
+    const result = await query(
+      `UPDATE reminders SET ${setClauses.join(', ')} WHERE id = $${idx} AND lead_id = $${idx + 1} RETURNING *`,
+      params
+    );
 
     if (result.length === 0) return res.status(404).json({ error: 'Follow-up not found' });
 
     // If completing 48hr follow-up, update lead
     if (completed && result[0].type === '48hr_followup') {
-      await sql`
-        UPDATE leads SET follow_up_48hr_done = true WHERE id = ${req.params.id}
-      `;
+      await query(
+        'UPDATE leads SET follow_up_48hr_done = true WHERE id = $1',
+        [req.params.id]
+      );
     }
 
     res.json({ success: true, reminder: result[0] });
@@ -431,4 +460,3 @@ router.patch('/:id/followups/:followUpId', async (req, res, next) => {
 });
 
 module.exports = router;
-

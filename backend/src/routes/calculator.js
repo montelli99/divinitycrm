@@ -4,7 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { calculate, checkBuyBox, recommendStrategy } = require('../services/calculator');
 
 // POST /api/calculator/analyze — Run full deal analysis
@@ -68,36 +68,50 @@ router.post('/analyze', async (req, res) => {
 
     // If leadId provided, save results to lead record
     if (leadId) {
-      await sql`
-        UPDATE leads
+      await query(
+        `UPDATE leads
         SET
-          arv = ${Number(arv)},
-          cash_offer = ${calcResult.structures[0].offer},
-          f50_offer = ${calcResult.structures[1].offer},
-          subto_offer = ${calcResult.structures[4].offer},
-          recommended_strategy = ${strategy.strategy},
-          one_percent_rule = ${calcResult.metadata.percRule},
-          dscr = ${calcResult.metadata.dscr},
-          cash_flow = ${calcResult.metadata.cashFlow},
-          repairs_estimate = ${Number(repairEstimate || 0)},
-          condition = ${condition || 'unknown'},
+          arv = $1,
+          cash_offer = $2,
+          f50_offer = $3,
+          subto_offer = $4,
+          recommended_strategy = $5,
+          one_percent_rule = $6,
+          dscr = $7,
+          cash_flow = $8,
+          repairs_estimate = $9,
+          condition = $10,
           updated_at = NOW()
-        WHERE id = ${leadId} AND user_id = ${userId}
-      `;
+        WHERE id = $11 AND user_id = $12`,
+        [
+          Number(arv),
+          calcResult.structures[0].offer,
+          calcResult.structures[1].offer,
+          calcResult.structures[4].offer,
+          strategy.strategy,
+          calcResult.metadata.percRule,
+          calcResult.metadata.dscr,
+          calcResult.metadata.cashFlow,
+          Number(repairEstimate || 0),
+          condition || 'unknown',
+          leadId,
+          userId
+        ]
+      );
 
       // Log activity
-      await sql`
-        INSERT INTO activity_log (id, user_id, lead_id, action, details)
-        VALUES (gen_random_uuid(), ${userId}, ${leadId}, 'underwriting_run',
-          ${JSON.stringify({
+      await query(
+        'INSERT INTO activity_log (id, user_id, lead_id, action, details) VALUES (gen_random_uuid(), $1, $2, $3, $4)',
+        [userId, leadId, 'underwriting_run',
+          JSON.stringify({
             recommended: strategy.strategy,
             percRule: calcResult.metadata.percRule,
             dscr: calcResult.metadata.dscr,
             cashFlow: calcResult.metadata.cashFlow,
             buyBoxPass: buyBox.allPass,
-          })}
-        )
-      `;
+          })
+        ]
+      );
     }
 
     res.json({
@@ -137,54 +151,56 @@ router.get('/lead/:id', async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
 
-    const [lead] = await sql`
-      SELECT id, address, city, state, zip, price, arv, beds, baths, sqft,
+    const lead = await query(
+      `SELECT id, address, city, state, zip, price, arv, beds, baths, sqft,
              condition, repairs_estimate, cash_offer, f50_offer, subto_offer,
              recommended_strategy, one_percent_rule, dscr, cash_flow,
              existing_loan_balance, existing_loan_rate, monthly_rent,
              has_hoa, has_pool, in_flood_zone, population, occupancy,
              source, stage
       FROM leads
-      WHERE id = ${id} AND user_id = ${userId}
-    `;
+      WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
 
-    if (!lead) {
+    if (lead.length === 0) {
       return res.status(404).json({ error: 'Lead not found' });
     }
 
+    const l = lead[0];
     res.json({
       success: true,
       lead: {
-        id: lead.id,
-        address: lead.address,
-        city: lead.city,
-        state: lead.state,
-        zip: lead.zip,
-        price: lead.price,
-        arv: lead.arv,
-        beds: lead.beds,
-        baths: lead.baths,
-        sqft: lead.sqft,
-        condition: lead.condition,
-        repairsEstimate: lead.repairs_estimate,
-        monthlyRent: lead.monthly_rent,
-        existingLoanBalance: lead.existing_loan_balance,
-        existingLoanRate: lead.existing_loan_rate,
-        hasHOA: lead.has_hoa,
-        hasPool: lead.has_pool,
-        inFloodZone: lead.in_flood_zone,
-        population: lead.population,
-        occupancy: lead.occupancy,
-        source: lead.source,
-        stage: lead.stage,
+        id: l.id,
+        address: l.address,
+        city: l.city,
+        state: l.state,
+        zip: l.zip,
+        price: l.price,
+        arv: l.arv,
+        beds: l.beds,
+        baths: l.baths,
+        sqft: l.sqft,
+        condition: l.condition,
+        repairsEstimate: l.repairs_estimate,
+        monthlyRent: l.monthly_rent,
+        existingLoanBalance: l.existing_loan_balance,
+        existingLoanRate: l.existing_loan_rate,
+        hasHOA: l.has_hoa,
+        hasPool: l.has_pool,
+        inFloodZone: l.in_flood_zone,
+        population: l.population,
+        occupancy: l.occupancy,
+        source: l.source,
+        stage: l.stage,
         // Previous calc results
-        cashOffer: lead.cash_offer,
-        f50Offer: lead.f50_offer,
-        subtoOffer: lead.subto_offer,
-        recommendedStrategy: lead.recommended_strategy,
-        onePercentRule: lead.one_percent_rule,
-        dscr: lead.dscr,
-        cashFlow: lead.cash_flow,
+        cashOffer: l.cash_offer,
+        f50Offer: l.f50_offer,
+        subtoOffer: l.subto_offer,
+        recommendedStrategy: l.recommended_strategy,
+        onePercentRule: l.one_percent_rule,
+        dscr: l.dscr,
+        cashFlow: l.cash_flow,
       }
     });
   } catch (err) {

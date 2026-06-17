@@ -9,7 +9,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
-const { testConnection, sql } = require('./db/connection');
+const { testConnection, query } = require('./db/connection');
 const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
@@ -51,13 +51,12 @@ app.use('/api', async (req, res, next) => {
   try {
     const clerkId = req.auth?.userId;
     if (clerkId) {
-      const existing = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+      const existing = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
       if (existing.length === 0) {
-        await sql`
-          INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
-          VALUES (${uuid()}, ${clerkId}, ${clerkId + '@clerk.user'}, null, null, null)
-          ON CONFLICT (clerk_id) DO NOTHING
-        `;
+        await query(
+          'INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (clerk_id) DO NOTHING',
+          [uuid(), clerkId, clerkId + '@clerk.user', null, null, null]
+        );
         console.log(`Auto-created user record for Clerk ID: ${clerkId}`);
       }
     }

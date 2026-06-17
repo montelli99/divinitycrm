@@ -3,7 +3,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 
 const router = Router();
 
@@ -11,12 +11,18 @@ const router = Router();
 router.get('/', async (req, res, next) => {
   try {
     const { category } = req.query;
-    let query = sql`SELECT * FROM script_templates`;
+    let sqlText = 'SELECT * FROM script_templates';
+    const params = [];
+    let idx = 1;
+
     if (category) {
-      query = sql`${query} WHERE category = ${category}`;
+      sqlText += ` WHERE category = $${idx}`;
+      params.push(category);
+      idx++;
     }
-    query = sql`${query} ORDER BY category, id`;
-    const scripts = await query;
+    sqlText += ' ORDER BY category, id';
+
+    const scripts = await query(sqlText, params);
     res.json({ scripts });
   } catch (err) {
     next(err);
@@ -26,7 +32,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/scripts/:id — Get single script template
 router.get('/:id', async (req, res, next) => {
   try {
-    const script = await sql`SELECT * FROM script_templates WHERE id = ${req.params.id}`;
+    const script = await query('SELECT * FROM script_templates WHERE id = $1', [req.params.id]);
     if (script.length === 0) return res.status(404).json({ error: 'Script not found' });
     res.json({ script: script[0] });
   } catch (err) {
@@ -38,7 +44,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/fill', async (req, res, next) => {
   try {
     const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { script_id, lead_id } = req.body;
@@ -47,11 +53,11 @@ router.post('/fill', async (req, res, next) => {
     }
 
     // Fetch script template
-    const script = await sql`SELECT * FROM script_templates WHERE id = ${script_id}`;
+    const script = await query('SELECT * FROM script_templates WHERE id = $1', [script_id]);
     if (script.length === 0) return res.status(404).json({ error: 'Script template not found' });
 
     // Fetch lead
-    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     // Fill template
@@ -95,4 +101,3 @@ router.post('/fill', async (req, res, next) => {
 });
 
 module.exports = router;
-

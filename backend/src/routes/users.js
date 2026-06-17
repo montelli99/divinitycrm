@@ -3,7 +3,7 @@
 // =============================================================
 
 const { Router } = require('express');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 
 const router = Router();
 
@@ -11,7 +11,7 @@ const router = Router();
 router.get('/me', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const user = await sql`SELECT * FROM users WHERE id = ${userId}`;
+    const user = await query('SELECT * FROM users WHERE id = $1', [userId]);
     
     if (user.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -29,13 +29,14 @@ router.patch('/me', async (req, res, next) => {
     const userId = req.user.userId;
     const { first_name, last_name } = req.body;
 
-    const result = await sql`
-      UPDATE users 
-      SET first_name = COALESCE(${first_name}, first_name),
-          last_name = COALESCE(${last_name}, last_name)
-      WHERE id = ${userId}
-      RETURNING *
-    `;
+    const result = await query(
+      `UPDATE users 
+      SET first_name = COALESCE($1, first_name),
+          last_name = COALESCE($2, last_name)
+      WHERE id = $3
+      RETURNING *`,
+      [first_name, last_name, userId]
+    );
 
     if (result.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ user: result[0] });
@@ -53,14 +54,14 @@ router.get('/students', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     // Check admin role
-    const currentUser = await sql`SELECT role FROM users WHERE id = ${userId}`;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
     if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
     // Get all students with their lead stats
-    const students = await sql`
-      SELECT 
+    const students = await query(
+      `SELECT 
         u.id, u.email, u.first_name, u.last_name, u.role, u.created_at,
         COUNT(l.id) AS total_leads,
         COUNT(l.id) FILTER (WHERE l.stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active_leads,
@@ -76,8 +77,8 @@ router.get('/students', async (req, res, next) => {
       LEFT JOIN leads l ON u.id = l.user_id
       WHERE u.role = 'student'
       GROUP BY u.id
-      ORDER BY deals_closed DESC, total_leads DESC
-    `;
+      ORDER BY deals_closed DESC, total_leads DESC`
+    );
 
     // Calculate conversion rates
     const enriched = students.map(s => ({
@@ -100,7 +101,7 @@ router.get('/students', async (req, res, next) => {
 router.get('/students/:id/stats', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await sql`SELECT role FROM users WHERE id = ${userId}`;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
     if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
@@ -108,43 +109,43 @@ router.get('/students/:id/stats', async (req, res, next) => {
     const studentId = req.params.id;
 
     // Student info
-    const student = await sql`SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = ${studentId}`;
+    const student = await query('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = $1', [studentId]);
     if (student.length === 0) return res.status(404).json({ error: 'Student not found' });
 
     // Lead stats by stage
-    const stageStats = await sql`
-      SELECT stage, COUNT(*) as count
-      FROM leads WHERE user_id = ${studentId}
-      GROUP BY stage ORDER BY count DESC
-    `;
+    const stageStats = await query(
+      'SELECT stage, COUNT(*) as count FROM leads WHERE user_id = $1 GROUP BY stage ORDER BY count DESC',
+      [studentId]
+    );
 
     // Source breakdown
-    const sourceStats = await sql`
-      SELECT source, COUNT(*) as count
-      FROM leads WHERE user_id = ${studentId}
-      GROUP BY source ORDER BY count DESC
-    `;
+    const sourceStats = await query(
+      'SELECT source, COUNT(*) as count FROM leads WHERE user_id = $1 GROUP BY source ORDER BY count DESC',
+      [studentId]
+    );
 
     // Recent activity
-    const recentActivity = await sql`
-      SELECT a.*, l.address
+    const recentActivity = await query(
+      `SELECT a.*, l.address
       FROM activity_log a
       LEFT JOIN leads l ON a.lead_id = l.id
-      WHERE a.user_id = ${studentId}
+      WHERE a.user_id = $1
       ORDER BY a.created_at DESC
-      LIMIT 20
-    `;
+      LIMIT 20`,
+      [studentId]
+    );
 
     // Overall stats
-    const stats = await sql`
-      SELECT 
+    const stats = await query(
+      `SELECT 
         COUNT(*) AS total_leads,
         COUNT(*) FILTER (WHERE stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active,
         COUNT(*) FILTER (WHERE stage = 'CLOSED') AS closed,
         COUNT(*) FILTER (WHERE stage = 'DEAD') AS dead,
         AVG(EXTRACT(DAY FROM (closed_date - created_at))) FILTER (WHERE stage = 'CLOSED') AS avg_days_to_close
-      FROM leads WHERE user_id = ${studentId}
-    `;
+      FROM leads WHERE user_id = $1`,
+      [studentId]
+    );
 
     // 12-step progress: count leads at each pipeline stage
     const pipelineProgress = {

@@ -4,7 +4,7 @@
 
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'divinity-crm-local-jwt-secret-2026';
@@ -18,13 +18,13 @@ async function seedUsers() {
   ];
 
   for (const u of users) {
-    const existing = await sql`SELECT id FROM users WHERE email = ${u.email}`;
+    const existing = await query('SELECT id FROM users WHERE email = $1', [u.email]);
     if (existing.length === 0) {
       const hash = await bcrypt.hash(u.password, 10);
-      await sql`
-        INSERT INTO users (id, clerk_id, email, first_name, last_name, password_hash)
-        VALUES (${uuid()}, ${'local:' + u.email}, ${u.email}, ${u.firstName}, ${u.lastName}, ${hash})
-      `;
+      await query(
+        'INSERT INTO users (id, clerk_id, email, first_name, last_name, password_hash) VALUES ($1, $2, $3, $4, $5, $6)',
+        [uuid(), 'local:' + u.email, u.email, u.firstName, u.lastName, hash]
+      );
       console.log(`Seeded user: ${u.email}`);
     }
   }
@@ -32,7 +32,7 @@ async function seedUsers() {
 
 // Login
 async function login(email, password) {
-  const user = await sql`SELECT * FROM users WHERE email = ${email}`;
+  const user = await query('SELECT * FROM users WHERE email = $1', [email]);
   if (user.length === 0) return null;
 
   const valid = await bcrypt.compare(password, user[0].password_hash || '');

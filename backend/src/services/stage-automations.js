@@ -11,7 +11,7 @@
  * Source: AIREI_MASTER_PLAYBOOK.md + ghl-automations sms-templates.js
  */
 
-const { sql } = require('../db/connection');
+const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
 
 // =============================================================
@@ -487,7 +487,7 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             else if (value === 'now+48h') { const d = new Date(now); d.setHours(d.getHours() + 48); value = d.toISOString(); }
             else if (value === 'now+30d') { const d = new Date(now); d.setDate(d.getDate() + 30); value = d.toISOString().split('T')[0]; }
             else if (value === 'now+14d') { const d = new Date(now); d.setDate(d.getDate() + 14); value = d.toISOString().split('T')[0]; }
-            await sql`UPDATE leads SET ${sql.unsafe(action.field)} = ${value} WHERE id = ${leadId}`;
+            await query(`UPDATE leads SET ${action.field} = $1 WHERE id = $2`, [value, leadId]);
             results.push({ type: 'set_field', field: action.field, value, ok: true });
             break;
           }
@@ -495,7 +495,10 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             let dueDate = new Date(now);
             if (action.offset_hours) dueDate.setHours(dueDate.getHours() + action.offset_hours);
             else if (action.offset_days) dueDate.setDate(dueDate.getDate() + action.offset_days);
-            await sql`INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes) VALUES (gen_random_uuid(), ${leadId}, ${userId}, ${action.reminder_type}, ${dueDate.toISOString()}, ${action.notes || null})`;
+            await query(
+              'INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)',
+              [leadId, userId, action.reminder_type, dueDate.toISOString(), action.notes || null]
+            );
             results.push({ type: 'set_reminder', reminder_type: action.reminder_type, ok: true });
             break;
           }
@@ -514,17 +517,26 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             if ((existing_loan_balance || 0) > 0 && existing_loan_rate > 0 && existing_loan_rate < 0.05) rec = 'subto';
             else if (condition === 'turnkey') rec = 'f50';
             else if (condition === 'reno') rec = 'f10';
-            await sql`UPDATE leads SET one_percent_rule=${onePercentRule}, one_percent_value=${onePercentValue}, repair_tier_rate=${rate}, repairs_estimate=${repairs}, cash_offer=${cash}, f50_offer=${f50}, f50_down=${Math.round(f50 * 0.5)}, f50_carryback=${Math.round(f50 * 0.5)}, f10_offer=${f50}, f10_down=${Math.round(f50 * 0.1)}, f10_carryback=${Math.round(f50 * 0.9)}, subto_offer=${subto}, recommended_strategy=${rec} WHERE id=${leadId}`;
+            await query(
+              `UPDATE leads SET one_percent_rule=$1, one_percent_value=$2, repair_tier_rate=$3, repairs_estimate=$4, cash_offer=$5, f50_offer=$6, f50_down=$7, f50_carryback=$8, f10_offer=$9, f10_down=$10, f10_carryback=$11, subto_offer=$12, recommended_strategy=$13 WHERE id=$14`,
+              [onePercentRule, onePercentValue, rate, repairs, cash, f50, Math.round(f50 * 0.5), Math.round(f50 * 0.5), f50, Math.round(f50 * 0.1), Math.round(f50 * 0.9), subto, rec, leadId]
+            );
             results.push({ type: 'run_underwriting', ok: true, data: { onePercentRule, cash, f50, subto, rec } });
             break;
           }
           case 'notify': {
-            await sql`INSERT INTO activity_log (user_id, lead_id, action, details) VALUES (${userId}, ${leadId}, 'notification_sent', ${JSON.stringify({ role: action.role, msg: action.message })})`;
+            await query(
+              'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+              [userId, leadId, 'notification_sent', JSON.stringify({ role: action.role, msg: action.message })]
+            );
             results.push({ type: 'notify', role: action.role, ok: true });
             break;
           }
           case 'log': {
-            await sql`INSERT INTO activity_log (user_id, lead_id, action, details) VALUES (${userId}, ${leadId}, 'automation_log', ${JSON.stringify({ message: action.message })})`;
+            await query(
+              'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+              [userId, leadId, 'automation_log', JSON.stringify({ message: action.message })]
+            );
             results.push({ type: 'log', message: action.message, ok: true });
             break;
           }
