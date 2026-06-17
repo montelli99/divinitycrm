@@ -15,6 +15,22 @@ const STAGE_LABELS = {
   ARCHIVED: 'Archived',
 };
 
+// AM Tasks by stage (from daily-sop.js)
+const AM_TASK_DEFS = {
+  'UNDER_CONTRACT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
+  'NEGOTIATING': { label: 'Active Negotiation', action: 'Overcome objections. Record calls for educational purposes', icon: '🎙️' },
+  'LOI_APPROVED': { label: 'Terms Agreed', action: 'Touch base on contract alignment. Verify stack or draft manual agreement', icon: '📋' },
+  'LOI_REQUESTED': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
+};
+
+// PM Tasks by stage (PPC follow-ups)
+const PM_TASK_DEFS = {
+  'OFFER_SENT': { label: 'Offer Made', action: 'Figure out motivation if they are a serious and qualified lead', icon: '🔍' },
+  'LOI_APPROVED': { label: 'Offer Ready to Pitch', action: 'Underwrite and navigate exit strategies for disposition, then send text to client for a call to pitch', icon: '📊' },
+  'QUALIFIED': { label: 'Awaiting Photos', action: 'CRITICAL: Stay on phone while they take photos. Email photos to yourself, create Google Drive folder', icon: '📸' },
+  'NEW_LEAD': { label: 'Contacted', action: 'Send text to qualify timing preference — morning or evening?', icon: '📱' },
+};
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [today, setToday] = useState(null);
@@ -23,6 +39,7 @@ export default function Dashboard() {
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLead, setNewLead] = useState({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '' });
   const [creating, setCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
     async function load() {
@@ -30,7 +47,7 @@ export default function Dashboard() {
         const [statsData, todayData, leadsData] = await Promise.all([
           api.getStats(),
           api.getToday(),
-          api.getLeads({ limit: 10 }),
+          api.getLeads({ limit: 50 }),
         ]);
         setStats(statsData);
         setToday(todayData);
@@ -61,7 +78,7 @@ export default function Dashboard() {
       });
       setShowNewLead(false);
       setNewLead({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '' });
-      const [leadsData, statsData] = await Promise.all([api.getLeads({ limit: 10 }), api.getStats()]);
+      const [leadsData, statsData] = await Promise.all([api.getLeads({ limit: 50 }), api.getStats()]);
       setLeads(leadsData.leads);
       setStats(statsData);
     } catch (err) {
@@ -71,7 +88,53 @@ export default function Dashboard() {
     }
   }
 
+  // Build AM/PM task lists from leads
+  function buildTaskLists() {
+    const amTasks = [];
+    const pmTasks = [];
+
+    leads.forEach(lead => {
+      const amDef = AM_TASK_DEFS[lead.stage];
+      if (amDef) {
+        amTasks.push({
+          leadId: lead.id,
+          address: lead.address,
+          stage: lead.stage,
+          label: amDef.label,
+          action: amDef.action,
+          icon: amDef.icon,
+          price: lead.price,
+          daysInStage: lead.last_stage_change_at
+            ? Math.floor((Date.now() - new Date(lead.last_stage_change_at).getTime()) / 86400000)
+            : null,
+        });
+      }
+
+      const pmDef = PM_TASK_DEFS[lead.stage];
+      if (pmDef) {
+        pmTasks.push({
+          leadId: lead.id,
+          address: lead.address,
+          stage: lead.stage,
+          label: pmDef.label,
+          action: pmDef.action,
+          icon: pmDef.icon,
+          price: lead.price,
+          daysInStage: lead.last_stage_change_at
+            ? Math.floor((Date.now() - new Date(lead.last_stage_change_at).getTime()) / 86400000)
+            : null,
+        });
+      }
+    });
+
+    return { amTasks, pmTasks };
+  }
+
   if (loading) return <div className="loading">Loading dashboard...</div>;
+
+  const { amTasks, pmTasks } = buildTaskLists();
+  const overdue48hr = today?.overdue_48hr || [];
+  const followUpsDue = today?.follow_ups_due || [];
 
   return (
     <div className="dashboard">
@@ -218,20 +281,155 @@ export default function Dashboard() {
         </div>
       )}
 
-      {today && today.follow_ups_due?.length > 0 && (
-        <div className="alert-section">
-          <h3>⏰ Due Today</h3>
-          {today.follow_ups_due.map(r => (
-            <div key={r.id} className="alert-item">
-              <span className="reminder-type">{r.type}</span>
-              <Link to={`/leads/${r.lead_id}`}>{r.address}</Link>
-              <span className="reminder-date">{new Date(r.due_date).toLocaleDateString()}</span>
-            </div>
-          ))}
+      {/* Today's Tasks Section */}
+      <div className="today-tasks-section">
+        <div className="tasks-header">
+          <h2>📋 Today's Tasks</h2>
+          <div className="tasks-tabs">
+            <button
+              className={`tasks-tab ${activeTab === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveTab('all')}
+            >
+              All ({amTasks.length + pmTasks.length + overdue48hr.length + followUpsDue.length})
+            </button>
+            <button
+              className={`tasks-tab ${activeTab === 'am' ? 'active' : ''}`}
+              onClick={() => setActiveTab('am')}
+            >
+              🌅 AM ({amTasks.length})
+            </button>
+            <button
+              className={`tasks-tab ${activeTab === 'pm' ? 'active' : ''}`}
+              onClick={() => setActiveTab('pm')}
+            >
+              🌆 PM ({pmTasks.length})
+            </button>
+            <button
+              className={`tasks-tab ${activeTab === 'urgent' ? 'active' : ''}`}
+              onClick={() => setActiveTab('urgent')}
+            >
+              🔴 Urgent ({overdue48hr.length + followUpsDue.length})
+            </button>
+          </div>
         </div>
-      )}
 
-      {today && today.overdue_48hr?.length > 0 && (
+        <div className="tasks-grid">
+          {/* AM Tasks Column */}
+          {(activeTab === 'all' || activeTab === 'am') && amTasks.length > 0 && (
+            <div className="task-column">
+              <h3 className="task-column-header">🌅 AM Tasks — Review & Execute</h3>
+              {amTasks.map(task => (
+                <Link to={`/leads/${task.leadId}`} key={task.leadId} className="task-card">
+                  <div className="task-card-icon">{task.icon}</div>
+                  <div className="task-card-body">
+                    <div className="task-card-title">
+                      <strong>{task.address}</strong>
+                      <span className={`stage-badge stage-${task.stage.toLowerCase()}`}>
+                        {STAGE_LABELS[task.stage]}
+                      </span>
+                    </div>
+                    <div className="task-card-action">{task.action}</div>
+                    <div className="task-card-meta">
+                      {task.price && <span>💰 ${Number(task.price).toLocaleString()}</span>}
+                      {task.daysInStage != null && (
+                        <span style={{ color: task.daysInStage > 7 ? '#f59e0b' : 'var(--text-tertiary)' }}>
+                          📅 {task.daysInStage}d in stage
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* PM Tasks Column */}
+          {(activeTab === 'all' || activeTab === 'pm') && pmTasks.length > 0 && (
+            <div className="task-column">
+              <h3 className="task-column-header">🌆 PM Tasks — PPC Follow-ups</h3>
+              {pmTasks.map(task => (
+                <Link to={`/leads/${task.leadId}`} key={`pm-${task.leadId}`} className="task-card">
+                  <div className="task-card-icon">{task.icon}</div>
+                  <div className="task-card-body">
+                    <div className="task-card-title">
+                      <strong>{task.address}</strong>
+                      <span className={`stage-badge stage-${task.stage.toLowerCase()}`}>
+                        {STAGE_LABELS[task.stage]}
+                      </span>
+                    </div>
+                    <div className="task-card-action">{task.action}</div>
+                    <div className="task-card-meta">
+                      {task.price && <span>💰 ${Number(task.price).toLocaleString()}</span>}
+                      {task.daysInStage != null && (
+                        <span style={{ color: task.daysInStage > 7 ? '#f59e0b' : 'var(--text-tertiary)' }}>
+                          📅 {task.daysInStage}d in stage
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* Urgent Column */}
+          {(activeTab === 'all' || activeTab === 'urgent') && (overdue48hr.length > 0 || followUpsDue.length > 0) && (
+            <div className="task-column urgent-column">
+              <h3 className="task-column-header urgent-header">🔴 Urgent — Action Required</h3>
+
+              {overdue48hr.length > 0 && (
+                <div className="urgent-subsection">
+                  <h4>⏰ 48hr Follow-up Overdue</h4>
+                  {overdue48hr.map(lead => (
+                    <Link to={`/leads/${lead.id}`} key={`ov-${lead.id}`} className="task-card urgent-card">
+                      <div className="task-card-icon">🔴</div>
+                      <div className="task-card-body">
+                        <div className="task-card-title">
+                          <strong>{lead.address}</strong>
+                        </div>
+                        <div className="task-card-action">
+                          48hr follow-up overdue — call now! Run realignment script.
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {followUpsDue.length > 0 && (
+                <div className="urgent-subsection">
+                  <h4>📅 Follow-ups Due Today</h4>
+                  {followUpsDue.map(fu => (
+                    <Link to={`/leads/${fu.lead_id}`} key={`fu-${fu.id}`} className="task-card followup-card">
+                      <div className="task-card-icon">📅</div>
+                      <div className="task-card-body">
+                        <div className="task-card-title">
+                          <strong>{fu.address}</strong>
+                          <span className="reminder-type-badge">{fu.type?.replace(/_/g, ' ')}</span>
+                        </div>
+                        <div className="task-card-action">
+                          Due: {new Date(fu.due_date).toLocaleDateString()}
+                          {fu.notes && ` — ${fu.notes}`}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Empty state */}
+        {amTasks.length === 0 && pmTasks.length === 0 && overdue48hr.length === 0 && followUpsDue.length === 0 && (
+          <div className="empty-tasks">
+            <p>🎉 No tasks due today! All caught up.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Legacy alerts section (keep for backward compat) */}
+      {today && today.overdue_48hr?.length > 0 && false && (
         <div className="alerts">
           {today.overdue_48hr.map(l => (
             <div key={l.id} className="alert alert-red">
@@ -291,4 +489,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

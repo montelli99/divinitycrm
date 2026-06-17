@@ -70,6 +70,9 @@ export const api = {
   // Scripts
   getScripts: (category) => request(`/scripts${category ? '?category=' + category : ''}`),
   fillScript: (data) => request('/scripts/fill', { method: 'POST', body: JSON.stringify(data) }),
+  getStagePrompt: (leadId, stage) => request(`/scripts/prompts/stage/${leadId}/${stage}`),
+  getScriptShortcuts: () => request('/scripts/prompts/shortcuts'),
+  fillTemplate: (leadId, shortcut) => request('/scripts/prompts/fill', { method: 'POST', body: JSON.stringify({ lead_id: leadId, shortcut }) }),
 
   // Users
   getMe: () => request('/users/me'),

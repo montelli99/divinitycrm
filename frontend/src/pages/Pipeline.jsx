@@ -25,6 +25,7 @@ export default function Pipeline() {
   const [dragging, setDragging] = useState(null);
   const [automationResults, setAutomationResults] = useState(null);
   const [scriptPrompts, setScriptPrompts] = useState(null);
+  const [viewingPrompts, setViewingPrompts] = useState(null); // For "View Prompts" button
 
   const loadPipeline = useCallback(async () => {
     try {
@@ -50,18 +51,46 @@ export default function Pipeline() {
     try {
       const result = await api.advanceLead(leadId, toStage);
 
-      // Show script prompts if returned
-      if (result.automation?.scripts?.length > 0) {
-        setScriptPrompts(result.automation.scripts);
+      // Show the RICH PROMPT if returned (auto-open, stays until dismissed)
+      if (result.automation?.prompt) {
+        setScriptPrompts({
+          prompt: result.automation.prompt,
+          scripts: result.automation.scripts,
+          workflow: result.automation.workflow,
+          description: result.automation.description,
+        });
+      } else if (result.automation?.scripts?.length > 0) {
+        // Legacy fallback
+        setScriptPrompts({
+          scripts: result.automation.scripts,
+          workflow: result.automation.workflow,
+        });
       }
 
       setAutomationResults({ leadId, ...result.automation });
       await loadPipeline();
-      setTimeout(() => setAutomationResults(null), 5000);
+      // Don't auto-dismiss — modal stays open until user dismisses
     } catch (err) {
       alert('Failed to advance: ' + err.message);
     } finally {
       setAdvancing(prev => ({ ...prev, [leadId]: false }));
+    }
+  }
+
+  // "View Prompts" — fetch the stage prompt for a lead
+  async function handleViewPrompts(leadId, stage) {
+    try {
+      const result = await api.getStagePrompt(leadId, stage);
+      if (result?.prompt) {
+        setViewingPrompts({
+          prompt: result.prompt,
+          scripts: result.scripts || [],
+          leadId,
+          stage,
+        });
+      }
+    } catch (err) {
+      console.error('View prompts error:', err);
     }
   }
 
@@ -180,10 +209,22 @@ export default function Pipeline() {
         </div>
       )}
 
+      {/* Script Prompt Modal — auto-opens on advance, stays until dismissed */}
       {scriptPrompts && (
         <ScriptPromptModal
-          scripts={scriptPrompts}
+          prompt={scriptPrompts.prompt}
+          scripts={scriptPrompts.scripts}
           onDismiss={() => setScriptPrompts(null)}
+          onMarkSent={(name) => console.log('Marked sent:', name)}
+        />
+      )}
+
+      {/* View Prompts Modal — opened via "View Prompts" button */}
+      {viewingPrompts && (
+        <ScriptPromptModal
+          prompt={viewingPrompts.prompt}
+          scripts={viewingPrompts.scripts}
+          onDismiss={() => setViewingPrompts(null)}
           onMarkSent={(name) => console.log('Marked sent:', name)}
         />
       )}
@@ -219,6 +260,14 @@ export default function Pipeline() {
                         {lead.stage === 'OFFER_SENT' && lead.days_in_stage > 2 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 48hr overdue — call now</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
+                          {/* View Prompts button */}
+                          <button
+                            className="btn-view-prompts"
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); handleViewPrompts(lead.id, lead.stage); }}
+                            title="View stage scripts & prompts"
+                          >
+                            📋
+                          </button>
                           {nextStage && (
                             <button className="btn-advance" onClick={e => { e.preventDefault(); e.stopPropagation(); handleAdvance(lead.id, nextStage); }}
                               disabled={isAdvancing} title={`Advance to ${STAGE_LABELS[nextStage]}`}>
@@ -244,7 +293,7 @@ export default function Pipeline() {
           {pipeline.reminders_due.map(r => (
             <div key={r.id} className="reminder-item">
               <span className="reminder-type">{r.type}</span>
-              <Link to={`/leads/${r.lead_id}`}>{r.address}</Link>
+              <Link to={`/leads/${r.id}`}>{r.address}</Link>
               <span className="reminder-date">{new Date(r.due_date).toLocaleDateString()}</span>
             </div>
           ))}
