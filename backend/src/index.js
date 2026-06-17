@@ -8,7 +8,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { ClerkExpressRequireAuth } = require('@clerk/express');
+const { requireAuth } = require('@clerk/express');
 
 const { testConnection } = require('./db/connection');
 const leadsRouter = require('./routes/leads');
@@ -35,12 +35,12 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Protected routes (Clerk auth required)
-app.use('/api/leads', ClerkExpressRequireAuth(), leadsRouter);
-app.use('/api/contracts', ClerkExpressRequireAuth(), contractsRouter);
-app.use('/api/pipeline', ClerkExpressRequireAuth(), pipelineRouter);
-app.use('/api/scripts', ClerkExpressRequireAuth(), scriptsRouter);
-app.use('/api/scripts/prompts', ClerkExpressRequireAuth(), scriptPromptsRouter);
-app.use('/api/users', ClerkExpressRequireAuth(), usersRouter);
+app.use('/api/leads', requireAuth(), leadsRouter);
+app.use('/api/contracts', requireAuth(), contractsRouter);
+app.use('/api/pipeline', requireAuth(), pipelineRouter);
+app.use('/api/scripts', requireAuth(), scriptsRouter);
+app.use('/api/scripts/prompts', requireAuth(), scriptPromptsRouter);
+app.use('/api/users', requireAuth(), usersRouter);
 
 // Webhooks (Clerk webhook verification, no standard auth)
 app.use('/api/webhooks', webhooksRouter);

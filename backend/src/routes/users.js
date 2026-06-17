@@ -16,7 +16,7 @@ router.get('/me', async (req, res, next) => {
     if (user.length === 0) {
       return res.status(404).json({ 
         error: 'User not found in database',
-        hint: 'Your Clerk account exists but hasn''t been synced to the CRM database yet. This happens automatically via the Clerk webhook on first login. If this persists, contact admin.',
+        hint: "Your Clerk account exists but hasn't been synced to the CRM database yet. This happens automatically via the Clerk webhook on first login. If this persists, contact admin.",
       });
     }
 
