@@ -56,16 +56,26 @@ app.use((err, req, res, next) => {
 
 // Start
 async function start() {
-  const dbOk = await testConnection();
-  if (!dbOk) {
-    console.warn('WARNING: Starting without database connection. API will return errors for DB-dependent routes.');
-  }
+  try {
+    const dbOk = await testConnection();
+    if (!dbOk) {
+      console.warn('WARNING: Starting without database connection. API will return errors for DB-dependent routes.');
+    }
 
-  app.listen(PORT, () => {
-    console.log(`Divinity CRM API running on http://localhost:${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
-  });
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Divinity CRM API running on port ${PORT}`);
+      console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
+    });
+  } catch (err) {
+    console.error('FATAL STARTUP ERROR:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+  }
 }
 
-start();
+start().catch(err => {
+  console.error('UNHANDLED STARTUP ERROR:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
 
