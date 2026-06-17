@@ -1,0 +1,45 @@
+services:
+  # Backend API
+  - type: web
+    name: divinitycrm-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        fromService:
+          name: divinitycrm
+          type: static
+          property: url
+
+  # Frontend Static Site
+  - type: static
+    name: divinitycrm
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDirectory: dist
+    plan: free
+    envVars:
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_BASE
+        fromService:
+          name: divinitycrm-api
+          type: web
+          property: url
+        value: "https://divinitycrm-api.onrender.com/api"
