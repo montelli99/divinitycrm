@@ -1,81 +1,13 @@
-// =============================================================
-// Divinity CRM Platform — Express Server Entry Point
-// =============================================================
-
+// Minimal startup test for Render
 require('dotenv').config();
-
 const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const { requireAuth } = require('@clerk/express');
-
-const { testConnection } = require('./db/connection');
-const leadsRouter = require('./routes/leads');
-const contractsRouter = require('./routes/contracts');
-const pipelineRouter = require('./routes/pipeline');
-const scriptsRouter = require('./routes/scripts');
-const scriptPromptsRouter = require('./routes/script-prompts');
-const usersRouter = require('./routes/users');
-const webhooksRouter = require('./routes/webhooks');
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
-app.use(morgan('dev'));
-app.use(express.json());
-
-// Health check (no auth required)
-app.get('/api/health', async (req, res) => {
-  const dbOk = await testConnection();
-  res.json({ status: 'ok', database: dbOk ? 'connected' : 'disconnected', timestamp: new Date().toISOString() });
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Protected routes (Clerk auth required)
-app.use('/api/leads', requireAuth(), leadsRouter);
-app.use('/api/contracts', requireAuth(), contractsRouter);
-app.use('/api/pipeline', requireAuth(), pipelineRouter);
-app.use('/api/scripts', requireAuth(), scriptsRouter);
-app.use('/api/scripts/prompts', requireAuth(), scriptPromptsRouter);
-app.use('/api/users', requireAuth(), usersRouter);
-
-// Webhooks (Clerk webhook verification, no standard auth)
-app.use('/api/webhooks', webhooksRouter);
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Running on port ${PORT}`);
 });
-
-// Start
-async function start() {
-  try {
-    const dbOk = await testConnection();
-    if (!dbOk) {
-      console.warn('WARNING: Starting without database connection. API will return errors for DB-dependent routes.');
-    }
-
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Divinity CRM API running on port ${PORT}`);
-      console.log(`Health check: http://0.0.0.0:${PORT}/api/health`);
-    });
-  } catch (err) {
-    console.error('FATAL STARTUP ERROR:', err.message);
-    console.error(err.stack);
-    process.exit(1);
-  }
-}
-
-start().catch(err => {
-  console.error('UNHANDLED STARTUP ERROR:', err.message);
-  console.error(err.stack);
-  process.exit(1);
-});
-
