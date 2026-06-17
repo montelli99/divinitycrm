@@ -1,25 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import ScriptPromptModal from '../components/ScriptPromptModal';
 
 const STAGE_ORDER = ['NEW_LEAD', 'QUALIFIED', 'LOI_REQUESTED', 'LOI_APPROVED', 'OFFER_SENT', 'NEGOTIATING', 'UNDER_CONTRACT'];
 const STAGE_LABELS = {
-  NEW_LEAD: 'New Lead',
-  QUALIFIED: 'Qualified',
-  LOI_REQUESTED: 'LOI Requested',
-  LOI_APPROVED: 'LOI Approved',
-  OFFER_SENT: 'Offer Sent',
-  NEGOTIATING: 'Negotiating',
+  NEW_LEAD: 'New Lead', QUALIFIED: 'Qualified', LOI_REQUESTED: 'LOI Requested',
+  LOI_APPROVED: 'LOI Approved', OFFER_SENT: 'Offer Sent', NEGOTIATING: 'Negotiating',
   UNDER_CONTRACT: 'Under Contract',
 };
 
 const NEXT_STAGE = {
-  NEW_LEAD: 'QUALIFIED',
-  QUALIFIED: 'LOI_REQUESTED',
-  LOI_REQUESTED: 'LOI_APPROVED',
-  LOI_APPROVED: 'OFFER_SENT',
-  OFFER_SENT: 'NEGOTIATING',
-  NEGOTIATING: 'UNDER_CONTRACT',
+  NEW_LEAD: 'QUALIFIED', QUALIFIED: 'LOI_REQUESTED', LOI_REQUESTED: 'LOI_APPROVED',
+  LOI_APPROVED: 'OFFER_SENT', OFFER_SENT: 'NEGOTIATING', NEGOTIATING: 'UNDER_CONTRACT',
   UNDER_CONTRACT: 'CLOSED',
 };
 
@@ -30,27 +23,32 @@ export default function Pipeline() {
   const [dragOver, setDragOver] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [automationResults, setAutomationResults] = useState(null);
+  const [scriptPrompts, setScriptPrompts] = useState(null);
 
   const loadPipeline = useCallback(async () => {
-    try {
-      const data = await api.getPipeline();
-      setPipeline(data);
-    } catch (err) {
-      console.error('Pipeline load error:', err);
-    } finally {
-      setLoading(false);
-    }
+    try { setPipeline(await api.getPipeline()); }
+    catch (err) { console.error('Pipeline load error:', err); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadPipeline(); }, [loadPipeline]);
 
   async function handleAdvance(leadId, toStage) {
+    const lead = pipeline.pipeline[Object.keys(pipeline.pipeline).find(s =>
+      pipeline.pipeline[s].some(l => l.id === leadId))]?.find(l => l.id === leadId);
+    const fromStage = lead?.stage;
+
     setAdvancing(prev => ({ ...prev, [leadId]: true }));
     try {
       const result = await api.advanceLead(leadId, toStage);
+
+      // Show script prompts if returned
+      if (result.automation?.scripts?.length > 0) {
+        setScriptPrompts(result.automation.scripts);
+      }
+
       setAutomationResults({ leadId, ...result.automation });
       await loadPipeline();
-      // Clear automation result after 5 seconds
       setTimeout(() => setAutomationResults(null), 5000);
     } catch (err) {
       alert('Failed to advance: ' + err.message);
@@ -62,7 +60,6 @@ export default function Pipeline() {
   function handleDragStart(e, lead) {
     setDragging(lead);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', lead.id);
   }
 
   function handleDragOver(e, stage) {
@@ -71,31 +68,17 @@ export default function Pipeline() {
     setDragOver(stage);
   }
 
-  function handleDragLeave() {
-    setDragOver(null);
-  }
+  function handleDragLeave() { setDragOver(null); }
 
   async function handleDrop(e, toStage) {
     e.preventDefault();
     setDragOver(null);
     if (!dragging) return;
-
-    const leadId = dragging.id;
     const fromStage = dragging.stage;
-    
     if (fromStage === toStage) return;
-    
-    // Validate transition
     const validNext = NEXT_STAGE[fromStage];
-    if (toStage !== validNext && toStage !== 'DEAD') {
-      // Allow drag to DEAD from any stage
-      if (toStage === 'DEAD') {
-        // handled below
-      } else {
-        return; // invalid transition — silently ignore
-      }
-    }
-
+    if (toStage !== validNext && toStage !== 'DEAD') return;
+    const leadId = dragging.id;
     setDragging(null);
     await handleAdvance(leadId, toStage);
   }
@@ -103,7 +86,7 @@ export default function Pipeline() {
   if (loading) return <div className="loading">Loading pipeline...</div>;
   if (!pipeline) return <div className="error">Failed to load pipeline.</div>;
 
-  const totalActive = Object.values(pipeline.pipeline).reduce((sum, arr) => sum + arr.length, 0);
+  const totalActive = Object.values(pipeline.pipeline).reduce((s, arr) => s + arr.length, 0);
 
   return (
     <div className="pipeline-page">
@@ -133,7 +116,7 @@ export default function Pipeline() {
 
       {automationResults && (
         <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-          ⚡ <strong>{automationResults.workflow}</strong> fired — {automationResults.actions_executed} actions executed
+          ⚡ <strong>{automationResults.workflow}</strong> fired — {automationResults.actions_executed} actions
           {automationResults.results?.filter(r => r.ok).map((r, i) => (
             <span key={i} style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
               {r.type === 'set_field' && `✓ ${r.field}`}
@@ -145,84 +128,53 @@ export default function Pipeline() {
         </div>
       )}
 
+      {scriptPrompts && (
+        <ScriptPromptModal
+          scripts={scriptPrompts}
+          onDismiss={() => setScriptPrompts(null)}
+          onMarkSent={(name) => console.log('Marked sent:', name)}
+        />
+      )}
+
       <div className="pipeline-board">
         {STAGE_ORDER.map(stage => {
           const leads = pipeline.pipeline[stage] || [];
           const isDragOver = dragOver === stage;
           return (
-            <div 
-              key={stage} 
-              className={`pipeline-column ${isDragOver ? 'drag-over' : ''}`}
-              onDragOver={e => handleDragOver(e, stage)}
-              onDragLeave={handleDragLeave}
-              onDrop={e => handleDrop(e, stage)}
-            >
+            <div key={stage} className={`pipeline-column ${isDragOver ? 'drag-over' : ''}`}
+              onDragOver={e => handleDragOver(e, stage)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, stage)}>
               <div className="column-header">
-                <h3>{STAGE_LABELS[stage]}</h3>
-                <span className="column-count">{leads.length}</span>
+                <h3>{STAGE_LABELS[stage]}</h3><span className="column-count">{leads.length}</span>
               </div>
               <div className="column-cards">
-                {leads.length === 0 ? (
-                  <div className="empty-column">Drop leads here</div>
-                ) : (
-                  leads.map(lead => {
+                {leads.length === 0 ? <div className="empty-column">Drop leads here</div>
+                  : leads.map(lead => {
                     const nextStage = NEXT_STAGE[lead.stage];
                     const isAdvancing = advancing[lead.id];
                     return (
-                      <div
-                        key={lead.id}
-                        className={`lead-card ${dragging?.id === lead.id ? 'dragging' : ''}`}
-                        draggable
-                        onDragStart={e => handleDragStart(e, { id: lead.id, stage: lead.stage })}
-                        onDragEnd={() => setDragging(null)}
-                      >
-                        <Link to={`/leads/${lead.id}`} className="card-address" onClick={e => e.stopPropagation()}>
-                          {lead.address}
-                        </Link>
+                      <div key={lead.id} className={`lead-card ${dragging?.id === lead.id ? 'dragging' : ''}`}
+                        draggable onDragStart={e => handleDragStart(e, { id: lead.id, stage: lead.stage })} onDragEnd={() => setDragging(null)}>
+                        <Link to={`/leads/${lead.id}`} className="card-address" onClick={e => e.stopPropagation()}>{lead.address}</Link>
                         <div className="card-meta">
-                          <span className="card-price">
-                            {lead.price ? `$${Number(lead.price).toLocaleString()}` : '—'}
-                          </span>
+                          <span className="card-price">{lead.price ? `$${Number(lead.price).toLocaleString()}` : '—'}</span>
                           <span className="card-days">{lead.days_in_stage}d</span>
                         </div>
-                        {lead.stalled && (
-                          <div className="card-stalled">⚠ Stalled — {lead.days_in_stage} days</div>
-                        )}
+                        {lead.stalled && <div className="card-stalled">⚠ Stalled — {lead.days_in_stage} days</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
                           {nextStage && (
-                            <button
-                              className="btn-advance"
-                              onClick={e => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleAdvance(lead.id, nextStage);
-                              }}
-                              disabled={isAdvancing}
-                              title={`Advance to ${STAGE_LABELS[nextStage]}`}
-                            >
+                            <button className="btn-advance" onClick={e => { e.preventDefault(); e.stopPropagation(); handleAdvance(lead.id, nextStage); }}
+                              disabled={isAdvancing} title={`Advance to ${STAGE_LABELS[nextStage]}`}>
                               {isAdvancing ? '...' : '→'}
                             </button>
                           )}
-                          <button
-                            className="btn-dead"
-                            onClick={e => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (confirm(`Mark ${lead.address} as dead?`)) {
-                                handleAdvance(lead.id, 'DEAD');
-                              }
-                            }}
-                            disabled={isAdvancing}
-                            title="Mark as Dead"
-                          >
-                            ✕
-                          </button>
+                          <button className="btn-dead" onClick={e => { e.preventDefault(); e.stopPropagation();
+                              if (confirm(`Mark ${lead.address} as dead?`)) handleAdvance(lead.id, 'DEAD'); }}
+                            disabled={isAdvancing} title="Mark as Dead">✕</button>
                         </div>
                       </div>
                     );
-                  })
-                )}
+                  })}
               </div>
             </div>
           );
@@ -244,4 +196,3 @@ export default function Pipeline() {
     </div>
   );
 }
-

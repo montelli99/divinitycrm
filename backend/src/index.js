@@ -15,6 +15,7 @@ const leadsRouter = require('./routes/leads');
 const contractsRouter = require('./routes/contracts');
 const pipelineRouter = require('./routes/pipeline');
 const scriptsRouter = require('./routes/scripts');
+const scriptPromptsRouter = require('./routes/script-prompts');
 const usersRouter = require('./routes/users');
 const webhooksRouter = require('./routes/webhooks');
 
@@ -38,6 +39,7 @@ app.use('/api/leads', ClerkExpressRequireAuth(), leadsRouter);
 app.use('/api/contracts', ClerkExpressRequireAuth(), contractsRouter);
 app.use('/api/pipeline', ClerkExpressRequireAuth(), pipelineRouter);
 app.use('/api/scripts', ClerkExpressRequireAuth(), scriptsRouter);
+app.use('/api/scripts/prompts', ClerkExpressRequireAuth(), scriptPromptsRouter);
 app.use('/api/users', ClerkExpressRequireAuth(), usersRouter);
 
 // Webhooks (Clerk webhook verification, no standard auth)
