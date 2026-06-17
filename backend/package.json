@@ -9,7 +9,7 @@
     "db:migrate": "node src/db/migrate.js"
   },
   "dependencies": {
-    "@clerk/express": "^1.0.0",
+    "@clerk/express": "1.7.81",
     "@neondatabase/serverless": "^0.9.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
