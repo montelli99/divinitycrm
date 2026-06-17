@@ -1,63 +1,72 @@
 /**
  * RabbitSign Integration Service
  * =============================================================
- * Built: 2026-06-17
- * Purpose: E-signature envelope creation, status checking, webhook handling
+ * Built: 2026-06-17 | Auth: SHA-512 HMAC signature (per API docs)
  * 
- * RabbitSign API: https://www.rabbitsign.com
- * Account: montelliscottrei@gmail.com
- * Webhook URL: https://divinitycrm-api.onrender.com/api/webhooks/rabbitsign
+ * API Base: www.rabbitsign.com
+ * Auth headers: x-rabbitsign-api-key-id, x-rabbitsign-api-time-utc, x-rabbitsign-api-signature
+ * Signature: SHA512("{METHOD} {path} {utcTime} {keySecret}")
  *
- * Usage:
- *   const rs = require('./rabbitsign');
- *   const folder = await rs.createFolder({ template, signers, documents });
- *   const status = await rs.getFolderStatus(folderId);
+ * Key ID: FdoxIa1tIsnUNmCjfGt4Ns
+ * Key Secret: dHwqVS4Gr9liQ9WJWIJ0DvD5fT7S51rXOUE7fFT8WFx7
+ * Webhook URL: https://divinitycrm-api.onrender.com/api/webhooks/rabbitsign
  */
 
 const https = require('https');
+const crypto = require('crypto');
 const { query } = require('../db/connection');
 
-const RABBITSIGN_API_KEY = process.env.RABBITSIGN_API_KEY || '';
-const RABBITSIGN_BASE = 'api.rabbitsign.com';
-const WEBHOOK_URL = process.env.RABBITSIGN_WEBHOOK_URL || 'https://divinitycrm-api.onrender.com/api/webhooks/rabbitsign';
+const RS_KEY_ID = process.env.RABBITSIGN_KEY_ID || 'FdoxIa1tIsnUNmCjfGt4Ns';
+const RS_KEY_SECRET = process.env.RABBITSIGN_API_KEY || 'dHwqVS4Gr9liQ9WJWIJ0DvD5fT7S51rXOUE7fFT8WFx7';
+const RS_BASE = 'www.rabbitsign.com';
 
-/**
- * Make an authenticated request to RabbitSign API.
- */
+function sha512(input) {
+  return crypto.createHash('sha512').update(input, 'utf8').digest('hex').toUpperCase();
+}
+
+function utcNow() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
 function rsRequest(method, path, body = null) {
   return new Promise((resolve, reject) => {
+    const utcTime = utcNow();
+    const signature = sha512(`${method} ${path} ${utcTime} ${RS_KEY_SECRET}`);
     const data = body ? JSON.stringify(body) : null;
+
     const opts = {
-      hostname: RABBITSIGN_BASE,
+      hostname: RS_BASE,
       path,
       method,
       headers: {
-        'Authorization': `Bearer ${RABBITSIGN_API_KEY}`,
+        'x-rabbitsign-api-key-id': RS_KEY_ID,
+        'x-rabbitsign-api-time-utc': utcTime,
+        'x-rabbitsign-api-signature': signature,
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Accept': '*/*',
+        'Cache-Control': 'no-cache',
+        'User-Agent': 'DivinityCRM/1.0',
       },
     };
-    if (data) {
-      opts.headers['Content-Length'] = Buffer.byteLength(data);
-    }
+    if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
 
     const req = https.request(opts, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(d);
+          const parsed = d ? JSON.parse(d) : {};
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(parsed);
           } else {
-            reject(new Error(`RabbitSign API error ${res.statusCode}: ${parsed.message || d}`));
+            reject(new Error(parsed.error || parsed.message || `RabbitSign API error ${res.statusCode}: ${d.substring(0, 200)}`));
           }
         } catch (e) {
-          resolve({ _raw: d, statusCode: res.statusCode });
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve({ _raw: d });
+          else reject(new Error(`RabbitSign API error ${res.statusCode}: ${d.substring(0, 200)}`));
         }
       });
     });
-
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
@@ -65,235 +74,191 @@ function rsRequest(method, path, body = null) {
 }
 
 /**
- * Create a signing folder (envelope) with template, signers, and documents.
- * 
- * @param {object} params
- * @param {string} params.template - Template name or ID
- * @param {Array<{name, email, role}>} params.signers - Signers list
- * @param {Array<{name, content}>} params.documents - Documents to sign
- * @param {string} [params.folderName] - Custom folder name
- * @param {string} [params.message] - Email message to signers
- * @returns {Promise<{folderId, status, signers}>}
+ * Create a folder from a template.
+ * POST /api/v1/folderFromTemplate/{templateId}
  */
-async function createFolder({ template, signers, documents, folderName, message }) {
-  if (!RABBITSIGN_API_KEY) {
-    throw new Error('RABBITSIGN_API_KEY not configured');
-  }
-
-  const body = {
-    template: template || 'default',
-    name: folderName || `Contract Package - ${new Date().toISOString().split('T')[0]}`,
-    message: message || 'Please review and sign the attached documents.',
-    signers: signers.map(s => ({
-      name: s.name,
-      email: s.email,
-      role: s.role || 'signer',
-      order: s.order || 1,
-    })),
-    documents: documents.map(d => ({
-      name: d.name,
-      content: d.content, // base64 or URL
-    })),
-    webhook_url: WEBHOOK_URL,
-  };
-
-  const result = await rsRequest('POST', '/v1/folders', body);
-  
-  return {
-    folderId: result.id || result.folderId,
-    status: result.status || 'created',
-    signers: result.signers || signers,
-    raw: result,
-  };
+async function createFolderFromTemplate(templateId, { title, summary, date, senderFieldValues, roles, ccList = [] }) {
+  const body = { title, summary: summary || '', date, senderFieldValues: senderFieldValues || [], roles, ccList };
+  const result = await rsRequest('POST', `/api/v1/folderFromTemplate/${templateId}`, body);
+  return result; // { folderId: "..." }
 }
 
 /**
- * Get the status of a signing folder.
- * 
- * @param {string} folderId - RabbitSign folder/envelope ID
- * @returns {Promise<{status, signers, completedAt}>}
+ * Create a folder with local files (3-step process).
+ * Step 1: Get upload URL → Step 2: Upload file → Step 3: Create folder
+ */
+async function createFolder({ title, summary, date, files, signers, ccList = [] }) {
+  // Step 1: Get upload URLs for each file
+  const uploadUrls = [];
+  for (const file of files) {
+    const { uploadUrl } = await rsRequest('POST', '/api/v1/upload-url');
+    uploadUrls.push(uploadUrl);
+  }
+
+  // Step 2: Upload each file to S3
+  for (let i = 0; i < files.length; i++) {
+    await uploadToS3(uploadUrls[i], files[i]);
+  }
+
+  // Step 3: Create the folder (correct format from API docs)
+  const body = {
+    folder: {
+      title,
+      summary: summary || '',
+      docInfo: uploadUrls.map((url, i) => ({
+        url,
+        docTitle: files[i]?.name || `document-${i}.pdf`,
+      })),
+      signerInfo: {},
+    },
+    date: date || new Date().toISOString().split('T')[0],
+  };
+
+  // Build signerInfo map keyed by email
+  for (const signer of signers) {
+    body.folder.signerInfo[signer.email] = {
+      name: signer.name,
+      fields: (signer.fields || []).map((f, idx) => ({
+        id: idx + 1,
+        type: f.type || 'SIGNATURE',
+        currentValue: f.currentValue || '',
+        position: {
+          docNumber: f.docNumber || 0,
+          pageIndex: f.pageIndex || 0,
+          x: f.x || 100,
+          y: f.y || 600,
+          width: f.width || 200,
+          height: f.height || 50,
+        },
+      })),
+    };
+  }
+
+  const result = await rsRequest('POST', '/api/v1/folder', body);
+  return result;
+}
+
+function uploadToS3(uploadUrl, file) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(uploadUrl);
+    const opts = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'binary/octet-stream',
+        'Content-Length': Buffer.byteLength(file.content || file.buffer || ''),
+      },
+    };
+    const req = https.request(opts, (res) => {
+      if (res.statusCode === 200) resolve();
+      else reject(new Error(`S3 upload failed: ${res.statusCode}`));
+    });
+    req.on('error', reject);
+    req.write(file.content || file.buffer || '');
+    req.end();
+  });
+}
+
+/**
+ * Get folder signing status.
+ * GET /api/v1/folder/{folderId}
  */
 async function getFolderStatus(folderId) {
-  if (!RABBITSIGN_API_KEY) {
-    throw new Error('RABBITSIGN_API_KEY not configured');
-  }
-
-  const result = await rsRequest('GET', `/v1/folders/${folderId}`);
-  
-  return {
-    folderId,
-    status: result.status || 'unknown',
-    signers: (result.signers || []).map(s => ({
-      name: s.name,
-      email: s.email,
-      status: s.status, // pending, viewed, signed, declined
-      signedAt: s.signed_at || s.signedAt,
-    })),
-    completedAt: result.completed_at || result.completedAt,
-    raw: result,
-  };
+  return rsRequest('GET', `/api/v1/folder/${folderId}`);
 }
 
 /**
- * Send a signing reminder to pending signers.
- * 
- * @param {string} folderId - RabbitSign folder ID
- * @returns {Promise<{success: boolean}>}
+ * Get folders with pagination.
+ * GET /api/v1/folder-list/{utcTimestamp}/{pageSize}
+ */
+async function getFolders(pageSize = 20, newerThan = null) {
+  const ts = newerThan || '2050-12-31T11:22:33.123456Z';
+  return rsRequest('GET', `/api/v1/folder-list/${ts}/${pageSize}`);
+}
+
+/**
+ * Send reminder to sign.
+ * POST /api/v1/folder-notify/{folderId}
  */
 async function sendReminder(folderId) {
-  if (!RABBITSIGN_API_KEY) {
-    throw new Error('RABBITSIGN_API_KEY not configured');
-  }
-
-  const result = await rsRequest('POST', `/v1/folders/${folderId}/remind`);
-  return { success: true, raw: result };
+  return rsRequest('POST', `/api/v1/folder-notify/${folderId}`);
 }
 
 /**
- * Void/cancel a signing folder.
- * 
- * @param {string} folderId - RabbitSign folder ID
- * @param {string} [reason] - Reason for voiding
- * @returns {Promise<{success: boolean}>}
+ * Cancel a folder.
+ * PUT /api/v1/folder-cancel/{folderId}
  */
-async function voidFolder(folderId, reason = 'Deal cancelled') {
-  if (!RABBITSIGN_API_KEY) {
-    throw new Error('RABBITSIGN_API_KEY not configured');
-  }
-
-  const result = await rsRequest('POST', `/v1/folders/${folderId}/void`, { reason });
-  return { success: true, raw: result };
+async function cancelFolder(folderId) {
+  return rsRequest('PUT', `/api/v1/folder-cancel/${folderId}`);
 }
 
 /**
- * Create a contract signing envelope for Stage 12 (Contract Out).
- * Routes to the correct template based on contract type.
- * 
- * @param {object} params
- * @param {object} params.lead - Lead data from DB
- * @param {string} params.contractType - 'SubTo', 'Cash', 'Stack', 'Commercial', 'JV'
- * @param {string} [params.psaTemplate] - PSA template name
- * @param {string} [params.addendumTemplate] - Addendum template (for SubTo)
- * @param {string} [params.jvTemplate] - JV template (for JV deals)
- * @returns {Promise<{folderId, status}>}
+ * Create a contract signing envelope for Stage 12.
+ * Routes to the correct PSA template based on contract type.
  */
-async function createContractEnvelope({ lead, contractType, psaTemplate, addendumTemplate, jvTemplate }) {
-  const signers = [
-    {
-      name: lead.seller_name || 'Seller',
-      email: lead.seller_email || 'seller@example.com',
-      role: 'signer',
-      order: 1,
-    },
-    {
-      name: 'Divinity Aligned LLC',
-      email: 'info@divinityaligned.net',
-      role: 'signer',
-      order: 2,
-    },
+async function createContractEnvelope(lead, contractType) {
+  const date = new Date().toISOString().split('T')[0];
+  const address = lead.address || 'Property Address';
+  const price = lead.price ? `$${Number(lead.price).toLocaleString()}` : 'TBD';
+  const sellerName = lead.seller_name || lead.agent_name || 'Seller';
+  const sellerEmail = lead.seller_email || lead.agent_email || 'seller@example.com';
+  const buyerName = 'Divinity Aligned LLC';
+  const buyerEmail = 'homewithkaylamauser@gmail.com';
+  const emd = lead.emd_amount || 500;
+  const coeDate = lead.coe_date || date;
+  const inspectionDays = lead.inspection_period_days || 14;
+  const titleCompany = lead.title_company || 'CLOSE Title';
+
+  // Template selection based on contract type
+  const templateMap = {
+    cash: 'CashOfferTemplate',
+    subto: 'PSACreativeSubTo',
+    stack50: 'StackPSA',
+    stack10: 'StackPSA',
+    seller_finance: 'StackPSA',
+    jv: 'JVAgreement',
+    commercial: 'PSACommercial',
+    portfolio: 'PortfolioStackLLC',
+  };
+
+  const templateId = templateMap[contractType] || 'StackPSA';
+
+  const senderFieldValues = [
+    { name: 'property address', currentValue: address },
+    { name: 'purchase price', currentValue: price },
+    { name: 'emd amount', currentValue: `$${emd}` },
+    { name: 'close of escrow date', currentValue: coeDate },
+    { name: 'inspection period days', currentValue: String(inspectionDays) },
+    { name: 'title company', currentValue: titleCompany },
+    { name: 'buyer entity', currentValue: buyerName },
+    { name: 'today', currentValue: date },
   ];
 
-  // Add agent if present
-  if (lead.agent_name && lead.agent_email) {
-    signers.push({
-      name: lead.agent_name,
-      email: lead.agent_email,
-      role: 'cc',
-      order: 3,
-    });
-  }
-
-  const documents = [];
-
-  // PSA document
-  const psaName = psaTemplate || getPSATemplateName(contractType);
-  documents.push({
-    name: `${psaName} - ${lead.address}`,
-    content: lead.contract_draft_url || `https://divinitycrm-api.onrender.com/api/contracts/${lead.id}/psa`,
-  });
-
-  // SubTo Addendum
-  if (contractType === 'SubTo' || lead.has_subto_addendum) {
-    documents.push({
-      name: `Subject To Addendum - ${lead.address}`,
-      content: addendumTemplate || `https://divinitycrm-api.onrender.com/api/contracts/${lead.id}/addendum`,
-    });
-  }
-
-  // JV document
-  if (contractType === 'JV' || lead.jv_type === '3_party' || lead.jv_type === '4_party') {
-    documents.push({
-      name: `${jvTemplate || 'JV Agreement'} - ${lead.address}`,
-      content: `https://divinitycrm-api.onrender.com/api/contracts/${lead.id}/jv`,
-    });
-  }
-
-  const folderName = `Contract - ${lead.address} - ${contractType}`;
-  const message = `Hi ${lead.seller_name || 'there'},\n\nPlease review and sign the purchase agreement for ${lead.address}.\n\nThis should take about 10-15 minutes. You'll need:\n- The property address handy\n- Your LLC name (if you have one)\n- Your email for e-signature\n\nThank you!\n- Montelli Scott, Divinity Aligned LLC`;
-
-  const result = await createFolder({
-    template: 'real-estate-psa',
-    signers,
-    documents,
-    folderName,
-    message,
-  });
-
-  // Store in DB
-  if (result.folderId) {
-    await query(
-      `UPDATE leads SET rabbitsign_envelope_id = $1, rabbitsign_status = $2 WHERE id = $3`,
-      [result.folderId, 'sent', lead.id]
-    );
-
-    await query(
-      `INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, rabbitsign_envelope_id, rabbitsign_status, payload)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT DO NOTHING`,
-      [lead.id, lead.user_id, contractType.toLowerCase(), psaName, result.folderId, 'sent', JSON.stringify(result)]
+  if (contractType === 'subto') {
+    senderFieldValues.push(
+      { name: 'existing loan balance', currentValue: lead.existing_loan_balance ? `$${Number(lead.existing_loan_balance).toLocaleString()}` : 'TBD' },
+      { name: 'subject to addendum', currentValue: 'Attached' }
     );
   }
 
-  return result;
-}
+  const roles = {
+    'Seller': { name: sellerName, email: sellerEmail },
+    'Buyer': { name: buyerName, email: buyerEmail },
+  };
 
-/**
- * Create a JV signing envelope for Stage 18 (JV Sent).
- * 
- * @param {object} params
- * @param {object} params.lead - Lead data
- * @param {string} params.jvType - '3_party' or '4_party'
- * @param {string[]} params.parties - Party names
- * @param {number[]} params.percentages - Party percentages
- * @returns {Promise<{folderId, status}>}
- */
-async function createJVEnvelope({ lead, jvType, parties, percentages }) {
-  const signers = (parties || ['Divinity Aligned LLC', lead.seller_name || 'Seller', 'Capital Partner']).map((name, i) => ({
-    name,
-    email: i === 0 ? 'info@divinityaligned.net' : i === 1 ? (lead.seller_email || 'seller@example.com') : `partner${i}@example.com`,
-    role: 'signer',
-    order: i + 1,
-  }));
-
-  const documents = [{
-    name: `JV Agreement - ${lead.address} - ${jvType === '4_party' ? '4-Party' : '3-Party'}`,
-    content: `https://divinitycrm-api.onrender.com/api/contracts/${lead.id}/jv`,
-  }];
-
-  const folderName = `JV - ${lead.address}`;
-  const message = `Please review and sign the Joint Venture Agreement for ${lead.address}.\n\nDefault allocation: ${percentages ? percentages.join('/') : '25% each'}.\n\nThank you!`;
-
-  const result = await createFolder({
-    template: 'jv-agreement',
-    signers,
-    documents,
-    folderName,
-    message,
+  const result = await createFolderFromTemplate(templateId, {
+    title: `Purchase Agreement - ${address}`,
+    summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
+    date,
+    senderFieldValues,
+    roles,
   });
 
+  // Save to DB
   if (result.folderId) {
     await query(
-      `UPDATE leads SET rabbitsign_envelope_id = $1, rabbitsign_status = $2 WHERE id = $3`,
+      'UPDATE leads SET rabbitsign_envelope_id = $1, rabbitsign_status = $2 WHERE id = $3',
       [result.folderId, 'sent', lead.id]
     );
   }
@@ -302,131 +267,132 @@ async function createJVEnvelope({ lead, jvType, parties, percentages }) {
 }
 
 /**
- * Handle RabbitSign webhook events.
- * Called when a signing event occurs (signer viewed, signed, completed, declined).
- * 
- * @param {object} event - Webhook event body
- * @param {string} event.folderId - Folder/envelope ID
- * @param {string} event.event - Event type: 'signer_viewed', 'signer_signed', 'folder_completed', 'folder_declined'
- * @param {object} event.signer - Signer info
+ * Create a JV signing envelope for Stage 18.
  */
-async function handleWebhook(event) {
-  const { folderId, event: eventType, signer } = event;
+async function createJVEnvelope(lead, jvType = '4-party') {
+  const date = new Date().toISOString().split('T')[0];
+  const address = lead.address || 'Property Address';
+  const parties = lead.jv_parties ? JSON.parse(lead.jv_parties) : [];
+  const percentages = lead.jv_percentages ? JSON.parse(lead.jv_percentages) : [];
 
-  console.log(`RabbitSign webhook: ${eventType} for folder ${folderId}`);
+  const roles = {};
+  parties.forEach((party, i) => {
+    roles[`Party ${i + 1}`] = {
+      name: party.name || `Party ${i + 1}`,
+      email: party.email || `party${i + 1}@example.com`,
+    };
+  });
 
-  // Find the lead with this envelope
-  const leads = await query(
-    'SELECT id, stage, address FROM leads WHERE rabbitsign_envelope_id = $1',
-    [folderId]
-  );
+  const senderFieldValues = [
+    { name: 'property address', currentValue: address },
+    { name: 'jv type', currentValue: jvType },
+    { name: 'today', currentValue: date },
+  ];
 
-  if (leads.length === 0) {
-    console.log(`No lead found for RabbitSign folder ${folderId}`);
-    return { handled: false, reason: 'No matching lead' };
+  percentages.forEach((pct, i) => {
+    senderFieldValues.push({ name: `party ${i + 1} percentage`, currentValue: `${pct}%` });
+  });
+
+  const templateId = jvType === '3-party' ? 'JV3Party' : 'JV4Party';
+
+  const result = await createFolderFromTemplate(templateId, {
+    title: `Joint Venture Agreement - ${address}`,
+    summary: `${jvType} JV for ${address}`,
+    date,
+    senderFieldValues,
+    roles,
+  });
+
+  if (result.folderId) {
+    await query(
+      'UPDATE leads SET rabbitsign_envelope_id = $1, rabbitsign_status = $2 WHERE id = $3',
+      [result.folderId, 'sent', lead.id]
+    );
   }
 
-  const lead = leads[0];
+  return result;
+}
 
-  switch (eventType) {
-    case 'signer_viewed':
+/**
+ * Handle webhook from RabbitSign (signer signed event).
+ * Verifies signature, updates lead status.
+ */
+async function handleWebhook(headers, body) {
+  // Verify webhook signature
+  const sigHeader = headers['x-rabbitsign-api-signature'];
+  if (!sigHeader) {
+    console.warn('RabbitSign webhook: missing signature header');
+    return { received: true, verified: false };
+  }
+
+  // Reconstruct and verify (webhook uses same auth scheme)
+  // For webhooks, RabbitSign sends the signature we should validate
+  const method = 'POST';
+  const path = '/api/webhooks/rabbitsign';
+  const utcTime = headers['x-rabbitsign-api-time-utc'] || utcNow();
+  const expectedSig = sha512(`${method} ${path} ${utcTime} ${RS_KEY_SECRET}`);
+
+  if (sigHeader !== expectedSig) {
+    console.warn('RabbitSign webhook: signature mismatch');
+    return { received: true, verified: false };
+  }
+
+  const { folderId, status, signers } = body;
+
+  if (folderId) {
+    // Update lead status
+    const leads = await query(
+      'SELECT id, stage FROM leads WHERE rabbitsign_envelope_id = $1',
+      [folderId]
+    );
+
+    if (leads.length > 0) {
+      const lead = leads[0];
       await query(
-        `UPDATE leads SET rabbitsign_status = 'viewed' WHERE id = $1`,
-        [lead.id]
+        'UPDATE leads SET rabbitsign_status = $1 WHERE id = $2',
+        [status || 'signed', lead.id]
       );
-      break;
 
-    case 'signer_signed':
-      // Check if all signers have signed
-      const status = await getFolderStatus(folderId);
-      const allSigned = status.signers.every(s => s.status === 'signed');
-      
-      if (allSigned) {
-        await query(
-          `UPDATE leads SET rabbitsign_status = 'completed' WHERE id = $1`,
-          [lead.id]
-        );
-
-        // If at Stage 12 (Contract Out), auto-advance to Stage 13 (Under Contract)
+      // Auto-advance if all signed
+      if (status === 'completed' || status === 'signed') {
         if (lead.stage === 'CONTRACT_OUT') {
           await query(
-            `UPDATE leads SET stage = 'UNDER_CONTRACT', psa_signed_date = CURRENT_DATE WHERE id = $1`,
+            "UPDATE leads SET stage = 'UNDER_CONTRACT', psa_signed_date = NOW() WHERE id = $1",
             [lead.id]
           );
-          console.log(`Auto-advanced lead ${lead.id} to UNDER_CONTRACT`);
-        }
-
-        // If at Stage 18 (JV Sent), auto-advance to Stage 19 (JV Signed)
-        if (lead.stage === 'JV_SENT') {
+        } else if (lead.stage === 'JV_SENT') {
           await query(
-            `UPDATE leads SET stage = 'JV_SIGNED' WHERE id = $1`,
+            "UPDATE leads SET stage = 'JV_SIGNED' WHERE id = $1",
             [lead.id]
           );
-          console.log(`Auto-advanced lead ${lead.id} to JV_SIGNED`);
         }
-      } else {
-        await query(
-          `UPDATE leads SET rabbitsign_status = 'signed' WHERE id = $1`,
-          [lead.id]
-        );
       }
-      break;
 
-    case 'folder_completed':
-      await query(
-        `UPDATE leads SET rabbitsign_status = 'completed' WHERE id = $1`,
-        [lead.id]
-      );
-      break;
-
-    case 'folder_declined':
-      await query(
-        `UPDATE leads SET rabbitsign_status = 'declined' WHERE id = $1`,
-        [lead.id]
-      );
-      break;
-
-    default:
-      console.log(`Unhandled RabbitSign event: ${eventType}`);
+      console.log(`RabbitSign webhook: folder ${folderId} → ${status}, lead ${lead.id} updated`);
+    }
   }
 
-  // Log activity
-  await query(
-    `INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)`,
-    [lead.user_id || null, lead.id, 'rabbitsign_event', JSON.stringify({ folderId, eventType, signer })]
-  );
-
-  return { handled: true, leadId: lead.id, eventType };
-}
-
-/**
- * Get the PSA template name based on contract type.
- */
-function getPSATemplateName(contractType) {
-  const map = {
-    'SubTo': 'PSA Creative Subject To',
-    'Cash': 'Cash Offer Template',
-    'Stack': 'Stack PSA',
-    'Commercial': 'Real Estate Commercial PSA',
-    'JV': 'Joint Venture Agreement',
-  };
-  return map[contractType] || 'Purchase and Sale Agreement';
+  return { received: true, verified: true };
 }
 
 /**
  * Check if RabbitSign is configured.
  */
 function isConfigured() {
-  return !!RABBITSIGN_API_KEY && RABBITSIGN_API_KEY.length > 10;
+  return !!(RS_KEY_ID && RS_KEY_SECRET);
 }
 
 module.exports = {
+  createFolderFromTemplate,
   createFolder,
   getFolderStatus,
+  getFolders,
   sendReminder,
-  voidFolder,
+  cancelFolder,
   createContractEnvelope,
   createJVEnvelope,
   handleWebhook,
   isConfigured,
+  sha512,
+  utcNow,
 };
