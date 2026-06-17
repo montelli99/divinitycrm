@@ -212,14 +212,14 @@ async function createContractEnvelope(lead, contractType) {
 
   // Template selection based on contract type
   const templateMap = {
-    cash: 'CashOfferTemplate',
-    subto: 'PSACreativeSubTo',
-    stack50: 'StackPSA',
-    stack10: 'StackPSA',
-    seller_finance: 'StackPSA',
-    jv: 'JVAgreement',
-    commercial: 'PSACommercial',
-    portfolio: 'PortfolioStackLLC',
+    cash: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+    subto: process.env.RABBITSIGN_TEMPLATE_PSA || 'w5EC5hnVWRoGVYUTbxuHwz',
+    stack50: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+    stack10: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+    seller_finance: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+    jv: process.env.RABBITSIGN_TEMPLATE_JV || 'rPx7lrG27B1u2pxVzwl21e',
+    commercial: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+    portfolio: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
   };
 
   const templateId = templateMap[contractType] || 'StackPSA';
