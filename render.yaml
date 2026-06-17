@@ -1,8 +1,8 @@
 services:
   # Backend API
-  - type: web_service
-    name: divinitycrm-api
+  - type: web
     runtime: node
+    name: divinitycrm-api
     region: oregon
     rootDir: backend
     buildCommand: npm install
@@ -24,10 +24,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        fromService:
-          name: divinitycrm
-          type: static_site
-          property: url
+        value: https://divinitycrm.onrender.com
 
   # Frontend Static Site
   - type: static_site
@@ -42,8 +39,4 @@ services:
       - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
       - key: VITE_API_BASE
-        fromService:
-          name: divinitycrm-api
-          type: web_service
-          property: url
-        value: "https://divinitycrm-api.onrender.com/api"
+        value: https://divinitycrm-api.onrender.com/api
