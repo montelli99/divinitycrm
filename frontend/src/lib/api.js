@@ -1,5 +1,7 @@
-// API helper — all calls go through the Vite proxy to Express
-const API_BASE = '/api';
+// API helper
+// Development: proxied through Vite to localhost:3001
+// Production: calls Render backend directly
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -52,4 +54,3 @@ export const api = {
   getMe: () => request('/users/me'),
   updateMe: (data) => request('/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
 };
-
