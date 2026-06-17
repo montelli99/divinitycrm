@@ -66,14 +66,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/leads — Create new lead
 router.post('/', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    
-    if (user.length === 0) {
-      return res.status(404).json({ error: 'User not found. Ensure Clerk webhook has synced your account.' });
-    }
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
     const {
       address, city, state, zip, price, source,
       beds, baths, sqft, year_built, condition,
@@ -120,11 +113,7 @@ router.post('/', async (req, res, next) => {
 // PATCH /api/leads/:id — Update lead
 router.patch('/:id', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
     const leadId = req.params.id;
 
     // Verify ownership
@@ -199,11 +188,7 @@ router.patch('/:id', async (req, res, next) => {
 // DELETE /api/leads/:id — Delete lead
 router.delete('/:id', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
     const result = await sql`DELETE FROM leads WHERE id = ${req.params.id} AND user_id = ${userId} RETURNING id`;
     
     if (result.length === 0) return res.status(404).json({ error: 'Lead not found' });
@@ -217,28 +202,7 @@ router.delete('/:id', async (req, res, next) => {
 // GET /api/leads/:id/transitions — Get available next stages
 router.get('/:id/transitions', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const lead = await sql`SELECT stage FROM leads WHERE id = ${req.params.id} AND user_id = ${user[0].id}`;
-    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
-
-    const transitions = getAvailableTransitions(lead[0].stage);
-    res.json({ current_stage: lead[0].stage, available_transitions: transitions });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/leads/:id/advance — Advance to next stage with automations
-router.post('/:id/advance', async (req, res, next) => {
-  try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
     const leadId = req.params.id;
     const { to_stage } = req.body;
 
@@ -277,9 +241,7 @@ router.post('/:id/advance', async (req, res, next) => {
 // POST /api/leads/:id/reminders — Add reminder
 router.post('/:id/reminders', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { type, due_date, notes } = req.body;
     if (!type || !due_date) {
@@ -288,7 +250,7 @@ router.post('/:id/reminders', async (req, res, next) => {
 
     const reminder = await sql`
       INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
-      VALUES (${uuid()}, ${req.params.id}, ${user[0].id}, ${type}, ${due_date}, ${notes || null})
+      VALUES (${uuid()}, ${req.params.id}, ${userId}, ${type}, ${due_date}, ${notes || null})
       RETURNING *
     `;
 
@@ -322,14 +284,12 @@ router.patch('/:id/reminders/:reminderId', async (req, res, next) => {
 // GET /api/leads/:id/followups — Get follow-up status for a lead
 router.get('/:id/followups', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const lead = await sql`
       SELECT id, address, stage, offer_sent_date, follow_up_48hr_due, follow_up_48hr_done,
              dom, dom_181_reminder_date, created_at, closed_date, updated_at
-      FROM leads WHERE id = ${req.params.id} AND user_id = ${user[0].id}
+      FROM leads WHERE id = ${req.params.id} AND user_id = ${userId}
     `;
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
@@ -389,9 +349,7 @@ router.get('/:id/followups', async (req, res, next) => {
 // POST /api/leads/:id/followups — Create follow-up reminder
 router.post('/:id/followups', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { type, due_date, notes } = req.body;
     if (!type || !due_date) {
@@ -405,7 +363,7 @@ router.post('/:id/followups', async (req, res, next) => {
 
     const reminder = await sql`
       INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
-      VALUES (${uuid()}, ${req.params.id}, ${user[0].id}, ${type}, ${due_date}, ${notes || null})
+      VALUES (${uuid()}, ${req.params.id}, ${userId}, ${type}, ${due_date}, ${notes || null})
       RETURNING *
     `;
 
