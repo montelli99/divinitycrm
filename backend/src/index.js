@@ -62,27 +62,14 @@ app.use('/api', async (req, res, next) => {
     
     const existing = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (existing.length === 0) {
-      // Fetch user info from Clerk
-      let email = null, firstName = null, lastName = null, avatarUrl = null;
-      try {
-        const clerk = require('@clerk/express');
-        const client = clerk.clerkClient || clerk.createClerkClient?.({ secretKey: process.env.CLERK_SECRET_KEY });
-        if (client?.users) {
-          const clerkUser = await client.users.getUser(clerkId);
-          email = clerkUser?.emailAddresses?.[0]?.emailAddress || clerkUser?.primaryEmailAddress?.emailAddress;
-          firstName = clerkUser?.firstName;
-          lastName = clerkUser?.lastName;
-          avatarUrl = clerkUser?.imageUrl;
-        }
-      } catch (e) {
-        console.warn('Could not fetch Clerk user details, creating minimal record:', e.message);
-      }
-      
+      // Create minimal user record — Clerk API may reject calls from unlisted domains
+      // The Clerk webhook will fill in email/name details when it fires
       await sql`
         INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
-        VALUES (${uuid()}, ${clerkId}, ${email || 'unknown@placeholder.com'}, ${firstName || null}, ${lastName || null}, ${avatarUrl || null})
+        VALUES (${uuid()}, ${clerkId}, ${clerkId + '@clerk.user'}, null, null, null)
+        ON CONFLICT (clerk_id) DO NOTHING
       `;
-      console.log(`Auto-created user: ${email || clerkId}`);
+      console.log(`Auto-created user record for Clerk ID: ${clerkId}`);
     }
   } catch (err) {
     console.error('Auto-create user error:', err.message);
