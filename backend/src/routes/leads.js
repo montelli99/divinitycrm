@@ -146,26 +146,25 @@ router.patch('/:id', async (req, res, next) => {
       'notes',
     ];
 
-    const updates = [];
-    const values = [];
-    let idx = 1;
-
+    // Build SET clause using Neon template literals
+    const setFragments = [];
     for (const [key, value] of Object.entries(req.body)) {
       if (allowedFields.includes(key) && value !== undefined) {
-        updates.push(`${key} = $${idx}`);
-        values.push(value);
-        idx++;
+        setFragments.push(sql`${sql.unsafe(key)} = ${value}`);
       }
     }
 
-    if (updates.length === 0) {
+    if (setFragments.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    values.push(leadId);
-    const query = `UPDATE leads SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
-    
-    const result = await sql.unsafe(query, values);
+    // Compose fragments into single query
+    let setQuery = setFragments[0];
+    for (let i = 1; i < setFragments.length; i++) {
+      setQuery = sql`${setQuery}, ${setFragments[i]}`;
+    }
+
+    const result = await sql`UPDATE leads SET ${setQuery} WHERE id = ${leadId} RETURNING *`;
     
     // Stage change automation — fires GHL-equivalent workflows
     let automation = null;
@@ -391,32 +390,30 @@ router.post('/:id/followups', async (req, res, next) => {
 router.patch('/:id/followups/:followUpId', async (req, res, next) => {
   try {
     const { completed, notes } = req.body;
+    const followUpId = req.params.followUpId;
+    const leadId = req.params.id;
 
-    const updates = [];
-    const values = [];
-    let idx = 1;
-
+    const setFragments = [];
     if (completed !== undefined) {
-      updates.push(`completed = $${idx}`);
-      values.push(completed);
-      idx++;
+      setFragments.push(sql`completed = ${completed}`);
       if (completed) {
-        updates.push(`completed_at = now()`);
+        setFragments.push(sql`completed_at = now()`);
       }
     }
     if (notes !== undefined) {
-      updates.push(`notes = $${idx}`);
-      values.push(notes);
-      idx++;
+      setFragments.push(sql`notes = ${notes}`);
     }
 
-    if (updates.length === 0) {
+    if (setFragments.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    values.push(req.params.followUpId, req.params.id);
-    const query = `UPDATE reminders SET ${updates.join(', ')} WHERE id = $${idx} AND lead_id = $${idx + 1} RETURNING *`;
-    const result = await sql.unsafe(query, values);
+    let setQuery = setFragments[0];
+    for (let i = 1; i < setFragments.length; i++) {
+      setQuery = sql`${setQuery}, ${setFragments[i]}`;
+    }
+
+    const result = await sql`UPDATE reminders SET ${setQuery} WHERE id = ${followUpId} AND lead_id = ${leadId} RETURNING *`;
 
     if (result.length === 0) return res.status(404).json({ error: 'Follow-up not found' });
 
