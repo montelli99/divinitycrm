@@ -3,7 +3,18 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 
-const STAGES = ['NEW_LEAD', 'QUALIFIED', 'LOI_REQUESTED', 'LOI_APPROVED', 'OFFER_SENT', 'NEGOTIATING', 'UNDER_CONTRACT', 'CLOSED', 'DEAD', 'ARCHIVED'];
+const STAGES = [
+  'LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY',
+  'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK',
+  'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',
+  'TERMS_AGREED',
+  'AWAITING_TITLE', 'CONTRACT_OUT',
+  'UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE',
+  'APPRAISAL_ORDERED', 'APPRAISAL_DONE',
+  'JV_SENT', 'JV_SIGNED',
+  'WIRE_SETUP', 'CLOSING_DATE',
+  'CLOSED', 'DEAD', 'ARCHIVED',
+];
 const CONTRACT_TYPES = ['subto', 'cash', 'seller_finance', 'stack50', 'stack10', 'jv', 'commercial', 'portfolio'];
 
 const TAB_NAMES = {

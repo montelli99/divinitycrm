@@ -43,9 +43,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/scripts/fill — Fill a script template with lead data
 router.post('/fill', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { script_id, lead_id } = req.body;
     if (!script_id || !lead_id) {

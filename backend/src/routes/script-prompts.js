@@ -13,8 +13,8 @@ const router = Router();
 // GET /api/scripts/prompts/:lead_id — Get all scripts for current lead stage
 router.get('/prompts/:lead_id', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
+    const userId = req.user.userId;
+    const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [req.params.lead_id, user[0].id]);
@@ -30,8 +30,8 @@ router.get('/prompts/:lead_id', async (req, res, next) => {
 // POST /api/scripts/prompts/transition — Get scripts for a stage transition
 router.post('/prompts/transition', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
+    const userId = req.user.userId;
+    const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, from_stage, to_stage } = req.body;
@@ -52,8 +52,8 @@ router.post('/prompts/transition', async (req, res, next) => {
 // GET /api/scripts/prompts/stage/:lead_id/:stage — Get rich prompt for a lead's current stage
 router.get('/prompts/stage/:lead_id/:stage', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
+    const userId = req.user.userId;
+    const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [req.params.lead_id, user[0].id]);
@@ -86,8 +86,8 @@ router.get('/prompts/shortcuts', async (req, res, next) => {
 // POST /api/scripts/prompts/fill — Fill a single template by shortcut code
 router.post('/prompts/fill', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE id = $1', [clerkId]);
+    const userId = req.user.userId;
+    const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, shortcut } = req.body;

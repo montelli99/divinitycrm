@@ -121,9 +121,7 @@ router.get('/templates/:id', async (req, res) => {
 // POST /api/contracts/generate-from-template — Generate contract from template with lead data
 router.post('/generate-from-template', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { lead_id, template_id, custom_fields } = req.body;
     if (!lead_id || !template_id) {
@@ -253,9 +251,7 @@ router.get('/clauses/:id', async (req, res, next) => {
 // POST /api/contracts/generate — Generate contract package for a lead
 router.post('/generate', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { lead_id, contract_type } = req.body;
     if (!lead_id || !contract_type) {
@@ -353,9 +349,7 @@ router.post('/generate', async (req, res, next) => {
 // POST /api/contracts/send-rabbitsign — Send contract to RabbitSign
 router.post('/send-rabbitsign', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const { contract_id } = req.body;
     if (!contract_id) return res.status(400).json({ error: 'contract_id is required' });
@@ -394,9 +388,7 @@ router.post('/send-rabbitsign', async (req, res, next) => {
 // GET /api/contracts — List contracts for user
 router.get('/', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const contracts = await query(
       `SELECT c.*, l.address, l.stage
@@ -430,9 +422,7 @@ router.post('/send-rabbitsign', async (req, res, next) => {
     const { leadId, contractType } = req.body;
     if (!leadId) return res.status(400).json({ error: 'leadId is required' });
 
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+    const userId = req.user.userId;
 
     const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });

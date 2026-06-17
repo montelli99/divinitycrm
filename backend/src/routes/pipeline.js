@@ -23,11 +23,7 @@ const STAGES = [
 // GET /api/pipeline — Full pipeline view with health scan
 router.get('/', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
 
     const leads = await query(
       `SELECT * FROM leads 
@@ -142,11 +138,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/pipeline/today — What's due today
 router.get('/today', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
     const today = new Date().toISOString().split('T')[0];
 
     const followUps = await query(
@@ -182,11 +174,7 @@ router.get('/today', async (req, res, next) => {
 // GET /api/pipeline/stats — Pipeline statistics
 router.get('/stats', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
 
     const stats = await query(
       `SELECT 
@@ -224,11 +212,7 @@ router.get('/stats', async (req, res, next) => {
 // GET /api/pipeline/profit-radar — Pipeline Profit Radar
 router.get('/profit-radar', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
 
     // Get all active leads with financial data
     const leads = await query(
@@ -302,11 +286,7 @@ router.get('/profit-radar', async (req, res, next) => {
 // GET /api/pipeline/health — Dedicated pipeline health scan
 router.get('/health', async (req, res, next) => {
   try {
-    const clerkId = req.user.userId;
-    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
-    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
-
-    const userId = user[0].id;
+    const userId = req.user.userId;
 
     const leads = await query(
       `SELECT id, address, stage, price, created_at, last_stage_change_at,
