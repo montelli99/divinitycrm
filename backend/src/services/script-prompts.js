@@ -116,21 +116,7 @@ Excited to get this across the finish line! 🎉
     name: '"Everybody Wins" Pitch',
     recipientType: 'seller',
     description: 'Sent during active negotiation when seller is hesitating.',
-    body: `Hi {{Seller Name}} — quick check-in on {{Property Address}}.
-
-The numbers work for everyone involved:
-• Cash flow on this deal: ${{Cash Flow}}/mo (well above the $200/mo minimum)
-• DSCR: {{DSCR}} (above the 1.25 lender threshold)
-• 1% rule: {{1% Rule Status}}
-• Lender value: ${{Lender Value}} (70% of purchase)
-
-What this means for you, the buyer, and the listing agent:
-• You walk away with ${{Net to Seller}} — no repairs, no showings, no waiting
-• The buyer gets a cash-flowing property from day one
-• The listing agent finally gets paid after being on market {{Days on Market}} days
-
-Everybody wins in real estate. Let me know if you have any questions.
-— {{Sender Name}}`,
+    body: 'Hi {{Seller Name}} — quick check-in on {{Property Address}}.\n\nThe numbers work for everyone involved:\n• Cash flow on this deal: ${{Cash Flow}}/mo (well above the $200/mo minimum)\n• DSCR: {{DSCR}} (above the 1.25 lender threshold)\n• 1% rule: {{1% Rule Status}}\n• Lender value: ${{Lender Value}} (70% of purchase)\n\nWhat this means for you, the buyer, and the listing agent:\n• You walk away with ${{Net to Seller}} — no repairs, no showings, no waiting\n• The buyer gets a cash-flowing property from day one\n• The listing agent finally gets paid after being on market {{Days on Market}} days\n\nEverybody wins in real estate. Let me know if you have any questions.\n— {{Sender Name}}',
     required: ['seller_name', 'address', 'cash_flow', 'dscr', 'one_percent_rule', 'arv', 'net_to_seller'],
     stage: 'NEGOTIATING'
   },

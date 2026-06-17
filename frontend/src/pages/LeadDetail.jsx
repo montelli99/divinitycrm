@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import ScriptPromptModal from '../components/ScriptPromptModal';
 
 const STAGES = ['NEW_LEAD', 'QUALIFIED', 'LOI_REQUESTED', 'LOI_APPROVED', 'OFFER_SENT', 'NEGOTIATING', 'UNDER_CONTRACT', 'CLOSED', 'DEAD', 'ARCHIVED'];
 const CONTRACT_TYPES = ['subto', 'cash', 'seller_finance', 'stack50', 'stack10', 'jv', 'commercial', 'portfolio'];
+
+const TAB_NAMES = {
+  details: 'Details',
+  scripts: 'Scripts',
+  history: 'History',
+  notes: 'Notes',
+};
 
 export default function LeadDetail() {
   const { id } = useParams();
