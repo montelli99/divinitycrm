@@ -5,9 +5,10 @@ Standalone hosted CRM for AI REI students. No Telegram, no GHL, no JustCall.
 ## Stack
 - **Database:** Neon (serverless Postgres)
 - **Backend:** Express.js on Render
-- **Frontend:** React + Vite
+- **Frontend:** React + Vite on Render
 - **Auth:** Clerk
 - **E-signing:** RabbitSign API
+- **All hosting:** Render (backend + frontend, same provider)
 
 ## Quick Start
 
@@ -23,29 +24,57 @@ Standalone hosted CRM for AI REI students. No Telegram, no GHL, no JustCall.
 3. Set up a webhook endpoint pointing to `[YOUR_URL]/api/webhooks/clerk`
 4. Subscribe to events: `user.created`, `user.updated`, `user.deleted`
 
-### 3. Backend
-```bash
-cd backend
-cp .env.example .env
-# Fill in DATABASE_URL, CLERK_SECRET_KEY, RABBITSIGN_API_KEY
-npm install
-npm run dev
-```
-
-### 4. Frontend
-```bash
-cd frontend
-cp .env.example .env
-# Fill in VITE_CLERK_PUBLISHABLE_KEY
-npm install
-npm run dev
-```
-
-### 5. RabbitSign (optional)
+### 3. RabbitSign (optional, for e-signing)
 1. Create a RabbitSign account at [rabbitsign.com](https://rabbitsign.com)
 2. Go to My Account → Developer API → Generate API Key
-3. Add to backend `.env` as `RABBITSIGN_API_KEY`
-4. Set webhook URL to `[YOUR_URL]/api/webhooks/rabbitsign`
+3. Set webhook URL to `[YOUR_URL]/api/webhooks/rabbitsign`
+
+## Deploy (All on Render — no Vercel)
+
+### Step 1: Backend (Web Service)
+1. Go to [dashboard.render.com](https://dashboard.render.com) → New → Web Service
+2. Connect `montelli99/divinitycrm` repo
+3. Configure:
+   | Field | Value |
+   |-------|-------|
+   | Name | `divinitycrm-api` |
+   | Root Directory | `backend` |
+   | Build Command | `npm install` |
+   | Start Command | `node src/index.js` |
+   | Instance Type | Free |
+4. Add environment variables from `SECRETS.env`:
+   - `DATABASE_URL`
+   - `CLERK_SECRET_KEY`
+   - `CLERK_PUBLISHABLE_KEY`
+   - `CLERK_WEBHOOK_SECRET`
+   - `RABBITSIGN_API_KEY` (when you have it)
+   - `PORT=3001`
+   - `NODE_ENV=production`
+   - `FRONTEND_URL=https://divinitycrm.onrender.com`
+5. Click **Deploy Web Service**
+6. Copy the deployed URL (e.g. `https://divinitycrm-api.onrender.com`)
+7. Go to [Clerk Dashboard → Webhooks](https://dashboard.clerk.com) → update the webhook URL to `https://divinitycrm-api.onrender.com/api/webhooks/clerk`
+
+### Step 2: Frontend (Static Site)
+1. Go to [dashboard.render.com](https://dashboard.render.com) → New → Static Site
+2. Connect `montelli99/divinitycrm` repo
+3. Configure:
+   | Field | Value |
+   |-------|-------|
+   | Name | `divinitycrm` |
+   | Root Directory | `frontend` |
+   | Build Command | `npm install && npm run build` |
+   | Publish Directory | `dist` |
+   | Instance Type | Free |
+4. Add environment variable:
+   - `VITE_CLERK_PUBLISHABLE_KEY` (same as backend)
+5. Click **Deploy Static Site**
+6. The frontend will be live at `https://divinitycrm.onrender.com`
+
+### Step 3: Update Frontend .env
+1. In the backend Render dashboard → Settings → Environment Variables
+2. Update `FRONTEND_URL` to the actual frontend URL from Step 2
+3. Redeploy backend (Render auto-redeploys on env var changes)
 
 ## API Endpoints
 
@@ -57,6 +86,8 @@ npm run dev
 | POST | /api/leads | Create lead |
 | PATCH | /api/leads/:id | Update lead |
 | DELETE | /api/leads/:id | Delete lead |
+| POST | /api/leads/:id/advance | Advance stage with automations |
+| GET | /api/leads/:id/transitions | Get available next stages |
 | POST | /api/leads/:id/reminders | Add reminder |
 | GET | /api/pipeline | Full pipeline view + health scan |
 | GET | /api/pipeline/today | Today's tasks + follow-ups |
@@ -70,24 +101,9 @@ npm run dev
 | POST | /api/webhooks/clerk | Clerk user sync |
 | POST | /api/webhooks/rabbitsign | RabbitSign completion |
 
-## Deploy
-
-### Backend (Render)
-1. Create a new Web Service on Render
-2. Connect to this repo
-3. Build command: `cd backend && npm install`
-4. Start command: `cd backend && node src/index.js`
-5. Add environment variables from `.env.example`
-
-### Frontend (Vercel or Render Static)
-1. Build: `cd frontend && npm run build`
-2. Deploy the `dist/` folder
-3. Set `VITE_CLERK_PUBLISHABLE_KEY` in environment
-
 ## Cost
 - Neon: $0 (free tier, 0.5GB)
-- Render: $0 (free tier, sleeps after inactivity)
+- Render: $0 (free tier, both backend + frontend)
 - Clerk: $0 (free tier, 10K MAUs)
 - RabbitSign: $0.10/envelope (free for manual use)
 - **Total: $0/month + $0.10/signing**
-
