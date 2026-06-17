@@ -11,7 +11,7 @@ const { getStagePrompt } = require('../services/stage-automations');
 const router = Router();
 
 // GET /api/scripts/prompts/:lead_id — Get all scripts for current lead stage
-router.get('/prompts/:lead_id', async (req, res, next) => {
+router.get('/:lead_id', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
@@ -28,7 +28,7 @@ router.get('/prompts/:lead_id', async (req, res, next) => {
 });
 
 // POST /api/scripts/prompts/transition — Get scripts for a stage transition
-router.post('/prompts/transition', async (req, res, next) => {
+router.post('/transition', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
@@ -50,7 +50,7 @@ router.post('/prompts/transition', async (req, res, next) => {
 });
 
 // GET /api/scripts/prompts/stage/:lead_id/:stage — Get rich prompt for a lead's current stage
-router.get('/prompts/stage/:lead_id/:stage', async (req, res, next) => {
+router.get('/stage/:lead_id/:stage', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const user = await query('SELECT id FROM users WHERE id = $1', [userId]);
@@ -74,7 +74,7 @@ router.get('/prompts/stage/:lead_id/:stage', async (req, res, next) => {
 });
 
 // GET /api/scripts/prompts/shortcuts — List all available template shortcuts
-router.get('/prompts/shortcuts', async (req, res, next) => {
+router.get('/shortcuts', async (req, res, next) => {
   try {
     const shortcuts = listAllShortcuts();
     res.json({ shortcuts });
@@ -84,7 +84,7 @@ router.get('/prompts/shortcuts', async (req, res, next) => {
 });
 
 // POST /api/scripts/prompts/fill — Fill a single template by shortcut code
-router.post('/prompts/fill', async (req, res, next) => {
+router.post('/fill', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const user = await query('SELECT id FROM users WHERE id = $1', [userId]);

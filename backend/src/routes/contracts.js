@@ -5,7 +5,7 @@
 const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
-const { generateContract, formatForTelegram, generateRabbitSignPayload } = require('../../../../lead-tracking/contract-generator');
+const { generateContract, formatForTelegram, generateRabbitSignPayload } = require('../services/contract-generator');
 
 const router = Router();
 
