@@ -12,8 +12,8 @@ const router = Router();
 // GET /api/scripts/prompts/:lead_id — Get all scripts for current lead stage
 router.get('/prompts/:lead_id', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const lead = await sql`SELECT * FROM leads WHERE id = ${req.params.lead_id} AND user_id = ${user[0].id}`;
@@ -29,8 +29,8 @@ router.get('/prompts/:lead_id', async (req, res, next) => {
 // POST /api/scripts/prompts/transition — Get scripts for a stage transition
 router.post('/prompts/transition', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
-    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
     const { lead_id, from_stage, to_stage } = req.body;

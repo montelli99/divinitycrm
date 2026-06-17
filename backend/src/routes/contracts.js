@@ -33,7 +33,7 @@ router.get('/clauses/:id', async (req, res, next) => {
 // POST /api/contracts/generate — Generate contract package for a lead
 router.post('/generate', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -122,7 +122,7 @@ router.post('/generate', async (req, res, next) => {
 // POST /api/contracts/send-rabbitsign — Send contract to RabbitSign
 router.post('/send-rabbitsign', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -163,7 +163,7 @@ router.post('/send-rabbitsign', async (req, res, next) => {
 // GET /api/contracts — List contracts for user
 router.get('/', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 

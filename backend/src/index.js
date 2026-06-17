@@ -9,21 +9,14 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
-// Clerk auth
-let requireAuth = null;
-try {
-  const clerk = require('@clerk/express');
-  requireAuth = clerk.requireAuth;
-  console.log('Clerk SDK loaded OK');
-} catch (err) {
-  console.error('Clerk SDK load failed:', err.message);
-}
+const { testConnection, sql } = require('./db/connection');
+const { seedUsers, authMiddleware } = require('./auth/auth');
+const { v4: uuid } = require('uuid');
 
-const { testConnection } = require('./db/connection');
+// Lazy-load routes
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter;
 
-// Lazy-load routes to isolate failures
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter;
-
+try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
 try { contractsRouter = require('./routes/contracts'); console.log('contracts route OK'); } catch(e) { console.error('contracts route FAIL:', e.message); }
 try { pipelineRouter = require('./routes/pipeline'); console.log('pipeline route OK'); } catch(e) { console.error('pipeline route FAIL:', e.message); }
@@ -40,44 +33,39 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(morgan('dev'));
 app.use(express.json());
 
+// Health check (no auth)
 app.get('/api/health', async (req, res) => {
   const dbOk = await testConnection();
   res.json({ status: 'ok', database: dbOk ? 'connected' : 'disconnected', timestamp: new Date().toISOString() });
 });
 
-const authMiddleware = requireAuth ? requireAuth() : (req, res, next) => next();
+// Auth routes (no auth required)
+if (authRouter) app.use('/api/auth', authRouter);
 
-// Auto-create user on first request (webhook fallback)
-// Clerk webhook may not fire immediately — this ensures the user exists in DB
-const { sql } = require('./db/connection');
-const { v4: uuid } = require('uuid');
-
+// Auto-create user middleware (for Clerk fallback — keeps existing Clerk users working)
 app.use('/api', async (req, res, next) => {
-  // Skip health check and webhooks
-  if (req.path === '/health' || req.path.startsWith('/webhooks')) return next();
+  if (req.path === '/health' || req.path.startsWith('/auth') || req.path.startsWith('/webhooks')) return next();
   
   try {
     const clerkId = req.auth?.userId;
-    if (!clerkId) return next();
-    
-    const existing = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
-    if (existing.length === 0) {
-      // Create minimal user record — Clerk API may reject calls from unlisted domains
-      // The Clerk webhook will fill in email/name details when it fires
-      await sql`
-        INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
-        VALUES (${uuid()}, ${clerkId}, ${clerkId + '@clerk.user'}, null, null, null)
-        ON CONFLICT (clerk_id) DO NOTHING
-      `;
-      console.log(`Auto-created user record for Clerk ID: ${clerkId}`);
+    if (clerkId) {
+      const existing = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+      if (existing.length === 0) {
+        await sql`
+          INSERT INTO users (id, clerk_id, email, first_name, last_name, avatar_url)
+          VALUES (${uuid()}, ${clerkId}, ${clerkId + '@clerk.user'}, null, null, null)
+          ON CONFLICT (clerk_id) DO NOTHING
+        `;
+        console.log(`Auto-created user record for Clerk ID: ${clerkId}`);
+      }
     }
   } catch (err) {
     console.error('Auto-create user error:', err.message);
-    // Don't block the request — let the route handle the missing user
   }
   next();
 });
 
+// Protected routes (local JWT auth)
 if (leadsRouter) app.use('/api/leads', authMiddleware, leadsRouter);
 if (contractsRouter) app.use('/api/contracts', authMiddleware, contractsRouter);
 if (pipelineRouter) app.use('/api/pipeline', authMiddleware, pipelineRouter);
@@ -86,6 +74,7 @@ if (scriptPromptsRouter) app.use('/api/scripts/prompts', authMiddleware, scriptP
 if (usersRouter) app.use('/api/users', authMiddleware, usersRouter);
 if (webhooksRouter) app.use('/api/webhooks', webhooksRouter);
 
+// Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
@@ -95,6 +84,10 @@ async function start() {
   try {
     const dbOk = await testConnection();
     if (!dbOk) console.warn('WARNING: Starting without database connection.');
+    
+    // Seed admin users
+    await seedUsers();
+    
     app.listen(PORT, '0.0.0.0', () => console.log(`Divinity CRM API running on port ${PORT}`));
   } catch (err) {
     console.error('FATAL STARTUP ERROR:', err.message);

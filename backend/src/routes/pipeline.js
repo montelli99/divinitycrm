@@ -10,7 +10,7 @@ const router = Router();
 // GET /api/pipeline — Full pipeline view with health scan
 router.get('/', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -109,7 +109,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/pipeline/today — What's due today
 router.get('/today', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -158,7 +158,7 @@ router.get('/today', async (req, res, next) => {
 // GET /api/pipeline/stats — Pipeline statistics
 router.get('/stats', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 

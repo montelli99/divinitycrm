@@ -1,16 +1,34 @@
-// API helper
-// Development: proxied through Vite to localhost:3001
-// Production: calls Render backend directly
+// API helper — local JWT auth
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
+function getToken() {
+  return localStorage.getItem('divinity_token');
+}
+
+function setToken(token) {
+  localStorage.setItem('divinity_token', token);
+}
+
+function clearToken() {
+  localStorage.removeItem('divinity_token');
+  localStorage.removeItem('divinity_user');
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  });
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_BASE}${path}`, { headers, ...options });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -21,6 +39,9 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Auth
+  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
   // Leads
   getLeads: (params) => {
     const qs = new URLSearchParams(params).toString();
@@ -54,3 +75,5 @@ export const api = {
   getMe: () => request('/users/me'),
   updateMe: (data) => request('/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
 };
+
+export { getToken, setToken, clearToken };

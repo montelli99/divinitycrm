@@ -12,10 +12,10 @@ const router = Router();
 // GET /api/leads — List all leads for the authenticated user
 router.get('/', async (req, res, next) => {
   try {
-    const userId = req.auth.userId; // Clerk user ID
+    const userId = req.user.userId; // Clerk user ID
     const { stage, search, limit = 50, offset = 0 } = req.query;
 
-    let query = sql`SELECT * FROM leads WHERE user_id = (SELECT id FROM users WHERE clerk_id = ${userId})`;
+    let query = sql`SELECT * FROM leads WHERE user_id = ${userId}`;
     
     if (stage) {
       query = sql`${query} AND stage = ${stage}`;
@@ -36,11 +36,11 @@ router.get('/', async (req, res, next) => {
 // GET /api/leads/:id — Get single lead
 router.get('/:id', async (req, res, next) => {
   try {
-    const userId = req.auth.userId;
+    const userId = req.user.userId;
     const lead = await sql`
       SELECT * FROM leads 
       WHERE id = ${req.params.id} 
-      AND user_id = (SELECT id FROM users WHERE clerk_id = ${userId})
+      AND user_id = ${userId}
     `;
 
     if (lead.length === 0) {
@@ -66,7 +66,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/leads — Create new lead
 router.post('/', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     
     if (user.length === 0) {
@@ -120,7 +120,7 @@ router.post('/', async (req, res, next) => {
 // PATCH /api/leads/:id — Update lead
 router.patch('/:id', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -199,7 +199,7 @@ router.patch('/:id', async (req, res, next) => {
 // DELETE /api/leads/:id — Delete lead
 router.delete('/:id', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -217,7 +217,7 @@ router.delete('/:id', async (req, res, next) => {
 // GET /api/leads/:id/transitions — Get available next stages
 router.get('/:id/transitions', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -234,7 +234,7 @@ router.get('/:id/transitions', async (req, res, next) => {
 // POST /api/leads/:id/advance — Advance to next stage with automations
 router.post('/:id/advance', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -277,7 +277,7 @@ router.post('/:id/advance', async (req, res, next) => {
 // POST /api/leads/:id/reminders — Add reminder
 router.post('/:id/reminders', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 

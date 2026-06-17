@@ -11,12 +11,13 @@
   "dependencies": {
     "@clerk/express": "1.7.81",
     "@neondatabase/serverless": "^0.9.5",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
     "uuid": "^10.0.0"
   }
 }
-

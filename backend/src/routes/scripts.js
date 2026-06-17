@@ -37,7 +37,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/scripts/fill — Fill a script template with lead data
 router.post('/fill', async (req, res, next) => {
   try {
-    const clerkId = req.auth.userId;
+    const clerkId = req.user.userId;
     const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
     if (user.length === 0) return res.status(404).json({ error: 'User not found' });
 
