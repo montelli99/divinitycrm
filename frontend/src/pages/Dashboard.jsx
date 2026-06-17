@@ -3,38 +3,39 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
 const STAGE_LABELS = {
-  NEW_LEAD: 'New Lead',
-  QUALIFIED: 'Qualified',
-  LOI_REQUESTED: 'LOI Requested',
-  LOI_APPROVED: 'LOI Approved',
-  OFFER_SENT: 'Offer Sent',
-  NEGOTIATING: 'Negotiating',
-  UNDER_CONTRACT: 'Under Contract',
-  CLOSED: 'Closed',
-  DEAD: 'Dead',
-  ARCHIVED: 'Archived',
+  LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
+  OFFER_SENT: 'Offer Sent', OFFER_RECEIVED: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
+  NO_ANSWER: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
+  TERMS_AGREED: 'Terms Agreed',
+  AWAITING_TITLE: 'Awaiting Title', CONTRACT_OUT: 'Contract Out',
+  UNDER_CONTRACT: 'Under Contract', INSPECTION_PERIOD: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
+  APPRAISAL_ORDERED: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
+  JV_SENT: 'JV Sent', JV_SIGNED: 'JV Signed',
+  WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
+  CLOSED: 'Closed', DEAD: 'Dead', ARCHIVED: 'Archived',
 };
 
 // AM Tasks by stage (from daily-sop.js)
 const AM_TASK_DEFS = {
-  'UNDER_CONTRACT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
-  'NEGOTIATING': { label: 'Active Negotiation', action: 'Overcome objections. Record calls for educational purposes', icon: '🎙️' },
-  'LOI_APPROVED': { label: 'Terms Agreed', action: 'Touch base on contract alignment. Verify stack or draft manual agreement', icon: '📋' },
-  'LOI_REQUESTED': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
+  'CONTRACT_OUT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
+  'ACTIVE_NEGOTIATION': { label: 'Active Negotiation', action: 'Overcome objections. Record calls for educational purposes', icon: '🎙️' },
+  'TERMS_AGREED': { label: 'Terms Agreed', action: 'Touch base on contract alignment. Verify stack or draft manual agreement', icon: '📋' },
+  'AWAITING_TITLE': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
 };
 
 // PM Tasks by stage (PPC follow-ups)
 const PM_TASK_DEFS = {
   'OFFER_SENT': { label: 'Offer Made', action: 'Figure out motivation if they are a serious and qualified lead', icon: '🔍' },
-  'LOI_APPROVED': { label: 'Offer Ready to Pitch', action: 'Underwrite and navigate exit strategies for disposition, then send text to client for a call to pitch', icon: '📊' },
-  'QUALIFIED': { label: 'Awaiting Photos', action: 'CRITICAL: Stay on phone while they take photos. Email photos to yourself, create Google Drive folder', icon: '📸' },
-  'NEW_LEAD': { label: 'Contacted', action: 'Send text to qualify timing preference — morning or evening?', icon: '📱' },
+  'OFFER_READY': { label: 'Offer Ready to Pitch', action: 'Underwrite and navigate exit strategies for disposition, then send text to client for a call to pitch', icon: '📊' },
+  'CONTACT_MADE': { label: 'Awaiting Photos', action: 'CRITICAL: Stay on phone while they take photos. Email photos to yourself, create Google Drive folder', icon: '📸' },
+  'LEAD_ENTERED': { label: 'Contacted', action: 'Send text to qualify timing preference — morning or evening?', icon: '📱' },
 };
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [today, setToday] = useState(null);
   const [leads, setLeads] = useState([]);
+  const [profitRadar, setProfitRadar] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewLead, setShowNewLead] = useState(false);
   const [newLead, setNewLead] = useState({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '' });
@@ -44,14 +45,16 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const [statsData, todayData, leadsData] = await Promise.all([
+        const [statsData, todayData, leadsData, radarData] = await Promise.all([
           api.getStats(),
           api.getToday(),
           api.getLeads({ limit: 50 }),
+          api.getProfitRadar().catch(() => null),
         ]);
         setStats(statsData);
         setToday(todayData);
         setLeads(leadsData.leads);
+        setProfitRadar(radarData);
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
@@ -88,7 +91,6 @@ export default function Dashboard() {
     }
   }
 
-  // Build AM/PM task lists from leads
   function buildTaskLists() {
     const amTasks = [];
     const pmTasks = [];
@@ -130,9 +132,27 @@ export default function Dashboard() {
     return { amTasks, pmTasks };
   }
 
+  // Build Kayla Command Center data
+  function buildKaylaCommandCenter() {
+    const offersToPresent = leads.filter(l => l.stage === 'OFFER_READY');
+    const activeNegotiations = leads.filter(l => l.stage === 'ACTIVE_NEGOTIATION');
+    const contractsToDraft = leads.filter(l => l.stage === 'TERMS_AGREED');
+    const stalls = leads.filter(l => {
+      const days = l.last_stage_change_at
+        ? Math.floor((Date.now() - new Date(l.last_stage_change_at).getTime()) / 86400000)
+        : 0;
+      return (l.stage === 'OFFER_SENT' && days > 2) ||
+             (l.stage === 'AWAITING_TITLE' && days > 3) ||
+             (l.stage === 'NO_ANSWER' && days > 14);
+    });
+
+    return { offersToPresent, activeNegotiations, contractsToDraft, stalls };
+  }
+
   if (loading) return <div className="loading">Loading dashboard...</div>;
 
   const { amTasks, pmTasks } = buildTaskLists();
+  const kaylaCC = buildKaylaCommandCenter();
   const overdue48hr = today?.overdue_48hr || [];
   const followUpsDue = today?.follow_ups_due || [];
 
@@ -156,70 +176,38 @@ export default function Dashboard() {
           <div className="form-grid">
             <label>
               Property Address *
-              <input
-                type="text"
-                placeholder="123 Main St"
-                value={newLead.address}
-                onChange={e => setNewLead({ ...newLead, address: e.target.value })}
-                required
-                autoFocus
-              />
+              <input type="text" placeholder="123 Main St" value={newLead.address}
+                onChange={e => setNewLead({ ...newLead, address: e.target.value })} required autoFocus />
             </label>
             <label>
               City
-              <input
-                type="text"
-                placeholder="Springfield"
-                value={newLead.city}
-                onChange={e => setNewLead({ ...newLead, city: e.target.value })}
-              />
+              <input type="text" placeholder="Springfield" value={newLead.city}
+                onChange={e => setNewLead({ ...newLead, city: e.target.value })} />
             </label>
             <label>
               State
-              <input
-                type="text"
-                placeholder="IL"
-                maxLength={2}
-                value={newLead.state}
-                onChange={e => setNewLead({ ...newLead, state: e.target.value.toUpperCase() })}
-              />
+              <input type="text" placeholder="IL" maxLength={2} value={newLead.state}
+                onChange={e => setNewLead({ ...newLead, state: e.target.value.toUpperCase() })} />
             </label>
             <label>
               Price ($)
-              <input
-                type="number"
-                placeholder="185000"
-                value={newLead.price}
-                onChange={e => setNewLead({ ...newLead, price: e.target.value })}
-              />
+              <input type="number" placeholder="185000" value={newLead.price}
+                onChange={e => setNewLead({ ...newLead, price: e.target.value })} />
             </label>
             <label>
               Beds
-              <input
-                type="number"
-                placeholder="3"
-                value={newLead.beds}
-                onChange={e => setNewLead({ ...newLead, beds: e.target.value })}
-              />
+              <input type="number" placeholder="3" value={newLead.beds}
+                onChange={e => setNewLead({ ...newLead, beds: e.target.value })} />
             </label>
             <label>
               Baths
-              <input
-                type="number"
-                placeholder="2"
-                step="0.5"
-                value={newLead.baths}
-                onChange={e => setNewLead({ ...newLead, baths: e.target.value })}
-              />
+              <input type="number" placeholder="2" step="0.5" value={newLead.baths}
+                onChange={e => setNewLead({ ...newLead, baths: e.target.value })} />
             </label>
             <label>
               Sqft
-              <input
-                type="number"
-                placeholder="1500"
-                value={newLead.sqft}
-                onChange={e => setNewLead({ ...newLead, sqft: e.target.value })}
-              />
+              <input type="number" placeholder="1500" value={newLead.sqft}
+                onChange={e => setNewLead({ ...newLead, sqft: e.target.value })} />
             </label>
             <label>
               Source
@@ -281,40 +269,82 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Pipeline Profit Radar */}
+      {profitRadar && (
+        <div style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '1rem',
+          marginBottom: '1rem',
+        }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: '600', margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>
+            📡 Pipeline Profit Radar
+          </h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <ProfitBadge label="Total Pipeline Value" value={`$${Number(profitRadar.totalPipelineValue || 0).toLocaleString()}`} color="#4ade80" />
+            <ProfitBadge label="Estimated Profit" value={`$${Number(profitRadar.estimatedProfit || 0).toLocaleString()}`} color="#f59e0b" />
+            <ProfitBadge label="Weighted Pipeline" value={`$${Number(profitRadar.weightedPipeline || 0).toLocaleString()}`} color="#60a5fa" />
+            <ProfitBadge label="Avg Deal Size" value={`$${Number(profitRadar.avgDealSize || 0).toLocaleString()}`} color="#a78bfa" />
+            <ProfitBadge label="Deals Closing (30d)" value={profitRadar.dealsClosing30d || 0} color="#f472b6" />
+          </div>
+          {profitRadar.topDeals?.length > 0 && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <h4 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Top Deals by Profit</h4>
+              {profitRadar.topDeals.slice(0, 5).map((d, i) => (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '0.25rem 0', fontSize: '0.78rem', borderBottom: '1px solid var(--border-subtle)',
+                }}>
+                  <Link to={`/leads/${d.id}`} style={{ color: 'var(--text-primary)' }}>{d.address}</Link>
+                  <span style={{ color: '#4ade80', fontWeight: '600' }}>${Number(d.estimated_profit || 0).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kayla Command Center */}
+      <div style={{
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '1rem',
+        marginBottom: '1rem',
+      }}>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: '600', margin: '0 0 0.75rem 0', color: '#cc6600' }}>
+          ⚔️ Kayla Command Center
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <CCSection title="🔥 Offers to Present" items={kaylaCC.offersToPresent} color="#f59e0b" />
+          <CCSection title="⚔️ Active Negotiations" items={kaylaCC.activeNegotiations} color="#ef4444" />
+          <CCSection title="📋 Contracts to Draft" items={kaylaCC.contractsToDraft} color="#8b5cf6" />
+          <CCSection title="⚠️ Stalls Needing Intervention" items={kaylaCC.stalls} color="#ef4444" />
+        </div>
+      </div>
+
       {/* Today's Tasks Section */}
       <div className="today-tasks-section">
         <div className="tasks-header">
           <h2>📋 Today's Tasks</h2>
           <div className="tasks-tabs">
-            <button
-              className={`tasks-tab ${activeTab === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveTab('all')}
-            >
+            <button className={`tasks-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
               All ({amTasks.length + pmTasks.length + overdue48hr.length + followUpsDue.length})
             </button>
-            <button
-              className={`tasks-tab ${activeTab === 'am' ? 'active' : ''}`}
-              onClick={() => setActiveTab('am')}
-            >
+            <button className={`tasks-tab ${activeTab === 'am' ? 'active' : ''}`} onClick={() => setActiveTab('am')}>
               🌅 AM ({amTasks.length})
             </button>
-            <button
-              className={`tasks-tab ${activeTab === 'pm' ? 'active' : ''}`}
-              onClick={() => setActiveTab('pm')}
-            >
+            <button className={`tasks-tab ${activeTab === 'pm' ? 'active' : ''}`} onClick={() => setActiveTab('pm')}>
               🌆 PM ({pmTasks.length})
             </button>
-            <button
-              className={`tasks-tab ${activeTab === 'urgent' ? 'active' : ''}`}
-              onClick={() => setActiveTab('urgent')}
-            >
+            <button className={`tasks-tab ${activeTab === 'urgent' ? 'active' : ''}`} onClick={() => setActiveTab('urgent')}>
               🔴 Urgent ({overdue48hr.length + followUpsDue.length})
             </button>
           </div>
         </div>
 
         <div className="tasks-grid">
-          {/* AM Tasks Column */}
           {(activeTab === 'all' || activeTab === 'am') && amTasks.length > 0 && (
             <div className="task-column">
               <h3 className="task-column-header">🌅 AM Tasks — Review & Execute</h3>
@@ -343,7 +373,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* PM Tasks Column */}
           {(activeTab === 'all' || activeTab === 'pm') && pmTasks.length > 0 && (
             <div className="task-column">
               <h3 className="task-column-header">🌆 PM Tasks — PPC Follow-ups</h3>
@@ -372,11 +401,9 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Urgent Column */}
           {(activeTab === 'all' || activeTab === 'urgent') && (overdue48hr.length > 0 || followUpsDue.length > 0) && (
             <div className="task-column urgent-column">
               <h3 className="task-column-header urgent-header">🔴 Urgent — Action Required</h3>
-
               {overdue48hr.length > 0 && (
                 <div className="urgent-subsection">
                   <h4>⏰ 48hr Follow-up Overdue</h4>
@@ -384,18 +411,13 @@ export default function Dashboard() {
                     <Link to={`/leads/${lead.id}`} key={`ov-${lead.id}`} className="task-card urgent-card">
                       <div className="task-card-icon">🔴</div>
                       <div className="task-card-body">
-                        <div className="task-card-title">
-                          <strong>{lead.address}</strong>
-                        </div>
-                        <div className="task-card-action">
-                          48hr follow-up overdue — call now! Run realignment script.
-                        </div>
+                        <div className="task-card-title"><strong>{lead.address}</strong></div>
+                        <div className="task-card-action">48hr follow-up overdue — call now! Run realignment script.</div>
                       </div>
                     </Link>
                   ))}
                 </div>
               )}
-
               {followUpsDue.length > 0 && (
                 <div className="urgent-subsection">
                   <h4>📅 Follow-ups Due Today</h4>
@@ -420,24 +442,10 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Empty state */}
         {amTasks.length === 0 && pmTasks.length === 0 && overdue48hr.length === 0 && followUpsDue.length === 0 && (
-          <div className="empty-tasks">
-            <p>🎉 No tasks due today! All caught up.</p>
-          </div>
+          <div className="empty-tasks"><p>🎉 No tasks due today! All caught up.</p></div>
         )}
       </div>
-
-      {/* Legacy alerts section (keep for backward compat) */}
-      {today && today.overdue_48hr?.length > 0 && false && (
-        <div className="alerts">
-          {today.overdue_48hr.map(l => (
-            <div key={l.id} className="alert alert-red">
-              🔴 48hr follow-up overdue: <Link to={`/leads/${l.id}`}>{l.address}</Link>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="recent-leads">
         <h3>Recent Leads</h3>
@@ -458,34 +466,62 @@ export default function Dashboard() {
             <tbody>
               {leads.map(lead => (
                 <tr key={lead.id}>
-                  <td>
-                    <Link to={`/leads/${lead.id}`} style={{ fontWeight: 600 }}>
-                      {lead.address}
-                    </Link>
-                  </td>
-                  <td style={{ color: 'var(--text-tertiary)' }}>
-                    {[lead.city, lead.state].filter(Boolean).join(', ') || '—'}
-                  </td>
-                  <td>
-                    <span className={`stage-badge stage-${lead.stage.toLowerCase()}`}>
-                      {STAGE_LABELS[lead.stage] || lead.stage}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>
-                    {lead.price ? `$${Number(lead.price).toLocaleString()}` : '—'}
-                  </td>
-                  <td style={{ color: 'var(--text-tertiary)', textTransform: 'capitalize' }}>
-                    {lead.source?.replace('_', ' ') || '—'}
-                  </td>
-                  <td style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                    {new Date(lead.updated_at).toLocaleDateString()}
-                  </td>
+                  <td><Link to={`/leads/${lead.id}`} style={{ fontWeight: 600 }}>{lead.address}</Link></td>
+                  <td style={{ color: 'var(--text-tertiary)' }}>{[lead.city, lead.state].filter(Boolean).join(', ') || '—'}</td>
+                  <td><span className={`stage-badge stage-${lead.stage.toLowerCase()}`}>{STAGE_LABELS[lead.stage] || lead.stage}</span></td>
+                  <td style={{ fontWeight: 600 }}>{lead.price ? `$${Number(lead.price).toLocaleString()}` : '—'}</td>
+                  <td style={{ color: 'var(--text-tertiary)', textTransform: 'capitalize' }}>{lead.source?.replace('_', ' ') || '—'}</td>
+                  <td style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>{new Date(lead.updated_at).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProfitBadge({ label, value, color }) {
+  return (
+    <div style={{
+      background: 'var(--bg-tertiary)',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: 'var(--radius-md)',
+      padding: '0.5rem 0.75rem',
+      display: 'flex', flexDirection: 'column', gap: '0.2rem',
+      minWidth: '140px',
+    }}>
+      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontSize: '1rem', fontWeight: '700', color }}>{value}</span>
+    </div>
+  );
+}
+
+function CCSection({ title, items, color }) {
+  return (
+    <div style={{
+      background: 'var(--bg-tertiary)',
+      border: `1px solid ${color}33`,
+      borderRadius: 'var(--radius-md)',
+      padding: '0.6rem',
+    }}>
+      <h4 style={{ fontSize: '0.75rem', fontWeight: '600', color, margin: '0 0 0.4rem 0' }}>
+        {title} ({items.length})
+      </h4>
+      {items.length === 0 ? (
+        <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', margin: 0 }}>None — clear!</p>
+      ) : (
+        items.map(item => (
+          <Link to={`/leads/${item.id}`} key={item.id} style={{
+            display: 'block', fontSize: '0.75rem', color: 'var(--text-primary)',
+            padding: '0.2rem 0', borderBottom: '1px solid var(--border-subtle)',
+            textDecoration: 'none',
+          }}>
+            {item.address} {item.price ? `· $${Number(item.price).toLocaleString()}` : ''}
+          </Link>
+        ))
+      )}
     </div>
   );
 }

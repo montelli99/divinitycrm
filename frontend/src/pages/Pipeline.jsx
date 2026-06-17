@@ -3,17 +3,55 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 
-const STAGE_ORDER = ['NEW_LEAD', 'QUALIFIED', 'LOI_REQUESTED', 'LOI_APPROVED', 'OFFER_SENT', 'NEGOTIATING', 'UNDER_CONTRACT'];
+const STAGE_ORDER = [
+  'LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY',           // Montelli
+  'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK',          // Kayla
+  'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',     // Kayla
+  'TERMS_AGREED',                                           // Kayla
+  'AWAITING_TITLE', 'CONTRACT_OUT',                         // Contracts
+  'UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', // TC
+  'APPRAISAL_ORDERED', 'APPRAISAL_DONE',                    // TC
+  'JV_SENT', 'JV_SIGNED',                                   // JV
+  'WIRE_SETUP', 'CLOSING_DATE',                             // Closing
+];
+
 const STAGE_LABELS = {
-  NEW_LEAD: 'New Lead', QUALIFIED: 'Qualified', LOI_REQUESTED: 'LOI Requested',
-  LOI_APPROVED: 'LOI Approved', OFFER_SENT: 'Offer Sent', NEGOTIATING: 'Negotiating',
-  UNDER_CONTRACT: 'Under Contract',
+  LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
+  OFFER_SENT: 'Offer Sent', OFFER_RECEIVED: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
+  NO_ANSWER: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
+  TERMS_AGREED: 'Terms Agreed',
+  AWAITING_TITLE: 'Awaiting Title', CONTRACT_OUT: 'Contract Out',
+  UNDER_CONTRACT: 'Under Contract', INSPECTION_PERIOD: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
+  APPRAISAL_ORDERED: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
+  JV_SENT: 'JV Sent', JV_SIGNED: 'JV Signed',
+  WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
 };
 
+const OWNER_SECTIONS = {
+  MONTELLI: { name: 'Montelli', stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY'], color: '#0066cc', bgColor: 'rgba(0,102,204,0.08)' },
+  KAYLA: { name: 'Kayla', stages: ['OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED'], color: '#cc6600', bgColor: 'rgba(204,102,0,0.08)' },
+  CONTRACTS: { name: 'Contracts', stages: ['AWAITING_TITLE', 'CONTRACT_OUT'], color: '#cc0000', bgColor: 'rgba(204,0,0,0.08)' },
+  TC: { name: 'TC', stages: ['UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', 'APPRAISAL_ORDERED', 'APPRAISAL_DONE'], color: '#00cc00', bgColor: 'rgba(0,204,0,0.08)' },
+  JV: { name: 'JV', stages: ['JV_SENT', 'JV_SIGNED'], color: '#6600cc', bgColor: 'rgba(102,0,204,0.08)' },
+  CLOSING: { name: 'Closing', stages: ['WIRE_SETUP', 'CLOSING_DATE'], color: '#cc0066', bgColor: 'rgba(204,0,102,0.08)' },
+};
+
+function getOwnerForStage(stage) {
+  for (const [key, owner] of Object.entries(OWNER_SECTIONS)) {
+    if (owner.stages.includes(stage)) return owner;
+  }
+  return { name: 'Unknown', stages: [], color: '#999', bgColor: 'rgba(153,153,153,0.08)' };
+}
+
 const NEXT_STAGE = {
-  NEW_LEAD: 'QUALIFIED', QUALIFIED: 'LOI_REQUESTED', LOI_REQUESTED: 'LOI_APPROVED',
-  LOI_APPROVED: 'OFFER_SENT', OFFER_SENT: 'NEGOTIATING', NEGOTIATING: 'UNDER_CONTRACT',
-  UNDER_CONTRACT: 'CLOSED',
+  LEAD_ENTERED: 'CONTACT_MADE', CONTACT_MADE: 'OFFER_READY', OFFER_READY: 'OFFER_SENT',
+  OFFER_SENT: 'OFFER_RECEIVED', OFFER_RECEIVED: 'GAIN_FEEDBACK', GAIN_FEEDBACK: 'NO_ANSWER',
+  NO_ANSWER: 'SELLER_DECLINED', SELLER_DECLINED: 'ACTIVE_NEGOTIATION', ACTIVE_NEGOTIATION: 'TERMS_AGREED',
+  TERMS_AGREED: 'AWAITING_TITLE', AWAITING_TITLE: 'CONTRACT_OUT', CONTRACT_OUT: 'UNDER_CONTRACT',
+  UNDER_CONTRACT: 'INSPECTION_PERIOD', INSPECTION_PERIOD: 'INSPECTION_COMPLETE', INSPECTION_COMPLETE: 'APPRAISAL_ORDERED',
+  APPRAISAL_ORDERED: 'APPRAISAL_DONE', APPRAISAL_DONE: 'JV_SENT',
+  JV_SENT: 'JV_SIGNED', JV_SIGNED: 'WIRE_SETUP',
+  WIRE_SETUP: 'CLOSING_DATE', CLOSING_DATE: 'ARCHIVED',
 };
 
 export default function Pipeline() {
@@ -25,7 +63,7 @@ export default function Pipeline() {
   const [dragging, setDragging] = useState(null);
   const [automationResults, setAutomationResults] = useState(null);
   const [scriptPrompts, setScriptPrompts] = useState(null);
-  const [viewingPrompts, setViewingPrompts] = useState(null); // For "View Prompts" button
+  const [viewingPrompts, setViewingPrompts] = useState(null);
 
   const loadPipeline = useCallback(async () => {
     try {
@@ -51,16 +89,15 @@ export default function Pipeline() {
     try {
       const result = await api.advanceLead(leadId, toStage);
 
-      // Show the RICH PROMPT if returned (auto-open, stays until dismissed)
       if (result.automation?.prompt) {
         setScriptPrompts({
           prompt: result.automation.prompt,
           scripts: result.automation.scripts,
           workflow: result.automation.workflow,
+          owner: result.automation.owner,
           description: result.automation.description,
         });
       } else if (result.automation?.scripts?.length > 0) {
-        // Legacy fallback
         setScriptPrompts({
           scripts: result.automation.scripts,
           workflow: result.automation.workflow,
@@ -69,7 +106,6 @@ export default function Pipeline() {
 
       setAutomationResults({ leadId, ...result.automation });
       await loadPipeline();
-      // Don't auto-dismiss — modal stays open until user dismisses
     } catch (err) {
       alert('Failed to advance: ' + err.message);
     } finally {
@@ -77,7 +113,6 @@ export default function Pipeline() {
     }
   }
 
-  // "View Prompts" — fetch the stage prompt for a lead
   async function handleViewPrompts(leadId, stage) {
     try {
       const result = await api.getStagePrompt(leadId, stage);
@@ -91,6 +126,17 @@ export default function Pipeline() {
       }
     } catch (err) {
       console.error('View prompts error:', err);
+    }
+  }
+
+  async function handlePokemon(leadId, address, sellerName) {
+    if (!confirm(`Spawn new lead for ${sellerName || address}? This creates a "We Play Pokémon" portfolio lead.`)) return;
+    try {
+      const result = await api.spawnPokemon(leadId);
+      alert(`Pokémon spawned! New lead: ${result.lead?.address || 'Created'}`);
+      await loadPipeline();
+    } catch (err) {
+      alert('Pokémon spawn failed: ' + err.message);
     }
   }
 
@@ -129,7 +175,7 @@ export default function Pipeline() {
     <div className="pipeline-page">
       <div className="page-header">
         <div>
-          <h1>Pipeline</h1>
+          <h1>Pipeline — 21 Stages</h1>
           <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
             {totalActive} active · {pipeline.stats.closed} closed · {pipeline.stats.conversion_rate}% conversion
           </p>
@@ -198,6 +244,7 @@ export default function Pipeline() {
       {automationResults && (
         <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
           ⚡ <strong>{automationResults.workflow}</strong> fired — {automationResults.actions_executed} actions
+          {automationResults.owner && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', opacity: 0.7 }}>by {automationResults.owner}</span>}
           {automationResults.results?.filter(r => r.ok).map((r, i) => (
             <span key={i} style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
               {r.type === 'set_field' && `✓ ${r.field}`}
@@ -209,7 +256,6 @@ export default function Pipeline() {
         </div>
       )}
 
-      {/* Script Prompt Modal — auto-opens on advance, stays until dismissed */}
       {scriptPrompts && (
         <ScriptPromptModal
           prompt={scriptPrompts.prompt}
@@ -219,7 +265,6 @@ export default function Pipeline() {
         />
       )}
 
-      {/* View Prompts Modal — opened via "View Prompts" button */}
       {viewingPrompts && (
         <ScriptPromptModal
           prompt={viewingPrompts.prompt}
@@ -229,21 +274,52 @@ export default function Pipeline() {
         />
       )}
 
-      <div className="pipeline-board">
+      {/* Owner Section Headers */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+        {Object.entries(OWNER_SECTIONS).map(([key, owner]) => (
+          <div key={key} style={{
+            background: owner.bgColor,
+            border: `1px solid ${owner.color}33`,
+            borderRadius: 'var(--radius-md)',
+            padding: '0.25rem 0.6rem',
+            fontSize: '0.7rem',
+            fontWeight: '600',
+            color: owner.color,
+          }}>
+            {owner.name}: {owner.stages.map(s => STAGE_LABELS[s]).join(' → ')}
+          </div>
+        ))}
+      </div>
+
+      <div className="pipeline-board" style={{ gridTemplateColumns: `repeat(${STAGE_ORDER.length}, minmax(160px, 1fr))` }}>
         {STAGE_ORDER.map(stage => {
           const leads = pipeline.pipeline[stage] || [];
           const isDragOver = dragOver === stage;
+          const owner = getOwnerForStage(stage);
           return (
             <div key={stage} className={`pipeline-column ${isDragOver ? 'drag-over' : ''}`}
+              style={{ borderTop: `3px solid ${owner.color}` }}
               onDragOver={e => handleDragOver(e, stage)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, stage)}>
               <div className="column-header">
-                <h3>{STAGE_LABELS[stage]}</h3><span className="column-count">{leads.length}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <h3>{STAGE_LABELS[stage]}</h3>
+                  <span style={{
+                    fontSize: '0.6rem',
+                    background: owner.bgColor,
+                    color: owner.color,
+                    padding: '0.1rem 0.35rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontWeight: '600',
+                  }}>{owner.name}</span>
+                </div>
+                <span className="column-count">{leads.length}</span>
               </div>
               <div className="column-cards">
                 {leads.length === 0 ? <div className="empty-column">Drop leads here</div>
                   : leads.map(lead => {
                     const nextStage = NEXT_STAGE[lead.stage];
                     const isAdvancing = advancing[lead.id];
+                    const isClosed = lead.stage === 'CLOSING_DATE';
                     return (
                       <div key={lead.id} className={`lead-card ${dragging?.id === lead.id ? 'dragging' : ''}`}
                         draggable onDragStart={e => handleDragStart(e, { id: lead.id, stage: lead.stage })} onDragEnd={() => setDragging(null)}>
@@ -258,9 +334,9 @@ export default function Pipeline() {
                         {lead.stalled && <div className="card-stalled">⚠ Stalled — {lead.days_in_stage} days</div>}
                         {lead.days_in_stage > 30 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>🔴 Abandoned — {lead.days_in_stage} days</div>}
                         {lead.stage === 'OFFER_SENT' && lead.days_in_stage > 2 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 48hr overdue — call now</div>}
+                        {lead.stage === 'AWAITING_TITLE' && lead.days_in_stage > 3 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 72hr overdue — follow up</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
-                          {/* View Prompts button */}
                           <button
                             className="btn-view-prompts"
                             onClick={e => { e.preventDefault(); e.stopPropagation(); handleViewPrompts(lead.id, lead.stage); }}
@@ -272,6 +348,13 @@ export default function Pipeline() {
                             <button className="btn-advance" onClick={e => { e.preventDefault(); e.stopPropagation(); handleAdvance(lead.id, nextStage); }}
                               disabled={isAdvancing} title={`Advance to ${STAGE_LABELS[nextStage]}`}>
                               {isAdvancing ? '...' : '→'}
+                            </button>
+                          )}
+                          {isClosed && (
+                            <button className="btn-pokemon" onClick={e => { e.preventDefault(); e.stopPropagation(); handlePokemon(lead.id, lead.address, lead.seller_name); }}
+                              disabled={isAdvancing} title="We Play Pokémon — spawn new lead from seller"
+                              style={{ background: '#8b5cf6', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', padding: '0.2rem 0.4rem', cursor: 'pointer', fontSize: '0.75rem' }}>
+                              🎮
                             </button>
                           )}
                           <button className="btn-dead" onClick={e => { e.preventDefault(); e.stopPropagation();

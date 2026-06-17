@@ -424,4 +424,48 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/contracts/send-rabbitsign — Send contract via RabbitSign
+router.post('/send-rabbitsign', async (req, res, next) => {
+  try {
+    const { leadId, contractType } = req.body;
+    if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+
+    const clerkId = req.user.userId;
+    const user = await query('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
+    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, user[0].id]);
+    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
+
+    const rs = require('../services/rabbitsign');
+    if (!rs.isConfigured()) {
+      return res.status(503).json({ error: 'RabbitSign not configured. Set RABBITSIGN_API_KEY in environment.' });
+    }
+
+    const result = await rs.createContractEnvelope({
+      lead: lead[0],
+      contractType: contractType || lead[0].contract_type || 'SubTo',
+    });
+
+    res.json({ success: true, folderId: result.folderId, status: result.status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/contracts/rabbitsign/:folderId/status — Check RabbitSign folder status
+router.get('/rabbitsign/:folderId/status', async (req, res, next) => {
+  try {
+    const rs = require('../services/rabbitsign');
+    if (!rs.isConfigured()) {
+      return res.status(503).json({ error: 'RabbitSign not configured' });
+    }
+
+    const status = await rs.getFolderStatus(req.params.folderId);
+    res.json(status);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

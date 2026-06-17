@@ -53,12 +53,14 @@ export const api = {
   deleteLead: (id) => request(`/leads/${id}`, { method: 'DELETE' }),
   getTransitions: (id) => request(`/leads/${id}/transitions`),
   advanceLead: (id, toStage) => request(`/leads/${id}/advance`, { method: 'POST', body: JSON.stringify({ to_stage: toStage }) }),
+  spawnPokemon: (id) => request(`/leads/${id}/pokemon`, { method: 'POST' }),
   addReminder: (leadId, data) => request(`/leads/${leadId}/reminders`, { method: 'POST', body: JSON.stringify(data) }),
 
   // Pipeline
   getPipeline: () => request('/pipeline'),
   getToday: () => request('/pipeline/today'),
   getStats: () => request('/pipeline/stats'),
+  getProfitRadar: () => request('/pipeline/profit-radar'),
 
   // Contracts
   getClauses: () => request('/contracts/clauses'),

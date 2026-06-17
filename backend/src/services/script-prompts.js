@@ -1,8 +1,8 @@
 /**
  * script-prompts.js — Enhanced Script Prompt Engine for Divinity CRM
  * =============================================================
- * Rebuilt 2026-06-17. Every text shortcut from the AIREI Master Playbook
- * is available and pre-filled with actual lead data.
+ * Rebuilt 2026-06-17. Every text shortcut, LOI template, contract template,
+ * call script, objection handler, and pitch from the full Montelli/Kayla pipeline.
  *
  * Templates included:
  *   Core: INT, NOA, DNCT, CCC, GCJ, LOI, LOI2DAYS, INLOI, F50, F10, PEND, SD
@@ -11,8 +11,18 @@
  *                   JV_SIGNED, CLOSING_CONFIRMED
  *   Negotiation: EVERYBODY_WINS_PITCH, PSA_CALL_OPENER_SMS,
  *                SUBTO_PROCESSOR_CONFIRMED
+ *   LOI Templates: Stack, Cash, $0 Down, SubTo, MFH, Interest Only,
+ *                  Stack w/ Principal, 10% DP 2yr balloon, Portfolio Stack,
+ *                  Stack & Cash, Stack 5yr BAL, AI V2 LOI
+ *   Contract Templates: PSA Creative SubTo, PSA DC, PSA Commercial,
+ *                       Stack PSA, Subject To Addendum, 3-party JV, 4-party JV
+ *   Call Scripts: Agent Initial, Seller Initial, Seller Rehab,
+ *                 Post-Offer 48hr, Relay Line, Voice Memo, Awaiting Photos
+ *   Pitches: Novation pitch, $0 pitch, SubTo hybrid pivot
  *
- * Source: AIREI_MASTER_PLAYBOOK.md + ghl-automations sms-templates.js
+ * Source: HANDBOOK_AND_SOP.md + GHL_WORKFLOWS_SPEC.md + TRACK_MONTELLI.md +
+ *         TRACK_STUDENT.md + TRACK_KAYLA_JAXON.md + sms-templates.js +
+ *         contract-templates.js
  */
 
 // =============================================================
@@ -27,7 +37,7 @@ const OUTREACH_SCRIPTS = {
     description: 'First text BEFORE any call. Makes your name show as caller ID.',
     body: `{{Seller Name}}, are you still accepting offers for {{Property Address}}? My name is {{Sender Name}}, I'm looking to purchase this as a rental for my portfolio.`,
     required: ['seller_name', 'address'],
-    stage: 'NEW_LEAD',
+    stage: 'LEAD_ENTERED',
     shortcut: 'INT',
   },
 
@@ -37,7 +47,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Second follow-up text when no response after calls.',
     body: `Are you still accepting offers for {{Property Address}}?`,
     required: ['address'],
-    stage: 'OFFER_SENT',
+    stage: 'LEAD_ENTERED',
     shortcut: 'NOA',
   },
 
@@ -47,7 +57,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Alternative intro when you cannot call (Do Not Call list).',
     body: `{{Seller Name}}, would you be opposed to accepting an offer for {{Property Address}}? My name is {{Sender Name}}, I'm looking at purchasing as a rental for my portfolio.`,
     required: ['seller_name', 'address'],
-    stage: 'NEW_LEAD',
+    stage: 'LEAD_ENTERED',
     shortcut: 'DNCT',
   },
 
@@ -57,7 +67,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Sent AFTER every call. Includes website for credibility.',
     body: `It is great aligning with you {{Seller Name}}, I look forward to connecting the dots with you shortly at {{Property Address}}. Feel free to browse through our closings with similar clients on our website — Divinity Aligned LLC: Expert Solutions for Life's Major Transitions`,
     required: ['seller_name', 'address'],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'CCC',
   },
 
@@ -77,7 +87,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Follow-up after LOI has been sent to check for feedback.',
     body: `Happy {{Day}}! For the intent of my call — I have just now found some time to iron out any further details regarding the offer we had finalized. Have you gained any initial feedback from your seller just yet?`,
     required: [],
-    stage: 'LOI_REQUESTED',
+    stage: 'GAIN_FEEDBACK',
     shortcut: 'LOI',
   },
 
@@ -87,7 +97,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Sent 2 days after LOI with no response — gentle nudge.',
     body: `Happy Sunday! I hate to be a bother — We spoke recently. I was curious: did you end up losing the listing or did your seller just give up on selling?`,
     required: [],
-    stage: 'LOI_REQUESTED',
+    stage: 'NO_ANSWER',
     shortcut: 'LOI2DAYS',
   },
 
@@ -97,7 +107,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Response when seller asks about inspection before LOI.',
     body: `{{Seller Name}}, thank you for the swift response – the photos online look great. I'm sure they don't even do the property justice! We will set up a home inspection like any real estate purchase – within 24 hours. We are not willing to incur costs with a contractor/inspector when the seller could simply sell it to another buyer while I spend a few thousand dollars to do due diligence. As a business owner yourself, I can only hope this is understandable.`,
     required: ['seller_name'],
-    stage: 'LOI_REQUESTED',
+    stage: 'GAIN_FEEDBACK',
     shortcut: 'INLOI',
   },
 
@@ -107,7 +117,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Pitch for 50% down seller finance (turnkey properties).',
     body: `Happy {{Day}}! I understand your intent to sell outright, would you be completely opposed to taking half your price now and the rest in one lump sum in the near future?`,
     required: [],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'F50',
   },
 
@@ -117,7 +127,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Pitch for 10% down seller finance (renovation properties).',
     body: `Happy {{Day}}! I understand your intent to sell outright, would you be completely opposed to taking 10% of your price now and the rest in one lump sum in just 24 months?`,
     required: [],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'F10',
   },
 
@@ -148,7 +158,7 @@ const OUTREACH_SCRIPTS = {
     description: 'PPC: Send before calling so their phone recognizes your number.',
     body: `Happy {{Day}} {{Seller Name}}, it's {{Sender Name}}! I received your message regarding expressing interest in selling at {{Property Address}}. I will be giving you a call shortly to discuss the finer details`,
     required: ['seller_name', 'address'],
-    stage: 'NEW_LEAD',
+    stage: 'LEAD_ENTERED',
     shortcut: 'PIN',
   },
 
@@ -158,7 +168,7 @@ const OUTREACH_SCRIPTS = {
     description: 'PPC: Send if client doesn\'t answer twice after intro text.',
     body: `{{Seller Name}}, I received your inquiry expressing your interest in selling at {{Property Address}}. My name is {{Sender Name}} — I'd be interested in purchasing this myself. When is the best window of time to align today, or maybe tomorrow?`,
     required: ['seller_name', 'address'],
-    stage: 'NEW_LEAD',
+    stage: 'LEAD_ENTERED',
     shortcut: 'PNOA',
   },
 
@@ -168,7 +178,7 @@ const OUTREACH_SCRIPTS = {
     description: 'PPC: Send after call if they need to send photos.',
     body: `It was great aligning with you {{Seller Name}}. I am looking forward to connecting the dots with you shortly at {{Property Address}}. At your earliest convenience please email me photos to alignedassetsolutions@gmail.com with the subject line {{Property Address}}; we will be in touch in the coming business days if an offer fits for us to proceed with.`,
     required: ['seller_name', 'address'],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'PCC',
   },
 
@@ -178,7 +188,7 @@ const OUTREACH_SCRIPTS = {
     description: 'PPC: Send after call if photos are already received.',
     body: `It was great aligning with you {{Seller Name}}. I am looking forward to connecting the dots with you at {{Property Address}} shortly. We will be in touch in the coming business days if an offer fits for us to proceed with.`,
     required: ['seller_name', 'address'],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'PC',
   },
 
@@ -198,7 +208,7 @@ const OUTREACH_SCRIPTS = {
     description: 'PPC: Follow-up when photos are still missing after request.',
     body: `Happy {{Day}}! We have set aside funds to prepare to close on your property; I don't believe we have received photos yet. Those will help us finalize our review and keep everything progressing smoothly to ensure money is in your pocket promptly`,
     required: [],
-    stage: 'QUALIFIED',
+    stage: 'CONTACT_MADE',
     shortcut: 'PPH',
   },
 
@@ -209,7 +219,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Seller says YES to LOI terms.',
     body: `That's great to hear! I'm going to get with my closer and we will reach out to you in the coming business days.`,
     required: ['seller_name'],
-    stage: 'LOI_APPROVED',
+    stage: 'OFFER_RECEIVED',
     shortcut: 'LOI_RECIEVED_YES',
   },
 
@@ -219,7 +229,7 @@ const OUTREACH_SCRIPTS = {
     description: 'Seller declines LOI terms.',
     body: `Understood. If you change your mind or would like to revisit terms, feel free to reach out. Good luck with the sale!`,
     required: ['seller_name'],
-    stage: 'DEAD',
+    stage: 'SELLER_DECLINED',
     shortcut: 'LOI_RECEIVED_NO',
   },
 
@@ -230,7 +240,7 @@ const OUTREACH_SCRIPTS = {
     description: '2-day follow-up after LOI sent.',
     body: `Hey {{Agent Name}}, just circling back on the LOI for {{Property Address}} — wanted to make sure you received it and see if the seller had any initial thoughts.`,
     required: ['agent_name', 'address'],
-    stage: 'LOI_REQUESTED',
+    stage: 'GAIN_FEEDBACK',
     shortcut: 'LOI_FOLLOWUP',
   },
 
@@ -240,7 +250,7 @@ const OUTREACH_SCRIPTS = {
     description: 'When there\'s been a delay in getting feedback.',
     body: `Happy Wednesday! I appreciate your patience as we were in a few closings with clients the past few weeks; I have just now found some time to gain feedback from the offer we sent.`,
     required: [],
-    stage: 'NEGOTIATING',
+    stage: 'ACTIVE_NEGOTIATION',
     shortcut: 'GOOD_STANDING',
   },
 
@@ -283,7 +293,7 @@ Next: Our transaction coordinator {{TC Name}} ({{TC Email}}, {{TC Phone}}) will 
 Reply with any questions!
 — {{Sender Name}}`,
     required: ['seller_name', 'address', 'psa_signed_date', 'inspection_period_days', 'inspection_end_date', 'coe_date', 'title_company', 'title_company_phone', 'tc_name', 'tc_email', 'tc_phone'],
-    stage: 'UNDER_CONTRACT',
+    stage: 'CONTRACT_OUT',
   },
 
   INSPECTION_SCHEDULED: {
@@ -324,7 +334,7 @@ Key numbers reconfirmed:
 Next step: Once we align on the appraisal, a closing date will be arranged and wire instructions will follow.
 — {{Sender Name}}`,
     required: ['seller_name', 'address', 'arv', 'price', 'cash_flow', 'dscr', 'coe_date'],
-    stage: 'UNDER_CONTRACT',
+    stage: 'APPRAISAL_DONE',
   },
 
   JV_SIGNED: {
@@ -349,7 +359,7 @@ Title to the Property is held in the name of: {{Title Holder}}
 Welcome to the JV. Let's make this property perform.
 — {{Sender Name}}`,
     required: ['seller_name', 'address', 'llc_name'],
-    stage: 'CLOSED',
+    stage: 'JV_SIGNED',
   },
 
   CLOSING_CONFIRMED: {
@@ -378,7 +388,7 @@ Post-close support: Monique Pasciak (monique@sellsmartre.com, 262-304-0602) will
 Excited to get this across the finish line! 🎉
 — {{Sender Name}}`,
     required: ['seller_name', 'address', 'coe_date', 'title_company', 'title_company_phone', 'net_to_seller'],
-    stage: 'CLOSED',
+    stage: 'CLOSING_DATE',
   },
 
   // --- NEGOTIATION TEMPLATES ---
@@ -388,7 +398,7 @@ Excited to get this across the finish line! 🎉
     description: 'Sent during active negotiation when seller is hesitating.',
     body: 'Hi {{Seller Name}} — quick check-in on {{Property Address}}.\n\nThe numbers work for everyone involved:\n• Cash flow on this deal: ${{Cash Flow}}/mo (well above the $200/mo minimum)\n• DSCR: {{DSCR}} (above the 1.25 lender threshold)\n• 1% rule: {{1% Rule Status}}\n• Lender value: ${{Lender Value}} (70% of purchase)\n\nWhat this means for you, the buyer, and the listing agent:\n• You walk away with ${{Net to Seller}} — no repairs, no showings, no waiting\n• The buyer gets a cash-flowing property from day one\n• The listing agent finally gets paid after being on market {{Days on Market}} days\n\nEverybody wins in real estate. Let me know if you have any questions or if there\'s anything that would help you say yes.\n— {{Sender Name}}',
     required: ['seller_name', 'address', 'cash_flow', 'dscr', 'one_percent_rule', 'arv', 'net_to_seller'],
-    stage: 'NEGOTIATING',
+    stage: 'ACTIVE_NEGOTIATION',
   },
 
   PSA_CALL_OPENER_SMS: {
@@ -399,7 +409,7 @@ Excited to get this across the finish line! 🎉
 
 (Quick tip: it really helps to have the property address handy + your LLC name if you have one. We'll be using a tool called RabbitSign for the e-signature — totally painless, just needs your email.)`,
     required: ['seller_name', 'address'],
-    stage: 'NEGOTIATING',
+    stage: 'CONTRACT_OUT',
   },
 
   SUBTO_PROCESSOR_CONFIRMED: {
@@ -417,8 +427,247 @@ Per the SubTo Addendum, here's what happens next:
 If anything ever feels off, you can reach me directly at {{Sender Phone}}. Otherwise, you're all set.
 — {{Sender Name}}`,
     required: ['seller_name', 'address', 'title_company', 'seller_phone'],
-    stage: 'CLOSED',
+    stage: 'WIRE_SETUP',
   },
+};
+
+// =============================================================
+// CALL SCRIPTS (from TRACK_MONTELLI.md + TRACK_STUDENT.md)
+// =============================================================
+
+const CALL_SCRIPTS = {
+  AGENT_INITIAL: {
+    name: 'Agent Initial Call Script',
+    description: 'Script for calling a listing agent about a property.',
+    body: `Smile. SLOW.
+
+"Happy [day], I'm calling regarding [address] — interested in purchasing as a rental for my portfolio. Did I catch you at a good time?"
+
+→ Photos look great, SHOCKED it hasn't sold.
+→ Any feedback from other buyers?
+→ Roof age? HVAC age?
+→ Occupied or Vacant?
+→ If rented: rent amount, lease type, when signed?
+→ If vacant: why not rent it out?
+→ Utilities on?
+→ DSCR loan based on rent → call lender
+→ Good email?`,
+    stage: 'LEAD_ENTERED',
+    shortcut: 'AGENT_INITIAL',
+  },
+
+  SELLER_INITIAL: {
+    name: 'Seller Initial Call Script',
+    description: 'Script for calling a seller directly (FSBO).',
+    body: `Smile. SLOW.
+
+"Happy [day], I'm calling regarding your property at [address] — interested in purchasing as a rental for my portfolio. Did I catch you at a good time?"
+
+→ Same structure as agent script, addresses seller directly.
+→ Ask about motivation to sell.
+→ Why selling now?
+→ What's their ideal timeline?
+→ Any other offers received?
+→ Roof/HVAC age?
+→ Any known issues?`,
+    stage: 'LEAD_ENTERED',
+    shortcut: 'SELLER_INITIAL',
+  },
+
+  SELLER_REHAB: {
+    name: 'Seller Rehab Call Script',
+    description: 'Script for distressed/renovation properties.',
+    body: `"Happy [day], I'm calling regarding [address]. I noticed it may need some work — I'm looking for properties I can renovate and hold as rentals."
+
+→ Condition rating 1-10?
+→ What would it take to make it a 10?
+→ Why not put money in and make more profit?
+→ No commission savings with us (we buy direct).
+→ We handle all repairs after purchase.
+→ What's the lowest number they'd accept as-is?`,
+    stage: 'LEAD_ENTERED',
+    shortcut: 'SELLER_REHAB',
+  },
+
+  POST_OFFER_48HR: {
+    name: 'Post-Offer 48hr Realignment Script',
+    description: 'Call script for 48-hour follow-up after offer sent.',
+    body: `"Happy [Day] [Client Name], I am just now finding some time to realign with you regarding [address]. We sent an offer. Is there any clarification I can align regarding the details?"
+
+→ LET THEM TALK.
+→ "Noted — I'll relay to my business partner."
+→ TEXT JAXON/KAYLA immediately with feedback.`,
+    stage: 'GAIN_FEEDBACK',
+    shortcut: 'POST_OFFER_48HR',
+  },
+
+  RELAY_LINE: {
+    name: 'Relay Line Script',
+    description: 'Used when seller asks questions — relay to closer, never negotiate.',
+    body: `"I'll relay that to my business partner and get right back with you."
+
+NEVER negotiate directly. Always relay to Kayla/Jaxon.`,
+    stage: 'ACTIVE_NEGOTIATION',
+    shortcut: 'RELAY_LINE',
+  },
+
+  VOICE_MEMO: {
+    name: 'Voice Memo Script (No Answer)',
+    description: 'Leave as voice memo when seller doesn\'t answer.',
+    body: `"Happy [day] [name], tried to call regarding [address]. I'm going to call my DSCR lender. Going to loop you into a group chat with my business partner Jaxon. Have a blessed evening."`,
+    stage: 'NO_ANSWER',
+    shortcut: 'VOICE_MEMO',
+  },
+
+  AWAITING_PHOTOS: {
+    name: 'Awaiting Photos Script',
+    description: 'CRITICAL: Stay on phone while they take photos.',
+    body: `"We strive to provide an offer the same day, and at latest just 24 hours to ensure we are making best use of your time. I will que this into our underwriting department, in order to do that - go ahead and take a photo of the kitchen and bathrooms as well as the living spaces and text them to me."
+
+→ STAY ON THE PHONE WITH THEM AS THEY DO THIS.
+→ Generate rapport: "What are you most excited for when you sell?"
+→ Email photos to yourself.
+→ Create Google Drive, click share, "Anyone with the link".
+→ Title: "[the property address] Media".
+→ Copy/paste link into the notes section of the CRM.`,
+    stage: 'CONTACT_MADE',
+    shortcut: 'AWAITING_PHOTOS',
+  },
+};
+
+// =============================================================
+// PITCH SCRIPTS (Novation, $0 Down, SubTo Hybrid)
+// =============================================================
+
+const PITCH_SCRIPTS = {
+  NOVATION_PITCH: {
+    name: 'Novation Pitch',
+    description: 'When outright offer is too low, offer novation at higher price.',
+    body: `"I understand the number you're looking for. Here's an alternative: we can offer a higher price — [X amount] — with a 60-90 day close. You keep the property listed, and if it doesn't sell at retail within that window, we close at our agreed price. You get your number, we get the property, and the agent gets paid either way."`,
+    stage: 'ACTIVE_NEGOTIATION',
+    shortcut: 'NOVATION_PITCH',
+  },
+
+  ZERO_DOWN_PITCH: {
+    name: '$0 Down Pitch',
+    description: 'For free & clear rentals — capital gains tax angle.',
+    body: `"No money down. We take over your existing mortgage payments. You walk away clean — no more landlord headaches, no more tenant calls, no more maintenance. And here's the key: you avoid capital gains tax because you're not taking a lump sum cash payout. The IRS treats this differently when you transfer the property subject-to the existing debt."`,
+    stage: 'ACTIVE_NEGOTIATION',
+    shortcut: 'ZERO_DOWN_PITCH',
+  },
+
+  SUBTO_HYBRID_PIVOT: {
+    name: 'SubTo Hybrid Pivot (MFH)',
+    description: 'Pivot from Stack to SubTo for multi-family when DSCR is too tight.',
+    body: `"I ran the numbers and the DSCR loan is a bit tight on this one. But here's another structure that works: we take over your existing mortgage payments subject-to the existing loan, and we give you [X] cash at closing for your equity. Your mortgage stays in your name but we make every payment automatically through a 3rd-party processor. You get cash now, we get the property, and you're protected by a deed in lieu — if we ever miss a payment, the property comes back to you."`,
+    stage: 'ACTIVE_NEGOTIATION',
+    shortcut: 'SUBTO_HYBRID_PIVOT',
+  },
+};
+
+// =============================================================
+// EXIT STRATEGY CHEATSHEET
+// =============================================================
+
+const EXIT_STRATEGY_CHEATSHEET = {
+  description: 'Route deals to the right strategy based on equity, condition, and motivation.',
+  routes: {
+    high_equity_turnkey: {
+      condition: 'Equity > 30% AND Condition = turnkey',
+      strategy: 'Stack 50%',
+      loi: 'Stack LOI (base) or Stack 5yr BAL',
+      pitch: 'F50',
+    },
+    high_equity_accelerated: {
+      condition: 'Equity > 50% AND Seller wants faster payout',
+      strategy: 'Stack 50% 5yr BAL',
+      loi: 'Stack LOI 5yr BAL',
+      pitch: 'F50',
+    },
+    low_equity_low_rate: {
+      condition: 'Equity < 20% AND Existing loan rate < 5%',
+      strategy: 'Subject-To',
+      loi: 'Subject To LOI Template',
+      pitch: 'SubTo Hybrid Pivot',
+    },
+    free_clear_capital_gains: {
+      condition: 'Owned free & clear AND Seller concerned about taxes',
+      strategy: '$0 Down (SubTo Hybrid)',
+      loi: '$0 Down LOI',
+      pitch: 'Zero Down Pitch',
+    },
+    high_motivation: {
+      condition: 'Seller highly motivated (behind on payments, relocating, etc.)',
+      strategy: 'Cash Offer',
+      loi: 'Cash Offer Template',
+      pitch: 'Cash',
+    },
+    renovation_needed: {
+      condition: 'Condition = reno OR condition_rating < 7',
+      strategy: 'F10 (10% Down 2yr Balloon)',
+      loi: '10% DP 2yr Balloon',
+      pitch: 'F10',
+    },
+    multi_family: {
+      condition: 'Property type = mfh',
+      strategy: 'MFH Stack or SubTo Hybrid',
+      loi: 'AI LOI MFH Stack',
+      pitch: 'SubTo Hybrid Pivot (MFH)',
+    },
+    portfolio: {
+      condition: 'Multiple properties from same seller',
+      strategy: 'Portfolio Stack + LLC',
+      loi: 'Portfolio Stack LOI',
+      pitch: 'Portfolio',
+    },
+    dscr_tight: {
+      condition: 'DSCR < 1.25 AND Property type = mfh',
+      strategy: 'SubTo MFH Pivot',
+      loi: 'Subject To LOI Template',
+      pitch: 'SubTo Hybrid Pivot (MFH)',
+    },
+    midterm_salvage: {
+      condition: '1% rule fails BUT mid-term rent potential > 1%',
+      strategy: 'Mid-Term (Furnished Finder)',
+      loi: 'Interest Only Stack LOI',
+      pitch: 'Mid-Term Pivot',
+    },
+  },
+};
+
+// =============================================================
+// 5-LAYER SELLER PROTECTION LANGUAGE
+// =============================================================
+
+const SELLER_PROTECTION = {
+  description: '5 layers of protection for seller finance deals.',
+  layers: [
+    {
+      layer: 1,
+      name: 'Automated Bookkeeper',
+      description: 'A bookkeeper will be in place to ensure automated wires are sent each month via direct deposit for the existing payments and seller financing portion.',
+    },
+    {
+      layer: 2,
+      name: 'Performance Clause',
+      description: 'A performance clause within the agreement ensures contractual obligations are met.',
+    },
+    {
+      layer: 3,
+      name: 'Promissory Note',
+      description: 'A promissory note ensuring the balloon payment is automatically wired at maturity.',
+    },
+    {
+      layer: 4,
+      name: 'Deed in Lieu of Foreclosure',
+      description: 'A deed in lieu of foreclosure that allows the seller to regain ownership of the property within 15 days of a missed payment — bypassing the foreclosure process and preserving the built-in equity and completed renovations.',
+    },
+    {
+      layer: 5,
+      name: 'Personal Guarantee',
+      description: 'A personal guarantee backing the obligations.',
+    },
+  ],
 };
 
 // =============================================================
@@ -452,7 +701,7 @@ const PLACEHOLDER_MAP = {
   '{{PSA Signed Date}}': lead => lead.psa_signed_date || '[Date]',
   '{{Inspection Period Days}}': lead => String(lead.inspection_period_days || '14'),
   '{{Inspection End Date}}': lead => lead.inspection_end_date || '[Date]',
-  '{{Inspection Date}}': lead => lead.inspection_end_date || '[Date]',
+  '{{Inspection Date}}': lead => lead.inspection_scheduled_date || lead.inspection_end_date || '[Date]',
   '{{COE Date}}': lead => lead.coe_date || '[Date]',
 
   // Title / TC
@@ -475,7 +724,7 @@ const PLACEHOLDER_MAP = {
   // JV
   '{{Your Percentage}}': () => '25',
   '{{Managing Party}}': lead => lead.llc_name || 'Divinity Aligned LLC',
-  '{{Title Holder}}': lead => lead.llc_name || 'Divinity Aligned LLC',
+  '{{Title Holder}}': lead => lead.title_holder || lead.llc_name || 'Divinity Aligned LLC',
 
   // SubTo
   '{{Processor Name}}': () => 'To be confirmed',
@@ -487,7 +736,7 @@ const PLACEHOLDER_MAP = {
   '{{Carryback Start Date}}': () => '[Start Date]',
 
   // Conditionals
-  '{{appraisalAbovePP}}': lead => (lead.arv && lead.price) ? lead.arv >= lead.price : true,
+  '{{appraisalAbovePP}}': lead => (lead.appraisal_value && lead.price) ? lead.appraisal_value >= lead.price : true,
   '{{isSubTo}}': lead => lead.recommended_strategy === 'subto' || lead.has_subto_addendum === true,
   '{{hasSellerCarryback}}': lead => !!lead.existing_loan_balance,
 };
@@ -578,7 +827,7 @@ function fillTemplate(templateName, templateDef, lead) {
  * Get all scripts applicable to a stage.
  */
 function getScriptsForStage(stage, lead) {
-  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES };
+  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES, ...CALL_SCRIPTS, ...PITCH_SCRIPTS };
   const results = [];
 
   for (const [key, def] of Object.entries(allDefs)) {
@@ -596,13 +845,26 @@ function getScriptsForStage(stage, lead) {
  */
 function getTransitionScripts(fromStage, toStage, lead) {
   const transitionMap = {
-    'NEW_LEAD→QUALIFIED': ['INT', 'CCC'],
-    'QUALIFIED→LOI_REQUESTED': ['LOI_FOLLOWUP'],
-    'LOI_REQUESTED→LOI_APPROVED': ['LOI_RECIEVED_YES'],
-    'LOI_APPROVED→OFFER_SENT': ['GCJ'],
-    'OFFER_SENT→NEGOTIATING': ['NOA', 'EVERYBODY_WINS_PITCH'],
-    'NEGOTIATING→UNDER_CONTRACT': ['PSA_CALL_OPENER_SMS', 'CONTRACT_OUT'],
-    'UNDER_CONTRACT→CLOSED': ['CLOSING_CONFIRMED', 'JV_SIGNED', 'SUBTO_PROCESSOR_CONFIRMED'],
+    'LEAD_ENTERED→CONTACT_MADE': ['INT', 'CCC'],
+    'CONTACT_MADE→OFFER_READY': ['F50', 'F10'],
+    'OFFER_READY→OFFER_SENT': ['GCJ'],
+    'OFFER_SENT→OFFER_RECEIVED': ['LOI_RECIEVED_YES'],
+    'OFFER_RECEIVED→GAIN_FEEDBACK': ['LOI', 'EVERYBODY_WINS_PITCH'],
+    'GAIN_FEEDBACK→NO_ANSWER': ['LOI2DAYS', 'SD'],
+    'NO_ANSWER→SELLER_DECLINED': ['SD'],
+    'SELLER_DECLINED→ACTIVE_NEGOTIATION': ['GOOD_STANDING'],
+    'ACTIVE_NEGOTIATION→TERMS_AGREED': [],
+    'TERMS_AGREED→AWAITING_TITLE': ['CCC'],
+    'AWAITING_TITLE→CONTRACT_OUT': ['PSA_CALL_OPENER_SMS', 'CONTRACT_OUT'],
+    'CONTRACT_OUT→UNDER_CONTRACT': ['INSPECTION_SCHEDULED'],
+    'UNDER_CONTRACT→INSPECTION_PERIOD': [],
+    'INSPECTION_PERIOD→INSPECTION_COMPLETE': [],
+    'INSPECTION_COMPLETE→APPRAISAL_ORDERED': [],
+    'APPRAISAL_ORDERED→APPRAISAL_DONE': ['APPRAISAL_DONE'],
+    'APPRAISAL_DONE→JV_SENT': [],
+    'JV_SENT→JV_SIGNED': ['JV_SIGNED'],
+    'JV_SIGNED→WIRE_SETUP': ['SUBTO_PROCESSOR_CONFIRMED'],
+    'WIRE_SETUP→CLOSING_DATE': ['CLOSING_CONFIRMED'],
     '*→DEAD': ['SD'],
   };
 
@@ -624,7 +886,7 @@ function getTransitionScripts(fromStage, toStage, lead) {
  * Get a single template by shortcut code.
  */
 function getTemplateByShortcut(shortcut, lead) {
-  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES };
+  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES, ...CALL_SCRIPTS, ...PITCH_SCRIPTS };
   for (const [key, def] of Object.entries(allDefs)) {
     if (def.shortcut === shortcut || key === shortcut) {
       return fillTemplate(key, def, lead);
@@ -637,7 +899,7 @@ function getTemplateByShortcut(shortcut, lead) {
  * List all available template shortcuts.
  */
 function listAllShortcuts() {
-  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES };
+  const allDefs = { ...OUTREACH_SCRIPTS, ...SELLER_UPDATE_TEMPLATES, ...CALL_SCRIPTS, ...PITCH_SCRIPTS };
   return Object.entries(allDefs).map(([key, def]) => ({
     key,
     shortcut: def.shortcut || key,
@@ -656,5 +918,9 @@ module.exports = {
   listAllShortcuts,
   OUTREACH_SCRIPTS,
   SELLER_UPDATE_TEMPLATES,
+  CALL_SCRIPTS,
+  PITCH_SCRIPTS,
+  EXIT_STRATEGY_CHEATSHEET,
+  SELLER_PROTECTION,
   PLACEHOLDER_MAP,
 };

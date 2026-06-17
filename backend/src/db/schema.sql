@@ -1,6 +1,7 @@
 -- =============================================================
 -- Divinity CRM Platform — Neon Postgres Schema
--- Built: 2026-06-15 | Stack: Neon + Express + React + Clerk
+-- Built: 2026-06-15 | Rebuilt: 2026-06-17 (21-stage pipeline)
+-- Stack: Neon + Express + React + Clerk
 -- =============================================================
 -- 
 -- How to apply:
@@ -19,14 +20,34 @@
 -- =============================================================
 
 CREATE TYPE pipeline_stage AS ENUM (
-  'NEW_LEAD',
-  'QUALIFIED',
-  'LOI_REQUESTED',
-  'LOI_APPROVED',
+  -- MONTELLI (Stages 1-3)
+  'LEAD_ENTERED',
+  'CONTACT_MADE',
+  'OFFER_READY',
+  -- KAYLA (Stages 4-10)
   'OFFER_SENT',
-  'NEGOTIATING',
+  'OFFER_RECEIVED',
+  'GAIN_FEEDBACK',
+  'NO_ANSWER',
+  'SELLER_DECLINED',
+  'ACTIVE_NEGOTIATION',
+  'TERMS_AGREED',
+  -- CONTRACTS (Stages 11-12)
+  'AWAITING_TITLE',
+  'CONTRACT_OUT',
+  -- TC PIPELINE (Stages 13-17)
   'UNDER_CONTRACT',
-  'CLOSED',
+  'INSPECTION_PERIOD',
+  'INSPECTION_COMPLETE',
+  'APPRAISAL_ORDERED',
+  'APPRAISAL_DONE',
+  -- JV (Stages 18-19)
+  'JV_SENT',
+  'JV_SIGNED',
+  -- CLOSING (Stages 20-21)
+  'WIRE_SETUP',
+  'CLOSING_DATE',
+  -- Terminal
   'ARCHIVED',
   'DEAD'
 );
@@ -39,7 +60,11 @@ CREATE TYPE contract_type AS ENUM (
   'stack10',
   'jv',
   'commercial',
-  'portfolio'
+  'portfolio',
+  'novation',
+  'zero_down',
+  'interest_only',
+  'mfh_stack'
 );
 
 CREATE TYPE lead_source AS ENUM (
@@ -87,6 +112,20 @@ CREATE TYPE user_role AS ENUM (
   'underwriter'
 );
 
+CREATE TYPE jv_type AS ENUM (
+  '3_party',
+  '4_party',
+  'none'
+);
+
+CREATE TYPE nurture_stage AS ENUM (
+  '30_day',
+  '60_day',
+  '90_day',
+  '181_day',
+  'none'
+);
+
 -- =============================================================
 -- USERS (synced with Clerk via webhook)
 -- =============================================================
@@ -104,7 +143,7 @@ CREATE TABLE users (
 );
 
 -- =============================================================
--- LEADS (the core table)
+-- LEADS (the core table — 21-stage pipeline)
 -- =============================================================
 
 CREATE TABLE leads (
@@ -121,7 +160,7 @@ CREATE TABLE leads (
   -- Basic info
   price NUMERIC(12,2),
   source lead_source DEFAULT 'other',
-  stage pipeline_stage NOT NULL DEFAULT 'NEW_LEAD',
+  stage pipeline_stage NOT NULL DEFAULT 'LEAD_ENTERED',
   
   -- Property details
   beds INTEGER,
@@ -137,6 +176,7 @@ CREATE TABLE leads (
   population INTEGER,
   population_ok BOOLEAN,
   buy_box_passed BOOLEAN,
+  buy_box_match BOOLEAN DEFAULT true,
   
   -- Contacts
   agent_name TEXT,
@@ -185,12 +225,16 @@ CREATE TABLE leads (
   
   -- Contract
   contract contract_type,
+  contract_type TEXT,                     -- human-readable: 'PSA Creative SubTo', 'Stack PSA', etc.
+  contract_draft_url TEXT,                -- URL to generated contract document
   psa_signed_date DATE,
   coe_date DATE,
   inspection_end_date DATE,
   inspection_period_days INTEGER DEFAULT 14,
+  inspection_scheduled_date DATE,
   emd_amount NUMERIC(10,2) DEFAULT 100,
   has_subto_addendum BOOLEAN DEFAULT false,
+  wrap_around_disclosure BOOLEAN DEFAULT false,
   title_company TEXT DEFAULT 'CLOSE Title',
   title_company_email TEXT DEFAULT 'order@closedtitle.com',
   title_company_phone TEXT DEFAULT '1-800-405-7150',
@@ -199,6 +243,43 @@ CREATE TABLE leads (
   tc_phone TEXT DEFAULT '262-440-2916',
   llc_name TEXT,
   llc_role TEXT,
+  
+  -- RabbitSign
+  rabbitsign_envelope_id TEXT,
+  rabbitsign_status TEXT,                 -- sent, viewed, signed, completed, declined
+  
+  -- JV
+  jv_type jv_type DEFAULT 'none',
+  jv_parties TEXT[],                      -- array of party names
+  jv_percentages NUMERIC(5,2)[],         -- array of percentages
+  title_holder TEXT,                      -- entity holding title
+  
+  -- Wire / Closing
+  wire_confirmed BOOLEAN DEFAULT false,
+  subto_processor_confirmed BOOLEAN DEFAULT false,
+  closing_cost_breakdown JSONB,           -- full breakdown from closing-cost-allocator
+  estimated_profit NUMERIC(12,2),
+  
+  -- Appraisal
+  appraisal_value NUMERIC(12,2),
+  
+  -- Negotiation
+  seller_counter NUMERIC(12,2),
+  
+  -- Disposition
+  disposition_status TEXT,                -- pending, assigned, sold, novated
+  disposition_payout NUMERIC(12,2),
+  
+  -- Nurture
+  nurture_stage nurture_stage DEFAULT 'none',
+  
+  -- Loan details (for SubTo)
+  loan_number TEXT,
+  lender_servicer TEXT,
+  monthly_pi NUMERIC(10,2),              -- monthly principal + interest on existing loan
+  
+  -- Lead source tracking
+  lead_source TEXT,                       -- detailed source (PPC, FB, Website, List_Pull, Referral, etc.)
   
   -- Dead deal tracking
   dead_reason TEXT,
@@ -227,6 +308,8 @@ CREATE INDEX idx_leads_stage ON leads(stage);
 CREATE INDEX idx_leads_created_at ON leads(created_at);
 CREATE INDEX idx_leads_address ON leads(address);
 CREATE INDEX idx_leads_follow_up ON leads(follow_up_48hr_due) WHERE follow_up_48hr_done = false;
+CREATE INDEX idx_leads_nurture ON leads(nurture_stage) WHERE nurture_stage != 'none';
+CREATE INDEX idx_leads_rabbitsign ON leads(rabbitsign_envelope_id) WHERE rabbitsign_envelope_id IS NOT NULL;
 
 -- =============================================================
 -- LEAD HISTORY (audit trail for every stage change)
@@ -252,7 +335,7 @@ CREATE TABLE reminders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('48hr_followup', 'dom_181', 'custom', 'inspection', 'coe', 'testimonial', 'referral')),
+  type TEXT NOT NULL CHECK (type IN ('48hr_followup', 'dom_181', 'custom', 'inspection', 'coe', 'testimonial', 'referral', '72hr_title', '30_day_nurture', '60_day_nurture', '90_day_nurture', '181_day_nurture', 'appraisal', 'closing', 'wire', 'other')),
   due_date TIMESTAMPTZ NOT NULL,
   notes TEXT,
   completed BOOLEAN DEFAULT false,
@@ -298,13 +381,13 @@ CREATE TABLE clauses (
 );
 
 -- =============================================================
--- SCRIPT TEMPLATES (reference table — all 33 templates)
+-- SCRIPT TEMPLATES (reference table — all templates)
 -- =============================================================
 
 CREATE TABLE script_templates (
   id TEXT PRIMARY KEY,                    -- e.g. 'int', 'ccc', 'contract_out'
   name TEXT NOT NULL,
-  category TEXT NOT NULL,                 -- outreach, seller_update, ppc, call_script, pitch, objection
+  category TEXT NOT NULL,                 -- outreach, seller_update, ppc, call_script, pitch, objection, loi, contract
   body TEXT NOT NULL,                     -- template with {{placeholders}}
   merge_fields TEXT[],                    -- array of placeholder names
   stage pipeline_stage,                   -- which stage this script is used at
@@ -411,10 +494,9 @@ INSERT INTO clauses (id, title, text, requires_initial, conditional_on, category
 -- =============================================================
 
 INSERT INTO script_templates (id, name, category, body, merge_fields, stage) VALUES
-('int', 'INT - Intro Text', 'outreach', '{{seller_name}}, are you still accepting offers for {{address}}? My name is Montelli, I''m looking to purchase a rental for my portfolio.', ARRAY['seller_name', 'address'], 'NEW_LEAD'),
-('ccc', 'CCC - Contact Card', 'outreach', 'It is great aligning with you {{seller_name}}, I look forward to connecting the dots with you shortly at {{address}}. Feel free to browse through our closings with similar clients on our website — Divinity Aligned LLC: Expert Solutions for Life''s Major Transitions', ARRAY['seller_name', 'address'], 'QUALIFIED'),
+('int', 'INT - Intro Text', 'outreach', '{{seller_name}}, are you still accepting offers for {{address}}? My name is Montelli, I''m looking to purchase a rental for my portfolio.', ARRAY['seller_name', 'address'], 'LEAD_ENTERED'),
+('ccc', 'CCC - Contact Card', 'outreach', 'It is great aligning with you {{seller_name}}, I look forward to connecting the dots with you shortly at {{address}}. Feel free to browse through our closings with similar clients on our website — Divinity Aligned LLC: Expert Solutions for Life''s Major Transitions', ARRAY['seller_name', 'address'], 'CONTACT_MADE'),
 ('gcj', 'GCJ - Group Chat Join', 'outreach', '{{seller_name}} - happy {{day}}! Creating a group chat for the purchase on {{address}} with my business partner Kayla. She is currently in a meeting with our lender; The LOI will be coming from our partner at homewithkaylamauser@gmail.com ; simply inform us it has been received for presentation, and also ensure to check other folders as well. Have a blessed rest of your week!', ARRAY['seller_name', 'day', 'address'], 'OFFER_SENT'),
 ('sd', 'SD - Seller Declined', 'outreach', 'Happy {{day}}! Thank you for the update – feel free to revisit this right before the listing expires if your seller has not been able to find their number with owner occupants. Wishing you a smooth closing – feel free to keep us in mind for the future if you have listings that can''t sell out right and are owned outright.', ARRAY['day'], 'DEAD'),
-('contract_out', 'CONTRACT_OUT - PSA Signed', 'seller_update', 'Hi {{seller_name}}, your purchase agreement for {{address}} has been fully signed! Here''s your timeline: Contract Effective Date: {{psa_signed_date}}, Inspection Period: {{inspection_days}} days (ends {{inspection_end}}), Close of Escrow: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}). Next: Our transaction coordinator {{tc_name}} ({{tc_email}}, {{tc_phone}}) will reach out about lockbox/utility access for inspection.', ARRAY['seller_name', 'address', 'psa_signed_date', 'inspection_days', 'inspection_end', 'coe_date', 'title_company', 'title_phone', 'tc_name', 'tc_email', 'tc_phone'], 'UNDER_CONTRACT'),
-('closing_confirmed', 'CLOSING_CONFIRMED - 7 Days to COE', 'seller_update', 'Hi {{seller_name}}, we''re ONE WEEK from closing on {{address}}! Closing Details: Close of Escrow Date: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}), Your net proceeds: {{net_to_seller}}.', ARRAY['seller_name', 'address', 'coe_date', 'title_company', 'title_phone', 'net_to_seller'], 'CLOSED');
-
+('contract_out', 'CONTRACT_OUT - PSA Signed', 'seller_update', 'Hi {{seller_name}}, your purchase agreement for {{address}} has been fully signed! Here''s your timeline: Contract Effective Date: {{psa_signed_date}}, Inspection Period: {{inspection_days}} days (ends {{inspection_end}}), Close of Escrow: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}). Next: Our transaction coordinator {{tc_name}} ({{tc_email}}, {{tc_phone}}) will reach out about lockbox/utility access for inspection.', ARRAY['seller_name', 'address', 'psa_signed_date', 'inspection_days', 'inspection_end', 'coe_date', 'title_company', 'title_phone', 'tc_name', 'tc_email', 'tc_phone'], 'CONTRACT_OUT'),
+('closing_confirmed', 'CLOSING_CONFIRMED - 7 Days to COE', 'seller_update', 'Hi {{seller_name}}, we''re ONE WEEK from closing on {{address}}! Closing Details: Close of Escrow Date: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}), Your net proceeds: {{net_to_seller}}.', ARRAY['seller_name', 'address', 'coe_date', 'title_company', 'title_phone', 'net_to_seller'], 'CLOSING_DATE');

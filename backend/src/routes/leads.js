@@ -111,7 +111,7 @@ router.post('/', async (req, res, next) => {
         condition || 'unknown',
         agent_name || null, agent_phone || null, agent_email || null,
         seller_name || null, seller_phone || null, seller_email || null,
-        notes || '', 'NEW_LEAD',
+        notes || '', 'LEAD_ENTERED',
       ]
     );
 
@@ -122,6 +122,61 @@ router.post('/', async (req, res, next) => {
     );
 
     res.status(201).json({ lead: lead[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/:id/pokemon — "We Play Pokémon" — spawn new lead from closed seller
+router.post('/:id/pokemon', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const leadId = req.params.id;
+
+    // Get the closed lead
+    const existing = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Lead not found' });
+
+    const source = existing[0];
+
+    // Create new portfolio lead from seller
+    const newLead = await query(
+      `INSERT INTO leads (
+        id, user_id, address, city, state, zip, price, source,
+        seller_name, seller_phone, seller_email,
+        agent_name, agent_phone, agent_email,
+        notes, stage, lead_source
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11,
+        $12, $13, $14,
+        $15, $16, $17
+      )
+      RETURNING *`,
+      [
+        uuid(), userId,
+        `${source.seller_name || 'Seller'} — Portfolio`,
+        source.city, source.state, source.zip,
+        null, 'referral',
+        source.seller_name, source.seller_phone, source.seller_email,
+        source.agent_name, source.agent_phone, source.agent_email,
+        `Closed deal at ${source.address}. Seller may have more properties. Spawned via "We Play Pokémon" from lead ${leadId}.`,
+        'LEAD_ENTERED', 'referral',
+      ]
+    );
+
+    // Log activity
+    await query(
+      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+      [userId, newLead[0].id, 'pokemon_spawned', JSON.stringify({ fromLeadId: leadId, fromAddress: source.address, sellerName: source.seller_name })]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: `Pokémon spawned! New portfolio lead for ${source.seller_name || source.address}.`,
+      lead: newLead[0],
+      spawnedFrom: { id: leadId, address: source.address },
+    });
   } catch (err) {
     next(err);
   }
@@ -141,7 +196,7 @@ router.patch('/:id', async (req, res, next) => {
     const allowedFields = [
       'address', 'city', 'state', 'zip', 'apn', 'price', 'source', 'stage',
       'beds', 'baths', 'sqft', 'lot_size', 'year_built', 'condition', 'condition_rating', 'property_type',
-      'population', 'population_ok', 'buy_box_passed',
+      'population', 'population_ok', 'buy_box_passed', 'buy_box_match',
       'agent_name', 'agent_phone', 'agent_email',
       'seller_name', 'seller_phone', 'seller_email',
       'roof_age', 'hvac_age', 'occupancy', 'monthly_rent', 'lease', 'utilities_on',
@@ -153,10 +208,20 @@ router.patch('/:id', async (req, res, next) => {
       'f10_offer', 'f10_down', 'f10_carryback',
       'subto_offer', 'subto_assumed_debt',
       'midterm_offer', 'midterm_monthly_rent',
-      'contract', 'psa_signed_date', 'coe_date', 'inspection_end_date',
-      'inspection_period_days', 'emd_amount', 'has_subto_addendum',
+      'contract', 'contract_type', 'contract_draft_url',
+      'psa_signed_date', 'coe_date', 'inspection_end_date', 'inspection_scheduled_date',
+      'inspection_period_days', 'emd_amount', 'has_subto_addendum', 'wrap_around_disclosure',
       'title_company', 'title_company_email', 'title_company_phone',
       'tc_name', 'tc_email', 'tc_phone', 'llc_name', 'llc_role',
+      'jv_type', 'jv_parties', 'jv_percentages', 'title_holder',
+      'wire_confirmed', 'subto_processor_confirmed',
+      'closing_cost_breakdown', 'estimated_profit',
+      'appraisal_value', 'seller_counter',
+      'disposition_status', 'disposition_payout',
+      'nurture_stage',
+      'loan_number', 'lender_servicer', 'monthly_pi',
+      'lead_source',
+      'rabbitsign_envelope_id', 'rabbitsign_status',
       'dead_reason', 'dom', 'dom_181_reminder_date',
       'offer_sent_date', 'follow_up_48hr_due', 'follow_up_48hr_done',
       'loi_sent_date', 'loi_approved_date', 'contract_date', 'closed_date',
@@ -221,6 +286,24 @@ router.delete('/:id', async (req, res, next) => {
 
 // GET /api/leads/:id/transitions — Get available next stages
 router.get('/:id/transitions', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const leadId = req.params.id;
+
+    const existing = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Lead not found' });
+
+    const fromStage = existing[0].stage;
+    const validTransitions = getAvailableTransitions(fromStage);
+
+    res.json({ current_stage: fromStage, available_transitions: validTransitions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/:id/advance — Advance lead to next stage
+router.post('/:id/advance', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     const leadId = req.params.id;

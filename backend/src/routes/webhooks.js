@@ -59,38 +59,10 @@ router.post('/clerk', async (req, res, next) => {
 // Configure in RabbitSign → My Account → Developer API → Webhook URL
 router.post('/rabbitsign', async (req, res, next) => {
   try {
-    const { folderId, status, signers } = req.body;
-
-    // Find the contract by RabbitSign envelope ID
-    const contract = await query(
-      'SELECT * FROM contracts WHERE rabbitsign_envelope_id = $1',
-      [folderId]
-    );
-
-    if (contract.length > 0) {
-      await query(
-        'UPDATE contracts SET rabbitsign_status = $1 WHERE id = $2',
-        [status, contract[0].id]
-      );
-
-      if (status === 'completed') {
-        // Update lead stage to UNDER_CONTRACT if not already
-        await query(
-          'UPDATE leads SET stage = $1 WHERE id = $2 AND stage != $3',
-          ['UNDER_CONTRACT', contract[0].lead_id, 'UNDER_CONTRACT']
-        );
-
-        // Log activity
-        await query(
-          'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-          [contract[0].user_id, contract[0].lead_id, 'contract_signed', JSON.stringify({ folderId, status })]
-        );
-      }
-
-      console.log(`RabbitSign webhook: folder ${folderId} — ${status}`);
-    }
-
-    res.json({ received: true });
+    const rs = require('../services/rabbitsign');
+    const result = await rs.handleWebhook(req.body);
+    console.log(`RabbitSign webhook handled: ${JSON.stringify(result)}`);
+    res.json({ received: true, ...result });
   } catch (err) {
     console.error('RabbitSign webhook error:', err);
     res.status(500).json({ error: 'Webhook processing failed' });
