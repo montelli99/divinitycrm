@@ -18,6 +18,7 @@ const NEXT_STAGE = {
 
 export default function Pipeline() {
   const [pipeline, setPipeline] = useState(null);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState({});
   const [dragOver, setDragOver] = useState(null);
@@ -26,7 +27,14 @@ export default function Pipeline() {
   const [scriptPrompts, setScriptPrompts] = useState(null);
 
   const loadPipeline = useCallback(async () => {
-    try { setPipeline(await api.getPipeline()); }
+    try {
+      const [pipeData, healthData] = await Promise.all([
+        api.getPipeline(),
+        api.getPipelineHealth().catch(() => null),
+      ]);
+      setPipeline(pipeData);
+      setHealth(healthData);
+    }
     catch (err) { console.error('Pipeline load error:', err); }
     finally { setLoading(false); }
   }, []);
@@ -114,6 +122,50 @@ export default function Pipeline() {
         </div>
       )}
 
+      {/* Pipeline Health Monitor */}
+      {health && (
+        <div style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '1rem',
+          marginBottom: '1rem',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: '600', margin: 0, color: 'var(--text-primary)' }}>
+              🏥 Pipeline Health Monitor
+            </h3>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+              Scanned: {new Date(health.scannedAt).toLocaleTimeString()}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <HealthBadge label="Total Active" value={health.stats.total} color="var(--text-primary)" />
+            <HealthBadge label="Stalled (7d+)" value={health.stats.stalled} color={health.stats.stalled > 0 ? '#f59e0b' : '#4ade80'} />
+            <HealthBadge label="48hr Overdue" value={health.stats.overdue48hr} color={health.stats.overdue48hr > 0 ? '#ef4444' : '#4ade80'} />
+            <HealthBadge label="Abandoned (30d+)" value={health.stats.abandoned} color={health.stats.abandoned > 0 ? '#ef4444' : '#4ade80'} />
+            <HealthBadge label="Closed" value={health.stats.closedCount} color="#4ade80" />
+          </div>
+          {health.alerts?.length > 0 && (
+            <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {health.alerts.map((a, i) => (
+                <div key={i} style={{
+                  fontSize: '0.78rem',
+                  padding: '0.35rem 0.6rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: a.severity === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                  color: a.severity === 'red' ? '#fca5a5' : '#fcd34d',
+                  border: `1px solid ${a.severity === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                }}>
+                  {a.severity === 'red' ? '🔴' : '🟡'} <strong>{a.type.replace(/_/g, ' ')}</strong>
+                  {a.address ? ` — ${a.address}` : ''}: {a.detail}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {automationResults && (
         <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
           ⚡ <strong>{automationResults.workflow}</strong> fired — {automationResults.actions_executed} actions
@@ -157,9 +209,14 @@ export default function Pipeline() {
                         <Link to={`/leads/${lead.id}`} className="card-address" onClick={e => e.stopPropagation()}>{lead.address}</Link>
                         <div className="card-meta">
                           <span className="card-price">{lead.price ? `$${Number(lead.price).toLocaleString()}` : '—'}</span>
-                          <span className="card-days">{lead.days_in_stage}d</span>
+                          <span className="card-days" style={{
+                            color: lead.days_in_stage > 7 ? '#f59e0b' : lead.days_in_stage > 2 ? '#fcd34d' : 'var(--text-tertiary)',
+                            fontWeight: lead.days_in_stage > 7 ? '600' : '400',
+                          }}>{lead.days_in_stage}d</span>
                         </div>
                         {lead.stalled && <div className="card-stalled">⚠ Stalled — {lead.days_in_stage} days</div>}
+                        {lead.days_in_stage > 30 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>🔴 Abandoned — {lead.days_in_stage} days</div>}
+                        {lead.stage === 'OFFER_SENT' && lead.days_in_stage > 2 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 48hr overdue — call now</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
                           {nextStage && (
@@ -193,6 +250,23 @@ export default function Pipeline() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function HealthBadge({ label, value, color }) {
+  return (
+    <div style={{
+      background: 'var(--bg-tertiary)',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: 'var(--radius-md)',
+      padding: '0.4rem 0.7rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.4rem',
+    }}>
+      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontSize: '0.85rem', fontWeight: '700', color }}>{value}</span>
     </div>
   );
 }

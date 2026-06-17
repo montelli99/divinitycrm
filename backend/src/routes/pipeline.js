@@ -59,29 +59,52 @@ router.get('/', async (req, res, next) => {
       ? Math.round((stats[0].closed / (stats[0].closed + stats[0].dead)) * 100) 
       : 0;
 
-    // Health alerts (pipeline-monitor.js logic)
+    // Health alerts (full pipeline-monitor.js logic)
     const alerts = [];
     
     const newLeads = byStage['NEW_LEAD'] || [];
-    const offerSent = byStage['OFFER_SENT'] || [];
+    const qualified = byStage['QUALIFIED'] || [];
+    const loiRequested = byStage['LOI_REQUESTED'] || [];
     const loiApproved = byStage['LOI_APPROVED'] || [];
+    const offerSent = byStage['OFFER_SENT'] || [];
+    const negotiating = byStage['NEGOTIATING'] || [];
     const underContract = byStage['UNDER_CONTRACT'] || [];
 
+    // 1. Stale leads: Stage 1 > 7 days
     newLeads.forEach(l => {
-      if (l.days_in_stage > 7) alerts.push({ severity: 'yellow', type: 'stale_lead', lead: l.address, detail: `${l.days_in_stage} days at New Lead` });
+      if (l.days_in_stage > 7) alerts.push({ severity: 'yellow', type: 'stale_lead', lead: l.address, detail: `${l.days_in_stage} days at New Lead — no contact made` });
     });
 
+    // 2. Abandoned: Any stage > 30 days
+    [...newLeads, ...qualified, ...loiRequested, ...loiApproved, ...offerSent, ...negotiating, ...underContract].forEach(l => {
+      if (l.days_in_stage > 30) alerts.push({ severity: 'red', type: 'abandoned', lead: l.address, detail: `${l.days_in_stage} days no movement — mark lost?` });
+    });
+
+    // 3. Offer stalled: Offer Sent > 2 days (48hr)
     offerSent.forEach(l => {
-      if (l.days_in_stage > 2) alerts.push({ severity: 'red', type: 'offer_stalled', lead: l.address, detail: `${l.days_in_stage} days at Offer Sent — no response` });
+      if (l.days_in_stage > 2) alerts.push({ severity: 'red', type: 'offer_stalled', lead: l.address, detail: `${l.days_in_stage} days at Offer Sent — no response. Call.` });
     });
 
+    // 4. Contract unsigned: Under Contract > 3 days
+    underContract.forEach(l => {
+      if (l.days_in_stage > 3) alerts.push({ severity: 'red', type: 'contract_unsigned', lead: l.address, detail: `${l.days_in_stage} days — contract unsigned. Follow up.` });
+    });
+
+    // 5. Offer cliff: 5+ offers sent, 0 approved
     if (offerSent.length > 5 && loiApproved.length === 0) {
-      alerts.push({ severity: 'red', type: 'offer_cliff', lead: 'PIPELINE', detail: `${offerSent.length} offers sent, 0 approved` });
+      alerts.push({ severity: 'red', type: 'offer_cliff', lead: 'PIPELINE-WIDE', detail: `${offerSent.length} offers sent, 0 approved. Sellers are ghosting.` });
     }
 
+    // 6. Contract gap: 3+ under contract, 0 closed
     if (underContract.length > 3 && stats[0].closed === 0) {
-      alerts.push({ severity: 'red', type: 'contract_gap', lead: 'PIPELINE', detail: `${underContract.length} under contract, 0 closed` });
+      alerts.push({ severity: 'red', type: 'contract_gap', lead: 'PIPELINE-WIDE', detail: `${underContract.length} under contract, 0 closed. Deals dying in final stage.` });
     }
+
+    // 7. 48hr follow-up overdue
+    const overdue48hr = leads.filter(l => l.stage === 'OFFER_SENT' && !l.follow_up_48hr_done && l.follow_up_48hr_due && new Date(l.follow_up_48hr_due) < new Date());
+    overdue48hr.forEach(l => {
+      alerts.push({ severity: 'red', type: '48hr_overdue', lead: l.address, detail: `48hr follow-up overdue — call now.` });
+    });
 
     // Reminders due today
     const today = new Date().toISOString().split('T')[0];
@@ -211,6 +234,86 @@ function getNextAction(lead) {
   };
   return actions[lead.stage] || 'Review';
 }
+
+// GET /api/pipeline/health — Dedicated pipeline health scan
+router.get('/health', async (req, res, next) => {
+  try {
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const userId = user[0].id;
+
+    const leads = await sql`
+      SELECT id, address, stage, price, created_at, last_stage_change_at,
+             follow_up_48hr_due, follow_up_48hr_done, updated_at
+      FROM leads 
+      WHERE user_id = ${userId} 
+      AND stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')
+      ORDER BY last_stage_change_at ASC
+    `;
+
+    const now = new Date();
+    const alerts = [];
+    const stats = { total: leads.length, byStage: {}, stalled: 0, overdue48hr: 0, abandoned: 0 };
+
+    leads.forEach(l => {
+      stats.byStage[l.stage] = (stats.byStage[l.stage] || 0) + 1;
+      const daysInStage = Math.floor((now - new Date(l.last_stage_change_at)) / 86400000);
+
+      // Stale: New Lead > 7 days
+      if (l.stage === 'NEW_LEAD' && daysInStage > 7) {
+        stats.stalled++;
+        alerts.push({ type: 'stale_lead', severity: 'yellow', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days at New Lead — no contact made` });
+      }
+
+      // Abandoned: Any stage > 30 days
+      if (daysInStage > 30) {
+        stats.abandoned++;
+        alerts.push({ type: 'abandoned', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days no movement — mark lost?` });
+      }
+
+      // Offer stalled: Offer Sent > 2 days
+      if (l.stage === 'OFFER_SENT' && daysInStage > 2) {
+        alerts.push({ type: 'offer_stalled', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days at Offer Sent — no response. Call.` });
+      }
+
+      // 48hr overdue
+      if (l.stage === 'OFFER_SENT' && !l.follow_up_48hr_done && l.follow_up_48hr_due && new Date(l.follow_up_48hr_due) < now) {
+        stats.overdue48hr++;
+        alerts.push({ type: '48hr_overdue', severity: 'red', leadId: l.id, address: l.address, detail: '48hr follow-up overdue — call now.' });
+      }
+
+      // Contract unsigned: Under Contract > 3 days
+      if (l.stage === 'UNDER_CONTRACT' && daysInStage > 3) {
+        alerts.push({ type: 'contract_unsigned', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days — contract unsigned. Follow up.` });
+      }
+    });
+
+    // Pipeline-wide anomalies
+    const offerSentCount = stats.byStage['OFFER_SENT'] || 0;
+    const loiApprovedCount = stats.byStage['LOI_APPROVED'] || 0;
+    const underContractCount = stats.byStage['UNDER_CONTRACT'] || 0;
+
+    const closedCount = (await sql`SELECT COUNT(*) as c FROM leads WHERE user_id = ${userId} AND stage = 'CLOSED'`)[0].c;
+
+    if (offerSentCount > 5 && loiApprovedCount === 0) {
+      alerts.push({ type: 'offer_cliff', severity: 'red', detail: `${offerSentCount} offers sent, 0 approved. Sellers are ghosting.` });
+    }
+    if (underContractCount > 3 && closedCount === 0) {
+      alerts.push({ type: 'contract_gap', severity: 'red', detail: `${underContractCount} under contract, 0 closed. Deals dying in final stage.` });
+    }
+
+    res.json({
+      success: true,
+      stats: { ...stats, closedCount },
+      alerts,
+      scannedAt: now.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
 

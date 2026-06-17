@@ -14,7 +14,7 @@ const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
 // Lazy-load routes
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter;
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter;
 
 try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
@@ -24,6 +24,8 @@ try { scriptsRouter = require('./routes/scripts'); console.log('scripts route OK
 try { scriptPromptsRouter = require('./routes/script-prompts'); console.log('script-prompts route OK'); } catch(e) { console.error('script-prompts route FAIL:', e.message); }
 try { usersRouter = require('./routes/users'); console.log('users route OK'); } catch(e) { console.error('users route FAIL:', e.message); }
 try { webhooksRouter = require('./routes/webhooks'); console.log('webhooks route OK'); } catch(e) { console.error('webhooks route FAIL:', e.message); }
+try { calculatorRouter = require('./routes/calculator'); console.log('calculator route OK'); } catch(e) { console.error('calculator route FAIL:', e.message); }
+try { trainingRouter = require('./routes/training'); console.log('training route OK'); } catch(e) { console.error('training route FAIL:', e.message); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -73,6 +75,8 @@ if (scriptsRouter) app.use('/api/scripts', authMiddleware, scriptsRouter);
 if (scriptPromptsRouter) app.use('/api/scripts/prompts', authMiddleware, scriptPromptsRouter);
 if (usersRouter) app.use('/api/users', authMiddleware, usersRouter);
 if (webhooksRouter) app.use('/api/webhooks', webhooksRouter);
+if (calculatorRouter) app.use('/api/calculator', authMiddleware, calculatorRouter);
+if (trainingRouter) app.use('/api/training', authMiddleware, trainingRouter);
 
 // Error handler
 app.use((err, req, res, next) => {

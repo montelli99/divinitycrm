@@ -315,5 +315,165 @@ router.patch('/:id/reminders/:reminderId', async (req, res, next) => {
   }
 });
 
+// =============================================================
+// FOLLOW-UP SYSTEM
+// =============================================================
+
+// GET /api/leads/:id/followups — Get follow-up status for a lead
+router.get('/:id/followups', async (req, res, next) => {
+  try {
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const lead = await sql`
+      SELECT id, address, stage, offer_sent_date, follow_up_48hr_due, follow_up_48hr_done,
+             dom, dom_181_reminder_date, created_at, closed_date, updated_at
+      FROM leads WHERE id = ${req.params.id} AND user_id = ${user[0].id}
+    `;
+    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
+
+    const l = lead[0];
+
+    // Calculate DOM
+    const dom = l.dom || (l.created_at ? Math.floor((Date.now() - new Date(l.created_at).getTime()) / 86400000) : null);
+
+    // 48hr follow-up status
+    const now = new Date();
+    const followUp48hr = {
+      due: l.follow_up_48hr_due,
+      done: l.follow_up_48hr_done,
+      overdue: l.follow_up_48hr_due && !l.follow_up_48hr_done && new Date(l.follow_up_48hr_due) < now,
+      hoursRemaining: l.follow_up_48hr_due
+        ? Math.max(0, Math.floor((new Date(l.follow_up_48hr_due) - now) / 3600000))
+        : null,
+    };
+
+    // 181-day listing expiry
+    const listingExpiry = {
+      dom,
+      daysUntilExpiry: dom ? Math.max(0, 181 - dom) : null,
+      expired: dom ? dom >= 181 : false,
+      reminderDate: l.dom_181_reminder_date,
+    };
+
+    // Post-close follow-ups
+    const postClose = l.closed_date ? {
+      closedDate: l.closed_date,
+      daysSinceClose: Math.floor((now - new Date(l.closed_date)) / 86400000),
+      testimonialDue: Math.floor((now - new Date(l.closed_date)) / 86400000) >= 7,
+      referralDue: Math.floor((now - new Date(l.closed_date)) / 86400000) >= 14,
+    } : null;
+
+    // Get all reminders for this lead
+    const reminders = await sql`
+      SELECT * FROM reminders WHERE lead_id = ${req.params.id} ORDER BY due_date
+    `;
+
+    res.json({
+      success: true,
+      leadId: l.id,
+      address: l.address,
+      stage: l.stage,
+      dom,
+      followUp48hr,
+      listingExpiry,
+      postClose,
+      reminders,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/:id/followups — Create follow-up reminder
+router.post('/:id/followups', async (req, res, next) => {
+  try {
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const { type, due_date, notes } = req.body;
+    if (!type || !due_date) {
+      return res.status(400).json({ error: 'type and due_date are required' });
+    }
+
+    const validTypes = ['48hr_followup', 'listing_expiry', 'testimonial', 'referral', 'call_back', 'inspection', 'appraisal', 'closing', 'other'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const reminder = await sql`
+      INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
+      VALUES (${uuid()}, ${req.params.id}, ${user[0].id}, ${type}, ${due_date}, ${notes || null})
+      RETURNING *
+    `;
+
+    // If 48hr follow-up, also update lead record
+    if (type === '48hr_followup') {
+      await sql`
+        UPDATE leads SET follow_up_48hr_due = ${due_date} WHERE id = ${req.params.id}
+      `;
+    }
+
+    // If listing expiry, update DOM reminder
+    if (type === 'listing_expiry') {
+      await sql`
+        UPDATE leads SET dom_181_reminder_date = ${due_date} WHERE id = ${req.params.id}
+      `;
+    }
+
+    res.status(201).json({ success: true, reminder: reminder[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/leads/:id/followups/:followUpId — Complete follow-up
+router.patch('/:id/followups/:followUpId', async (req, res, next) => {
+  try {
+    const { completed, notes } = req.body;
+
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (completed !== undefined) {
+      updates.push(`completed = $${idx}`);
+      values.push(completed);
+      idx++;
+      if (completed) {
+        updates.push(`completed_at = now()`);
+      }
+    }
+    if (notes !== undefined) {
+      updates.push(`notes = $${idx}`);
+      values.push(notes);
+      idx++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    values.push(req.params.followUpId, req.params.id);
+    const query = `UPDATE reminders SET ${updates.join(', ')} WHERE id = $${idx} AND lead_id = $${idx + 1} RETURNING *`;
+    const result = await sql.unsafe(query, values);
+
+    if (result.length === 0) return res.status(404).json({ error: 'Follow-up not found' });
+
+    // If completing 48hr follow-up, update lead
+    if (completed && result[0].type === '48hr_followup') {
+      await sql`
+        UPDATE leads SET follow_up_48hr_done = true WHERE id = ${req.params.id}
+      `;
+    }
+
+    res.json({ success: true, reminder: result[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
 

@@ -74,6 +74,27 @@ export const api = {
   // Users
   getMe: () => request('/users/me'),
   updateMe: (data) => request('/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
+
+  // Calculator
+  analyzeDeal: (data) => request('/calculator/analyze', { method: 'POST', body: JSON.stringify(data) }),
+  checkBuyBox: (data) => request('/calculator/buybox', { method: 'POST', body: JSON.stringify(data) }),
+  getLeadForCalc: (id) => request(`/calculator/lead/${id}`),
+
+  // Training
+  getTrainingModules: () => request('/training'),
+  getTrainingModule: (id) => request(`/training/${id}`),
+
+  // Pipeline Health
+  getPipelineHealth: () => request('/pipeline/health'),
+
+  // Follow-ups
+  getFollowUps: (leadId) => request(`/leads/${leadId}/followups`),
+  createFollowUp: (leadId, data) => request(`/leads/${leadId}/followups`, { method: 'POST', body: JSON.stringify(data) }),
+  completeFollowUp: (leadId, followUpId) => request(`/leads/${leadId}/followups/${followUpId}`, { method: 'PATCH', body: JSON.stringify({ completed: true }) }),
+
+  // Student Roster (admin)
+  getStudents: () => request('/users/students'),
+  getStudentStats: (id) => request(`/users/students/${id}/stats`),
 };
 
 export { getToken, setToken, clearToken };

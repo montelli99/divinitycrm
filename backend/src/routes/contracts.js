@@ -9,6 +9,224 @@ const { generateContract, formatForTelegram, generateRabbitSignPayload } = requi
 
 const router = Router();
 
+// Full contract template definitions (from contract-templates.js)
+const CONTRACT_TEMPLATES = {
+  'PSA_CREATIVE_SUBTO': {
+    name: 'PSA - Creative Subject To',
+    type: 'subto',
+    description: 'Full PSA with Subject To terms + Addendum required. 4-layer seller protection.',
+    addenda: ['SubjectToAddendum'],
+    keyFields: ['propertyAddress', 'apn', 'purchasePrice', 'emdAmount', 'inspectionPeriodDays',
+      'firstMortgageBalance', 'loanNumber', 'lenderName', 'sellerCarrybackAmount',
+      'sellerCarrybackRate', 'cashAtCOE', 'coeDays', 'titleCompany', 'closingDate', 'thirdPartyProcessor'],
+    defaults: {
+      emdAmount: 100, emdDays: 14, inspectionPeriodDays: 14, coeDays: 30,
+      titleCompany: 'CLOSE Title', closingCostsResponsibility: 'Buyer pays customary closing',
+      requireThirdPartyProcessor: true, requireWrapAroundDisclosure: true,
+    },
+    clauses: [
+      'WRAP_AROUND_FINANCING_TRANSACTION', 'WRAP_AROUND_FINANCING_IS_NON_RECOURSE',
+      'WRAP_AROUND_FINANCING_IS_NOT_DUE_ON_SALE', 'NO_LONGER_DEDUCT_MORTGAGE_INTEREST',
+      'EVENT_OF_FORECLOSURE', 'EXISTING_LOAN_ON_CREDIT_REPORT',
+      'VA_LOAN_ELIGIBILITY_MAY_BE_IMPACTED', 'PROPERTY_INSURANCE_PROCEEDS',
+      'DUE_ON_SALE_CLAUSE', 'CONTINUING_LIABILITY_ON_EXISTING_LOAN',
+      'EXISTING_LOAN_NOT_PAID_IN_FULL', 'NO_FURTHER_OWNERSHIP_OR_CONTROL'
+    ],
+  },
+  'PSA_COMMERCIAL': {
+    name: 'PSA - Commercial (Novation)',
+    type: 'commercial',
+    description: 'Generic commercial PSA, 26 sections, AS-IS, buyer pays customary closing. Used for novation deals.',
+    keyFields: ['propertyAddress', 'apn', 'purchasePrice', 'emdAmount', 'inspectionPeriodDays', 'cashAtCOE', 'coeDays', 'titleCompany'],
+    defaults: { emdAmount: 1000, emdDays: 14, inspectionPeriodDays: 14, coeDays: 30, asIs: true },
+  },
+  'JV_3PARTY': {
+    name: 'JV - 3 Party Agreement',
+    type: 'jv',
+    description: '3-party joint venture for real estate profit or cash flow. Outlines profit split, management, reserves.',
+    keyFields: ['propertyAddress', 'party1Name', 'party1Email', 'party1Percent',
+      'party2Name', 'party2Email', 'party2Percent', 'party3Name', 'party3Email', 'party3Percent',
+      'managingParty', 'initialReserve'],
+    defaults: { initialReserve: 5000, majorityThreshold: 51, superMajorityThreshold: 66, nonPaymentInterestRate: 25 },
+  },
+  'JV_4PARTY': {
+    name: 'JV - 4 Party Agreement',
+    type: 'jv',
+    description: '4-party joint venture, 25% per party default. Super-majority 66%.',
+    keyFields: ['propertyAddress', 'party1Name', 'party1Email', 'party1Percent',
+      'party2Name', 'party2Email', 'party2Percent', 'party3Name', 'party3Email', 'party3Percent',
+      'party4Name', 'party4Email', 'party4Percent', 'managingParty', 'initialReserve'],
+    defaults: { party1Percent: 25, party2Percent: 25, party3Percent: 25, party4Percent: 25, initialReserve: 5000 },
+  },
+  'SUBTO_ADDENDUM': {
+    name: 'Subject To Addendum',
+    type: 'addendum',
+    description: 'Required companion to any SubTo PSA. Discloses wrap-around financing, due-on-sale, 4-layer seller protection.',
+    requiredFor: ['PSA_CREATIVE_SUBTO'],
+    keyFields: ['propertyAddress', 'sellerName', 'buyerName', 'existingLoanLender', 'existingLoanBalance', 'thirdPartyProcessorName'],
+  },
+  'NOVATION_AGREEMENT': {
+    name: 'Novation Agreement',
+    type: 'commercial',
+    description: 'Assignment of purchase contract to another buyer. Used when move-in ready house with no motivation.',
+    keyFields: ['propertyAddress', 'originalBuyer', 'newBuyer', 'assignmentFee', 'purchasePrice', 'coeDays'],
+    defaults: { assignmentFee: 10000, coeDays: 30 },
+  },
+  'CASH_OFFER_LOI': {
+    name: 'LOI - Cash Offer',
+    type: 'cash',
+    description: 'Cash offer, no seller financing, buyer pays all closing.',
+    keyFields: ['propertyAddress', 'purchasePrice', 'emdAmount', 'emdDays', 'coeDays', 'closingCostsResponsibility'],
+    defaults: { emdAmount: 1000, emdDays: 14, coeDays: 21, closingCostsResponsibility: 'Buyer pays all closing costs' },
+  },
+  'STACK_50_LOI': {
+    name: 'LOI - Stack 50% Down (F50)',
+    type: 'stack50',
+    description: '50% down, 60-month balloon payout. For turnkey/move-in ready properties.',
+    keyFields: ['propertyAddress', 'purchasePrice', 'downPayment', 'downPaymentPercent', 'payoutMonths', 'coeDays'],
+    defaults: { emdAmount: 1000, emdDays: 14, coeDays: 28, payoutMonths: 60, downPaymentPercent: 50 },
+  },
+  'STACK_10_LOI': {
+    name: 'LOI - Stack 10% Down (F10)',
+    type: 'stack10',
+    description: '10% down payment, 24-month balloon, seller carryback. For renovation/flip properties.',
+    keyFields: ['propertyAddress', 'purchasePrice', 'downPayment', 'downPaymentPercent', 'monthlyPayment', 'balloonMonths', 'coeDays'],
+    defaults: { emdAmount: 500, emdDays: 14, coeDays: 30, balloonMonths: 24, downPaymentPercent: 10 },
+  },
+};
+
+// GET /api/contracts/templates — List all contract templates
+router.get('/templates', async (req, res) => {
+  res.json({
+    success: true,
+    templates: Object.entries(CONTRACT_TEMPLATES).map(([id, tpl]) => ({
+      id,
+      name: tpl.name,
+      type: tpl.type,
+      description: tpl.description,
+      addenda: tpl.addenda || [],
+      keyFields: tpl.keyFields,
+      defaults: tpl.defaults,
+    })),
+  });
+});
+
+// GET /api/contracts/templates/:id — Get single template with merge fields
+router.get('/templates/:id', async (req, res) => {
+  const tpl = CONTRACT_TEMPLATES[req.params.id];
+  if (!tpl) return res.status(404).json({ error: 'Template not found' });
+  res.json({ success: true, template: { id: req.params.id, ...tpl } });
+});
+
+// POST /api/contracts/generate-from-template — Generate contract from template with lead data
+router.post('/generate-from-template', async (req, res, next) => {
+  try {
+    const clerkId = req.user.userId;
+    const user = await sql`SELECT id FROM users WHERE clerk_id = ${clerkId}`;
+    if (user.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const { lead_id, template_id, custom_fields } = req.body;
+    if (!lead_id || !template_id) {
+      return res.status(400).json({ error: 'lead_id and template_id are required' });
+    }
+
+    const tpl = CONTRACT_TEMPLATES[template_id];
+    if (!tpl) return res.status(400).json({ error: 'Invalid template_id' });
+
+    // Fetch lead
+    const lead = await sql`SELECT * FROM leads WHERE id = ${lead_id} AND user_id = ${user[0].id}`;
+    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
+
+    const l = lead[0];
+
+    // Build merged fields from lead data + defaults + custom fields
+    const mergedFields = {
+      propertyAddress: l.address || '',
+      apn: l.apn || '',
+      purchasePrice: l.price || 0,
+      emdAmount: custom_fields?.emdAmount || tpl.defaults?.emdAmount || 1000,
+      emdDays: tpl.defaults?.emdDays || 14,
+      inspectionPeriodDays: tpl.defaults?.inspectionPeriodDays || 14,
+      coeDays: tpl.defaults?.coeDays || 30,
+      titleCompany: tpl.defaults?.titleCompany || 'CLOSE Title',
+      closingCostsResponsibility: tpl.defaults?.closingCostsResponsibility || 'Buyer pays customary closing',
+      sellerName: l.seller_name || '',
+      sellerEmail: l.seller_email || '',
+      sellerPhone: l.seller_phone || '',
+      buyerName: custom_fields?.buyerName || 'Divinity Aligned LLC',
+      buyerEmail: custom_fields?.buyerEmail || '',
+      firstMortgageBalance: l.existing_loan_balance || 0,
+      existingLoanBalance: l.existing_loan_balance || 0,
+      existingLoanLender: l.existing_loan_type || '',
+      loanNumber: l.existing_loan_number || '',
+      lenderName: l.existing_loan_type || '',
+      sellerCarrybackAmount: custom_fields?.sellerCarrybackAmount || 0,
+      sellerCarrybackRate: custom_fields?.sellerCarrybackRate || 0.01,
+      cashAtCOE: custom_fields?.cashAtCOE || 0,
+      downPayment: custom_fields?.downPayment || 0,
+      downPaymentPercent: tpl.defaults?.downPaymentPercent || 50,
+      payoutMonths: tpl.defaults?.payoutMonths || 60,
+      balloonMonths: tpl.defaults?.balloonMonths || 24,
+      thirdPartyProcessor: custom_fields?.thirdPartyProcessor || 'To be assigned',
+      thirdPartyProcessorName: custom_fields?.thirdPartyProcessor || 'To be assigned',
+      assignmentFee: tpl.defaults?.assignmentFee || 10000,
+      initialReserve: tpl.defaults?.initialReserve || 5000,
+      // JV party defaults
+      party1Name: custom_fields?.party1Name || 'Montelli Scott',
+      party1Email: custom_fields?.party1Email || '',
+      party1Percent: tpl.defaults?.party1Percent || 50,
+      party2Name: custom_fields?.party2Name || 'Kayla Mauser',
+      party2Email: custom_fields?.party2Email || '',
+      party2Percent: tpl.defaults?.party2Percent || 25,
+      party3Name: custom_fields?.party3Name || '',
+      party3Email: custom_fields?.party3Email || '',
+      party3Percent: tpl.defaults?.party3Percent || 25,
+      party4Name: custom_fields?.party4Name || '',
+      party4Email: custom_fields?.party4Email || '',
+      party4Percent: tpl.defaults?.party4Percent || 25,
+      managingParty: custom_fields?.managingParty || 'Montelli Scott',
+      ...(custom_fields || {}),
+    };
+
+    // Store contract
+    const contract = await sql`
+      INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
+      VALUES (
+        ${uuid()}, ${lead_id}, ${user[0].id}, ${tpl.type},
+        ${tpl.name}, ${tpl.addenda || []}, ${tpl.clauses || []},
+        ${JSON.stringify({ template_id, mergedFields, generatedAt: new Date().toISOString() })}
+      )
+      RETURNING *
+    `;
+
+    // Update lead
+    await sql`
+      UPDATE leads SET 
+        contract = ${tpl.type},
+        stage = CASE WHEN stage = 'LOI_APPROVED' THEN 'UNDER_CONTRACT' ELSE stage END,
+        updated_at = NOW()
+      WHERE id = ${lead_id}
+    `;
+
+    // Log activity
+    await sql`
+      INSERT INTO activity_log (id, user_id, lead_id, action, details)
+      VALUES (gen_random_uuid(), ${user[0].id}, ${lead_id}, 'contract_generated',
+        ${JSON.stringify({ template_id, template_name: tpl.name, contract_type: tpl.type })}
+      )
+    `;
+
+    res.json({
+      success: true,
+      contract: contract[0],
+      template: { id: template_id, name: tpl.name, type: tpl.type },
+      mergedFields,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/contracts/clauses — List all clauses
 router.get('/clauses', async (req, res, next) => {
   try {

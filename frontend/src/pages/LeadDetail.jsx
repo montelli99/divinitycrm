@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 
@@ -203,6 +203,9 @@ export default function LeadDetail() {
           <div className="lead-actions">
             <h3>Quick Actions</h3>
             <div className="action-buttons">
+              <Link to={`/calculator?leadId=${id}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                🧮 Run Underwriting
+              </Link>
               <button className="btn btn-sm" onClick={() => handleFillScript('int')}>Get INT Script</button>
               <button className="btn btn-sm" onClick={() => handleFillScript('ccc')}>Get CCC Script</button>
               <button className="btn btn-sm" onClick={() => handleFillScript('gcj')}>Get GCJ Script</button>
