@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Database Connection (Neon Serverless)
+// Divinity CRM Platform — Database Connection (Neon Serverless)
 // =============================================================
 
 const { neon } = require('@neondatabase/serverless');
@@ -27,3 +27,4 @@ async function testConnection() {
 }
 
 module.exports = { sql, testConnection };
+

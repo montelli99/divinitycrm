@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Users API Routes
+// Divinity CRM Platform — Users API Routes
 // =============================================================
 
 const { Router } = require('express');
@@ -48,3 +48,4 @@ router.patch('/me', async (req, res, next) => {
 });
 
 module.exports = router;
+

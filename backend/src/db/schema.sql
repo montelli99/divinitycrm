@@ -1,5 +1,5 @@
 -- =============================================================
--- Student CRM Platform — Neon Postgres Schema
+-- Divinity CRM Platform — Neon Postgres Schema
 -- Built: 2026-06-15 | Stack: Neon + Express + React + Clerk
 -- =============================================================
 -- 
@@ -417,3 +417,4 @@ INSERT INTO script_templates (id, name, category, body, merge_fields, stage) VAL
 ('sd', 'SD - Seller Declined', 'outreach', 'Happy {{day}}! Thank you for the update – feel free to revisit this right before the listing expires if your seller has not been able to find their number with owner occupants. Wishing you a smooth closing – feel free to keep us in mind for the future if you have listings that can''t sell out right and are owned outright.', ARRAY['day'], 'DEAD'),
 ('contract_out', 'CONTRACT_OUT - PSA Signed', 'seller_update', 'Hi {{seller_name}}, your purchase agreement for {{address}} has been fully signed! Here''s your timeline: Contract Effective Date: {{psa_signed_date}}, Inspection Period: {{inspection_days}} days (ends {{inspection_end}}), Close of Escrow: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}). Next: Our transaction coordinator {{tc_name}} ({{tc_email}}, {{tc_phone}}) will reach out about lockbox/utility access for inspection.', ARRAY['seller_name', 'address', 'psa_signed_date', 'inspection_days', 'inspection_end', 'coe_date', 'title_company', 'title_phone', 'tc_name', 'tc_email', 'tc_phone'], 'UNDER_CONTRACT'),
 ('closing_confirmed', 'CLOSING_CONFIRMED - 7 Days to COE', 'seller_update', 'Hi {{seller_name}}, we''re ONE WEEK from closing on {{address}}! Closing Details: Close of Escrow Date: {{coe_date}}, Title Company: {{title_company}} ({{title_phone}}), Your net proceeds: {{net_to_seller}}.', ARRAY['seller_name', 'address', 'coe_date', 'title_company', 'title_phone', 'net_to_seller'], 'CLOSED');
+

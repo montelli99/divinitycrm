@@ -52,3 +52,4 @@ export const api = {
   getMe: () => request('/users/me'),
   updateMe: (data) => request('/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
 };
+

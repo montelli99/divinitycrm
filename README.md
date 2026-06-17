@@ -1,4 +1,4 @@
-# Student CRM Platform
+# Divinity CRM Platform
 
 Standalone hosted CRM for AI REI students. No Telegram, no GHL, no JustCall.
 
@@ -90,3 +90,4 @@ npm run dev
 - Clerk: $0 (free tier, 10K MAUs)
 - RabbitSign: $0.10/envelope (free for manual use)
 - **Total: $0/month + $0.10/signing**
+

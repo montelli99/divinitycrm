@@ -15,7 +15,7 @@ export default function Layout() {
     <div className="app-layout">
       <nav className="sidebar">
         <div className="sidebar-header">
-          <h2>AI REI CRM</h2>
+          <h2>Divinity CRM</h2>
           <div className="user-info">
             <UserButton afterSignOutUrl="/sign-in" />
             <div>
@@ -49,7 +49,7 @@ export default function Layout() {
           color: 'var(--text-tertiary)',
           textAlign: 'center',
         }}>
-          AI REI Student CRM v1.0
+          AI REI Divinity CRM v1.0
         </div>
       </nav>
 
@@ -59,3 +59,4 @@ export default function Layout() {
     </div>
   );
 }
+

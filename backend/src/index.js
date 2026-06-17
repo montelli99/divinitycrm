@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Express Server Entry Point
+// Divinity CRM Platform — Express Server Entry Point
 // =============================================================
 
 require('dotenv').config();
@@ -60,9 +60,10 @@ async function start() {
   }
 
   app.listen(PORT, () => {
-    console.log(`Student CRM API running on http://localhost:${PORT}`);
+    console.log(`Divinity CRM API running on http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/api/health`);
   });
 }
 
 start();
+

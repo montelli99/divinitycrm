@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Leads API Routes
+// Divinity CRM Platform — Leads API Routes
 // =============================================================
 
 const { Router } = require('express');
@@ -316,3 +316,4 @@ router.patch('/:id/reminders/:reminderId', async (req, res, next) => {
 });
 
 module.exports = router;
+

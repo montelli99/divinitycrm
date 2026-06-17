@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Stage Automation Engine
+// Divinity CRM Platform — Stage Automation Engine
 // Fires on every stage change — mirrors GHL workflow triggers
 // =============================================================
 
@@ -315,4 +315,5 @@ module.exports = {
   executeStageAutomations,
   getAvailableTransitions,
 };
+
 

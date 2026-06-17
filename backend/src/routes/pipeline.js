@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Pipeline API Routes
+// Divinity CRM Platform — Pipeline API Routes
 // =============================================================
 
 const { Router } = require('express');
@@ -213,3 +213,4 @@ function getNextAction(lead) {
 }
 
 module.exports = router;
+

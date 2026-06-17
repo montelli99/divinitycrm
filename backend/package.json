@@ -1,7 +1,7 @@
 {
-  "name": "student-crm-backend",
+  "name": "divinitycrm-backend",
   "version": "1.0.0",
-  "description": "Student CRM Platform API — Neon + Express + Clerk",
+  "description": "Divinity CRM Platform API — Neon + Express + Clerk",
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
@@ -19,3 +19,4 @@
     "uuid": "^10.0.0"
   }
 }
+

@@ -1,5 +1,5 @@
 {
-  "name": "student-crm-frontend",
+  "name": "divinitycrm-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -21,3 +21,4 @@
     "vite": "^5.4.0"
   }
 }
+

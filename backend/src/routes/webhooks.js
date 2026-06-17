@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Webhooks Routes
+// Divinity CRM Platform — Webhooks Routes
 // Clerk user sync + RabbitSign completion
 // =============================================================
 
@@ -95,3 +95,4 @@ router.post('/rabbitsign', async (req, res, next) => {
 });
 
 module.exports = router;
+

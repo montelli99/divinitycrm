@@ -1,5 +1,5 @@
 // =============================================================
-// Student CRM Platform — Contracts API Routes
+// Divinity CRM Platform — Contracts API Routes
 // =============================================================
 
 const { Router } = require('express');
@@ -193,3 +193,4 @@ router.get('/:id', async (req, res, next) => {
 });
 
 module.exports = router;
+
