@@ -592,4 +592,82 @@ router.post('/followups/scan', async (req, res, next) => {
   }
 });
 
+// =============================================================
+// LEAD SOURCE TRACKER
+// =============================================================
+
+const {
+  LEAD_SOURCES,
+  scoreLead,
+  getSourceAttribution,
+  getSourceSummary,
+  tagLeadSource,
+  bulkTagSource,
+  getSourcePerformance,
+} = require('../services/lead-source-tracker');
+
+// GET /api/leads/sources — List all lead sources
+router.get('/sources', async (req, res, next) => {
+  try {
+    res.json({ success: true, sources: LEAD_SOURCES });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/leads/sources/attribution — Source ROI attribution
+router.get('/sources/attribution', async (req, res, next) => {
+  try {
+    const attribution = await getSourceAttribution();
+    res.json({ success: true, attribution });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/leads/sources/summary — Source summary for dashboard
+router.get('/sources/summary', async (req, res, next) => {
+  try {
+    const summary = await getSourceSummary();
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/leads/sources/performance — Source performance over time
+router.get('/sources/performance', async (req, res, next) => {
+  try {
+    const { days } = req.query;
+    const performance = await getSourcePerformance(days ? parseInt(days) : 90);
+    res.json({ success: true, ...performance });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/:id/source — Tag a lead with source
+router.post('/:id/source', async (req, res, next) => {
+  try {
+    const { source, sourceDetails } = req.body;
+    if (!source) return res.status(400).json({ error: 'source is required' });
+    const result = await tagLeadSource(req.params.id, source, sourceDetails);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/sources/bulk-tag — Bulk tag leads by source
+router.post('/sources/bulk-tag', async (req, res, next) => {
+  try {
+    const { leadIds, source } = req.body;
+    if (!leadIds || !source) return res.status(400).json({ error: 'leadIds and source are required' });
+    const result = await bulkTagSource(leadIds, source);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
