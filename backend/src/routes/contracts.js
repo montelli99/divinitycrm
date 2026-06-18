@@ -396,7 +396,7 @@ router.get('/', async (req, res, next) => {
       JOIN leads l ON c.lead_id = l.id
       WHERE c.user_id = $1
       ORDER BY c.created_at DESC`,
-      [user[0].id]
+      [userId]
     );
 
     res.json({ contracts });

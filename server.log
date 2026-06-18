@@ -10,3 +10,25 @@ calculator route OK
 training route OK
 Neon database connected: OK
 Divinity CRM API running on port 3001
+[0mPOST /api/auth/login [32m200[0m 244.708 ms - 417[0m
+[0mPOST /api/leads [32m201[0m 132.271 ms - 2660[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 393.099 ms - 9549[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 532.605 ms - 7551[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 513.620 ms - 7183[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 166.792 ms - 4788[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 276.895 ms - 9322[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 217.765 ms - 7146[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 425.947 ms - 7102[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 326.823 ms - 6037[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 246.840 ms - 4838[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 183.096 ms - 5713[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 568.395 ms - 9228[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 294.471 ms - 7282[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 209.084 ms - 4271[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 175.993 ms - 3813[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 166.626 ms - 3840[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 273.419 ms - 6426[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 155.264 ms - 4311[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 187.808 ms - 6256[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 217.833 ms - 6376[0m
+[0mPOST /api/leads/10ea26fb-365b-46dc-b35c-e70b4a8c0050/advance [32m200[0m 337.937 ms - 7192[0m
