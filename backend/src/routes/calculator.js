@@ -335,4 +335,81 @@ router.get('/midterm/markets', async (req, res) => {
   }
 });
 
+// =============================================================
+// DOC ANALYZER
+// =============================================================
+
+const {
+  analyzeRentRoll,
+  analyzePL,
+  analyzeTax,
+  scoreBuyBox,
+  runDocAnalysis,
+  quickBuyBoxCheck,
+} = require('../services/doc-analyzer');
+
+// POST /api/calculator/doc-analyze — Run full doc analysis for a lead
+router.post('/doc-analyze', async (req, res) => {
+  try {
+    const { leadId, rentRoll, plStatement, taxRecords, buyBoxParams } = req.body;
+    if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+
+    const result = await runDocAnalysis(leadId, {
+      rentRoll,
+      plStatement,
+      taxRecords,
+      buyBoxParams,
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Doc analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/calculator/buybox-check/:id — Quick buy box check for a lead
+router.post('/buybox-check/:id', async (req, res) => {
+  try {
+    const result = await quickBuyBoxCheck(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Buy box check error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/calculator/rentroll-analyze — Analyze rent roll data
+router.post('/rentroll-analyze', async (req, res) => {
+  try {
+    const { address, data } = req.body;
+    const result = analyzeRentRoll(address || 'Property', data || {});
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/calculator/pl-analyze — Analyze P&L data
+router.post('/pl-analyze', async (req, res) => {
+  try {
+    const { address, data } = req.body;
+    const result = analyzePL(address || 'Property', data || {});
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/calculator/tax-analyze — Analyze tax records
+router.post('/tax-analyze', async (req, res) => {
+  try {
+    const { address, data } = req.body;
+    const result = analyzeTax(address || 'Property', data || {});
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
