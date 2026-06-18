@@ -283,66 +283,44 @@ router.get('/profit-radar', async (req, res, next) => {
   }
 });
 
-// GET /api/pipeline/health — Dedicated pipeline health scan
+// GET /api/pipeline/health — Full pipeline health scan (uses pipeline-monitor service)
 router.get('/health', async (req, res, next) => {
   try {
-    const userId = req.user.userId;
-
-    const leads = await query(
-      `SELECT id, address, stage, price, created_at, last_stage_change_at,
-             follow_up_48hr_due, follow_up_48hr_done, updated_at
-      FROM leads 
-      WHERE user_id = $1 
-      AND stage NOT IN ('ARCHIVED', 'CLOSING_DATE', 'DEAD')
-      ORDER BY last_stage_change_at ASC`,
-      [userId]
-    );
-
-    const now = new Date();
-    const alerts = [];
-    const stats = { total: leads.length, byStage: {}, stalled: 0, overdue48hr: 0, abandoned: 0 };
-
-    leads.forEach(l => {
-      stats.byStage[l.stage] = (stats.byStage[l.stage] || 0) + 1;
-      const daysInStage = Math.floor((now - new Date(l.last_stage_change_at)) / 86400000);
-
-      if (l.stage === 'LEAD_ENTERED' && daysInStage > 7) {
-        stats.stalled++;
-        alerts.push({ type: 'stale_lead', severity: 'yellow', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days at Lead Entered — no contact made` });
-      }
-
-      if (daysInStage > 30) {
-        stats.abandoned++;
-        alerts.push({ type: 'abandoned', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days no movement — mark lost?` });
-      }
-
-      if (l.stage === 'OFFER_SENT' && daysInStage > 2) {
-        alerts.push({ type: 'offer_stalled', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days at Offer Sent — no response. Call.` });
-      }
-
-      if (l.stage === 'OFFER_SENT' && !l.follow_up_48hr_done && l.follow_up_48hr_due && new Date(l.follow_up_48hr_due) < now) {
-        stats.overdue48hr++;
-        alerts.push({ type: '48hr_overdue', severity: 'red', leadId: l.id, address: l.address, detail: '48hr follow-up overdue — call now.' });
-      }
-
-      if (l.stage === 'AWAITING_TITLE' && daysInStage > 3) {
-        alerts.push({ type: 'title_overdue', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days — title info not received.` });
-      }
-
-      if (l.stage === 'UNDER_CONTRACT' && daysInStage > 3) {
-        alerts.push({ type: 'contract_unsigned', severity: 'red', leadId: l.id, address: l.address, daysInStage, detail: `${daysInStage} days — contract unsigned.` });
-      }
-    });
-
-    const closedResult = await query('SELECT COUNT(*) as c FROM leads WHERE user_id = $1 AND stage = $2', [userId, 'CLOSING_DATE']);
-    const closedCount = closedResult[0].c;
+    const { scanPipeline, formatReport } = require('../services/pipeline-monitor');
+    const result = await scanPipeline();
+    const report = formatReport(result);
 
     res.json({
       success: true,
-      stats: { ...stats, closedCount },
-      alerts,
-      scannedAt: now.toISOString(),
+      stats: result.stats,
+      alerts: result.alerts,
+      anomalies: result.anomalies,
+      remindersDue: result.remindersDue,
+      report,
+      scannedAt: result.scannedAt,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/pipeline/stalled — Stalled leads (>7 days in stage)
+router.get('/stalled', async (req, res, next) => {
+  try {
+    const { getStalledLeads } = require('../services/pipeline-monitor');
+    const stalled = await getStalledLeads();
+    res.json({ success: true, stalled, count: stalled.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/pipeline/overdue — Overdue 48hr follow-ups
+router.get('/overdue', async (req, res, next) => {
+  try {
+    const { getOverdueFollowUps } = require('../services/pipeline-monitor');
+    const overdue = await getOverdueFollowUps();
+    res.json({ success: true, overdue, count: overdue.length });
   } catch (err) {
     next(err);
   }
