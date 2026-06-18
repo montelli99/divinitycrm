@@ -436,4 +436,80 @@ router.post('/dispositions/:leadId/assign', async (req, res, next) => {
   }
 });
 
+// =============================================================
+// POST-CLOSE ENGINE
+// =============================================================
+
+const {
+  registerPostClose,
+  sendTestimonialRequest,
+  sendReferralRequest,
+  runPokemonSpawn,
+  tick: postCloseTick,
+  getPostCloseStatus,
+} = require('../services/post-close-engine');
+
+// POST /api/pipeline/postclose/register — Register post-close hooks for a lead
+router.post('/postclose/register', async (req, res, next) => {
+  try {
+    const { leadId, closeDate } = req.body;
+    if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+    const result = await registerPostClose(leadId, closeDate);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/postclose/tick — Run daily post-close processing (cron)
+router.post('/postclose/tick', async (req, res, next) => {
+  try {
+    const result = await postCloseTick();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/pipeline/postclose/:leadId — Get post-close status for a lead
+router.get('/postclose/:leadId', async (req, res, next) => {
+  try {
+    const result = await getPostCloseStatus(req.params.leadId);
+    if (!result) return res.status(404).json({ error: 'Lead not found' });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/postclose/:leadId/testimonial — Send testimonial request
+router.post('/postclose/:leadId/testimonial', async (req, res, next) => {
+  try {
+    const result = await sendTestimonialRequest(req.params.leadId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/postclose/:leadId/referral — Send referral request
+router.post('/postclose/:leadId/referral', async (req, res, next) => {
+  try {
+    const result = await sendReferralRequest(req.params.leadId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/postclose/:leadId/pokemon — Spawn Pokémon (buyer match)
+router.post('/postclose/:leadId/pokemon', async (req, res, next) => {
+  try {
+    const result = await runPokemonSpawn(req.params.leadId);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
