@@ -55,7 +55,7 @@ router.post('/fill', async (req, res, next) => {
     if (script.length === 0) return res.status(404).json({ error: 'Script template not found' });
 
     // Fetch lead
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, userId]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     // Fill template
