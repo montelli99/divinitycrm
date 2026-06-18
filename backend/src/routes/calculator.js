@@ -209,4 +209,59 @@ router.get('/lead/:id', async (req, res) => {
   }
 });
 
+// =============================================================
+// CLOSING COST ALLOCATOR
+// =============================================================
+
+const {
+  allocateClosingCosts,
+  getEMDDefault,
+  getCOEDefault,
+  formatForNotes,
+  saveAllocationToLead,
+} = require('../services/closing-cost-allocator');
+
+// POST /api/calculator/closing-costs — Allocate closing costs
+router.post('/closing-costs', async (req, res) => {
+  try {
+    const { contractType, purchasePrice, state, leadId } = req.body;
+
+    if (!purchasePrice) {
+      return res.status(400).json({ error: 'purchasePrice is required' });
+    }
+
+    const allocation = allocateClosingCosts({
+      contractType: contractType || 'subto',
+      purchasePrice: Number(purchasePrice),
+      state: state || undefined,
+    });
+
+    // Save to lead if leadId provided
+    if (leadId) {
+      await saveAllocationToLead(leadId, allocation);
+    }
+
+    res.json({
+      success: true,
+      allocation,
+      formatted: formatForNotes(allocation),
+    });
+  } catch (err) {
+    console.error('Closing cost allocation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/calculator/closing-costs/state-fees — Get state fee estimates
+router.get('/closing-costs/state-fees', async (req, res) => {
+  try {
+    const { getStateFees } = require('../services/closing-cost-allocator');
+    const { state } = req.query;
+    const fees = getStateFees(state || undefined);
+    res.json({ success: true, state: state || 'default', fees });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
