@@ -100,6 +100,12 @@ export const api = {
   // Student Roster (admin)
   getStudents: () => request('/users/students'),
   getStudentStats: (id) => request(`/users/students/${id}/stats`),
+  getRoster: () => request('/users/roster'),
+  getRosterDetail: (id) => request(`/users/roster/${id}`),
+  setVacation: (userId, data) => request(`/users/${userId}/vacation`, { method: 'POST', body: JSON.stringify(data) }),
+  endVacation: (userId) => request(`/users/${userId}/vacation/end`, { method: 'POST' }),
+  reassignLead: (data) => request('/users/reassign', { method: 'POST', body: JSON.stringify(data) }),
+  bulkReassign: (data) => request('/users/reassign/bulk', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export { getToken, setToken, clearToken };

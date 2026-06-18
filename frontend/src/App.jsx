@@ -6,6 +6,7 @@ import Pipeline from './pages/Pipeline';
 import Contracts from './pages/Contracts';
 import Calculator from './pages/Calculator';
 import Training from './pages/Training';
+import StudentRoster from './pages/StudentRoster';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
 
@@ -164,6 +165,7 @@ export default function App() {
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/training" element={<Training />} />
+        <Route path="/students" element={<StudentRoster />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" />} />
     </Routes>

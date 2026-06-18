@@ -182,4 +182,142 @@ router.get('/students/:id/stats', async (req, res, next) => {
   }
 });
 
+// =============================================================
+// VACATION COVERAGE (Admin Only)
+// =============================================================
+
+const {
+  setVacationMode,
+  endVacationMode,
+  reassignLead,
+  bulkReassign,
+  getStudentRoster,
+  getStudentDetails,
+} = require('../services/student-roster');
+
+// POST /api/users/:id/vacation — Set vacation mode
+router.post('/:id/vacation', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetId = req.params.id;
+    const { substituteId, coverageStart, coverageEnd, reason } = req.body;
+
+    if (!coverageStart || !coverageEnd) {
+      return res.status(400).json({ error: 'coverageStart and coverageEnd are required' });
+    }
+
+    const result = await setVacationMode(targetId, {
+      substituteId,
+      coverageStart,
+      coverageEnd,
+      reason,
+    });
+
+    res.json({ success: true, user: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/users/:id/vacation/end — End vacation mode
+router.post('/:id/vacation/end', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const targetId = req.params.id;
+    const result = await endVacationMode(targetId);
+
+    res.json({ success: true, user: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/users/reassign — Reassign a single lead
+router.post('/reassign', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { leadId, newUserId, reason } = req.body;
+    if (!leadId || !newUserId) {
+      return res.status(400).json({ error: 'leadId and newUserId are required' });
+    }
+
+    const result = await reassignLead(leadId, newUserId, reason);
+    res.json({ success: true, reassignment: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/users/reassign/bulk — Bulk reassign all active leads
+router.post('/reassign/bulk', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { fromUserId, toUserId, reason } = req.body;
+    if (!fromUserId || !toUserId) {
+      return res.status(400).json({ error: 'fromUserId and toUserId are required' });
+    }
+
+    const result = await bulkReassign(fromUserId, toUserId, reason);
+    res.json({ success: true, reassignment: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/users/roster — Full student roster with stats (uses service)
+router.get('/roster', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const roster = await getStudentRoster();
+    res.json({ success: true, students: roster, total: roster.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/users/roster/:id — Single student detail (uses service)
+router.get('/roster/:id', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const details = await getStudentDetails(req.params.id);
+    if (!details) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    res.json({ success: true, ...details });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
