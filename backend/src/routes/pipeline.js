@@ -376,4 +376,86 @@ function getNextAction(lead) {
   return actions[lead.stage] || 'Review';
 }
 
+// =============================================================
+// DISPOSITION TRACKER
+// =============================================================
+
+const {
+  getDispositions,
+  getDispoSummary,
+  createDispoRecord,
+  transitionDispoStatus,
+  assignBuyer,
+} = require('../services/dispo-tracker');
+
+// GET /api/pipeline/dispositions — All dispo records
+router.get('/dispositions', async (req, res, next) => {
+  try {
+    const { status, limit, offset } = req.query;
+    const result = await getDispositions({
+      status,
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/pipeline/dispositions/summary — Dispo dashboard summary
+router.get('/dispositions/summary', async (req, res, next) => {
+  try {
+    const summary = await getDispoSummary();
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/dispositions — Create dispo record for a closed lead
+router.post('/dispositions', async (req, res, next) => {
+  try {
+    const { leadId, holdStrategy, buyerTier, buyerName, buyerEmail, buyerPhone, assignmentFeePercent, estimatedSalePrice, targetCOE } = req.body;
+    if (!leadId || !holdStrategy || !buyerTier) {
+      return res.status(400).json({ error: 'leadId, holdStrategy, and buyerTier are required' });
+    }
+    const result = await createDispoRecord({
+      leadId, holdStrategy, buyerTier, buyerName, buyerEmail, buyerPhone,
+      assignmentFeePercent, estimatedSalePrice, targetCOE,
+    });
+    res.json({ success: true, dispo: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/pipeline/dispositions/:leadId/status — Transition dispo status
+router.patch('/dispositions/:leadId/status', async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'status is required' });
+    const result = await transitionDispoStatus(req.params.leadId, status);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/pipeline/dispositions/:leadId/assign — Assign buyer to dispo
+router.post('/dispositions/:leadId/assign', async (req, res, next) => {
+  try {
+    const { buyerName, buyerEmail, buyerPhone, buyerTier, holdStrategy, estimatedSalePrice, targetCOE } = req.body;
+    if (!buyerName || !buyerTier) {
+      return res.status(400).json({ error: 'buyerName and buyerTier are required' });
+    }
+    const result = await assignBuyer(req.params.leadId, {
+      buyerName, buyerEmail, buyerPhone, buyerTier, holdStrategy, estimatedSalePrice, targetCOE,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
