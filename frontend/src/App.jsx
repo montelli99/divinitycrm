@@ -7,6 +7,7 @@ import Contracts from './pages/Contracts';
 import Calculator from './pages/Calculator';
 import Training from './pages/Training';
 import StudentRoster from './pages/StudentRoster';
+import Profile from './pages/Profile';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
 
@@ -51,17 +52,39 @@ function LoginPage() {
         maxWidth: '420px',
         boxShadow: 'var(--shadow-xl)',
       }}>
-        <h1 style={{
-          fontSize: '1.5rem',
-          fontWeight: '700',
-          marginBottom: '0.25rem',
-          background: 'linear-gradient(135deg, var(--brand-primary), #818cf8)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}>Divinity CRM</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.75rem' }}>
-          Sign in to your account
-        </p>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <h1 style={{
+            fontSize: '1.75rem',
+            fontWeight: '800',
+            marginBottom: '0.25rem',
+            background: 'linear-gradient(135deg, #5b6cf0, #818cf8, #a78bfa)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            letterSpacing: '-0.02em',
+          }}>Divinity CRM</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+            Student Pipeline Platform
+          </p>
+        </div>
+
+        <div style={{
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.75rem 1rem',
+          marginBottom: '1.25rem',
+          fontSize: '0.78rem',
+          color: 'var(--text-secondary)',
+          lineHeight: '1.5',
+        }}>
+          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+            🔑 Account Credentials
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+            <div><strong style={{ color: 'var(--brand-primary)' }}>Montelli:</strong> montelliscottrei@gmail.com / Prolific2026!</div>
+            <div><strong style={{ color: '#f59e0b' }}>Kayla:</strong> homewithkaylamauser@gmail.com / Divinity2026!</div>
+          </div>
+        </div>
 
         {error && (
           <div style={{
@@ -166,6 +189,7 @@ export default function App() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/training" element={<Training />} />
         <Route path="/students" element={<StudentRoster />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" />} />
     </Routes>

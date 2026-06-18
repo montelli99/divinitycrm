@@ -37,6 +37,7 @@ export default function LeadDetail() {
   const [contractType, setContractType] = useState('subto');
   const [contractResult, setContractResult] = useState(null);
   const [scriptResult, setScriptResult] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -46,6 +47,9 @@ export default function LeadDetail() {
         setHistory(data.history);
         setReminders(data.reminders);
         setEditData(data.lead);
+        // Load user profile for scheduling link
+        const profile = await api.getMe().catch(() => null);
+        setUserProfile(profile?.user || profile);
       } catch (err) {
         console.error('Lead load error:', err);
       } finally {
@@ -221,6 +225,20 @@ export default function LeadDetail() {
               <button className="btn btn-sm" onClick={() => handleFillScript('ccc')}>Get CCC Script</button>
               <button className="btn btn-sm" onClick={() => handleFillScript('gcj')}>Get GCJ Script</button>
               <button className="btn btn-sm" onClick={() => handleFillScript('contract_out')}>Get Contract SMS</button>
+              {lead.scheduling_link && (
+                <a href={lead.scheduling_link} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--brand-primary)', color: 'white', border: 'none' }}>
+                  📅 Schedule Call
+                </a>
+              )}
+              {!lead.scheduling_link && userProfile?.scheduling_link && (
+                <a href={userProfile.scheduling_link} target="_blank" rel="noopener noreferrer"
+                  className="btn btn-sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--brand-primary)', color: 'white', border: 'none' }}>
+                  📅 Schedule Call
+                </a>
+              )}
             </div>
 
             {scriptResult && (

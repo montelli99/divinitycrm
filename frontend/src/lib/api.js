@@ -106,6 +106,11 @@ export const api = {
   endVacation: (userId) => request(`/users/${userId}/vacation/end`, { method: 'POST' }),
   reassignLead: (data) => request('/users/reassign', { method: 'POST', body: JSON.stringify(data) }),
   bulkReassign: (data) => request('/users/reassign/bulk', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Google OAuth
+  getGoogleAuthUrl: () => request('/auth/google/url'),
+  getGoogleStatus: () => request('/auth/google/status'),
+  disconnectGoogle: () => request('/auth/google/disconnect', { method: 'POST' }),
 };
 
 export { getToken, setToken, clearToken };

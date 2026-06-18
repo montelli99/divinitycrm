@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { path: '/calculator', label: 'Calculator', icon: '🧮' },
   { path: '/contracts', label: 'Contracts', icon: '📝' },
   { path: '/training', label: 'Training', icon: '📚' },
+  { path: '/profile', label: 'Profile', icon: '⚙️' },
 ];
 
 export default function Layout() {

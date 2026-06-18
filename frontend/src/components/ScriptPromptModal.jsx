@@ -180,7 +180,20 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
                     <h5>📧 Email</h5>
                     <p><strong>To:</strong> {step.to}</p>
                     <p><strong>Subject:</strong> {step.subject_template}{step.subject_alt && ` (or "${step.subject_alt}")`}</p>
-                    {step.body_template && <p><strong>Body:</strong> {step.body_template}</p>}
+                    {step.body_template && (
+                      <>
+                        <p><strong>Body:</strong></p>
+                        <pre className="message-text" style={{ marginTop: '0.25rem' }}>{step.body_template}</pre>
+                        <div className="message-actions" style={{ marginTop: '0.5rem' }}>
+                          <button
+                            className={`btn btn-sm ${copied[`email-${step.step}`] ? 'btn-success' : 'btn-primary'}`}
+                            onClick={() => handleCopy(`email-${step.step}`, step.body_template)}
+                          >
+                            {copied[`email-${step.step}`] ? '✓ Copied!' : '📋 Copy Email'}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
