@@ -35,6 +35,10 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(morgan('dev'));
 app.use(express.json());
 
+// Serve frontend static files from backend/public/
+const path = require('path');
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
 // Health check (no auth)
 app.get('/api/health', async (req, res) => {
   const dbOk = await testConnection();
@@ -81,6 +85,12 @@ if (trainingRouter) app.use('/api/training', authMiddleware, trainingRouter);
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
+// SPA fallback — serve index.html for all non-API, non-file routes (MUST be last)
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 async function start() {
