@@ -20,6 +20,14 @@ const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
 // System notifications via in-app inbox (replaces SMTP)
 const { fireStageNotifications } = require('./notifications');
+const { createFolderFromTemplate } = require('./rabbitsign');
+
+const CONTRACT_TEMPLATE_MAP = {
+  psa_creative_subto: 'w5EC5hnVWRoGVYUTbxuHwz',
+  stack_psa: 'Vf0ahJ1AXi3QWVhXNCBN0C',
+  jv_4party: 'rPx7lrG27B1u2pxVzwl21e',
+  subto_addendum: '3sIaAVDxaLO386eHCPXe2F',
+};
 // SMS: Students copy pre-filled templates from prompts and paste into their own phones.
 // No automated SMS sending in student CRM.
 const { generateCompsReport, saveCompsReport } = require('./comps-engine');
@@ -615,7 +623,8 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
       { type: 'notify' },
-      { type: 'log', message: 'Terms agreed. Contract drafted. Contract Type set. Kayla emailed.' },
+      { type: 'rabbitsign_envelope', contract_type: 'psa_creative_subto' },
+      { type: 'log', message: 'Terms agreed. Contract drafted. RabbitSign envelope auto-created. Kayla emailed.' },
     ],
   },
 
@@ -1342,6 +1351,39 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
               results.push({ type: 'notify', ok: true, fired: notifResult.fired });
             } catch (e) {
               results.push({ type: 'notify', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'rabbitsign_envelope': {
+            try {
+              const contractType = action.contract_type || 'psa_creative_subto';
+              const templateId = CONTRACT_TEMPLATE_MAP[contractType];
+              if (!templateId) {
+                results.push({ type: 'rabbitsign_envelope', ok: false, error: `Unknown contract_type: ${contractType}` });
+                break;
+              }
+              const sellerEmail = leadData.seller_email || leadData.owner_email;
+              const sellerName = leadData.seller_name || leadData.owner_name || 'Seller';
+              const folder = await createFolderFromTemplate(templateId, {
+                title: `${contractType} — ${leadData.address || 'Property'}`,
+                summary: `Auto-generated from CRM at TERMS_AGREED stage. Lead ID: ${leadId}`,
+                date: new Date().toISOString().split('T')[0],
+                roles: [
+                  { roleName: 'Seller', email: sellerEmail, name: sellerName },
+                  { roleName: 'Buyer', email: 'montelliscottrei@gmail.com', name: 'Montelli Scott' },
+                ],
+              });
+              await query(
+                `UPDATE leads SET rabbitsign_folder_id = $1, contract_status = 'sent' WHERE id = $2`,
+                [folder.folderId, leadId]
+              );
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'rabbitsign_envelope_created', JSON.stringify({ folderId: folder.folderId, contractType })]
+              );
+              results.push({ type: 'rabbitsign_envelope', ok: true, folderId: folder.folderId, contractType });
+            } catch (e) {
+              results.push({ type: 'rabbitsign_envelope', ok: false, error: e.message });
             }
             break;
           }
