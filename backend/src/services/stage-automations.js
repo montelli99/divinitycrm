@@ -18,7 +18,8 @@
 
 const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
-const { sendStageEmail } = require('./email-service');
+// System notifications via in-app inbox (replaces SMTP)
+const { fireStageNotifications } = require('./notifications');
 // SMS: Students copy pre-filled templates from prompts and paste into their own phones.
 // No automated SMS sending in student CRM.
 const { generateCompsReport, saveCompsReport } = require('./comps-engine');
@@ -212,7 +213,7 @@ const STAGE_TRANSITIONS = {
       { type: 'run_doc_analysis' },
       { type: 'run_comps' },
       { type: 'run_underwriting' },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Deal evaluated. Doc analysis + comps + underwriting run. Seth emailed.' },
     ],
   },
@@ -286,7 +287,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_field', field: 'offer_sent_date', value: 'now' },
       { type: 'set_field', field: 'follow_up_48hr_due', value: 'now+48h' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Offer sent. Comps run. LOI prepared. Kayla + Seth emailed. 48hr timer started.' },
     ],
   },
@@ -328,7 +329,7 @@ const STAGE_TRANSITIONS = {
       ],
     },
     automations: [
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Offer received. Kayla notified. Monitoring for response.' },
     ],
   },
@@ -564,7 +565,7 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'run_comps' },
       { type: 'run_underwriting' },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Active negotiation. Comps re-run. Counter handled. Kayla+Jaxon emailed.' },
     ],
   },
@@ -613,7 +614,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Terms agreed. Contract drafted. Contract Type set. Kayla emailed.' },
     ],
   },
@@ -751,7 +752,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_field', field: 'emd_amount', value: 100 },
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake emailed. CONTRACT_OUT template ready.' },
     ],
   },
@@ -804,7 +805,7 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
-      { type: 'send_email' },
+      { type: 'notify' },
       { type: 'log', message: 'Under contract. TC handoff emailed. INSPECTION_SCHEDULED template ready. 14-day countdown started.' },
     ],
   },
@@ -1281,11 +1282,6 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             results.push({ type: 'run_comps', ok: true, data: { buyBoxPass: report.buyBox.allPass, strategy: report.strategy.strategy } });
             break;
           }
-          case 'send_email': {
-            const emailResult = await sendStageEmail(fromStage, toStage, leadData);
-            results.push({ type: 'send_email', ...emailResult });
-            break;
-          }
           case 'run_doc_analysis': {
             const docResult = await runDocAnalysis(leadId);
             results.push({ type: 'run_doc_analysis', ok: true, data: docResult });
@@ -1337,11 +1333,16 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             break;
           }
           case 'notify': {
-            await query(
-              'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-              [userId, leadId, 'notification_sent', JSON.stringify({ role: action.role, msg: action.message })]
-            );
-            results.push({ type: 'notify', role: action.role, ok: true });
+            try {
+              const notifResult = await fireStageNotifications(fromStage, toStage, leadData);
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'notification_fired', JSON.stringify({ stage: toStage, count: notifResult.fired })]
+              );
+              results.push({ type: 'notify', ok: true, fired: notifResult.fired });
+            } catch (e) {
+              results.push({ type: 'notify', ok: false, error: e.message });
+            }
             break;
           }
           case 'log': {

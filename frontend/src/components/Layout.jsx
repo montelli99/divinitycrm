@@ -10,6 +10,10 @@ const NAV_ITEMS = [
   { path: '/profile', label: 'Profile', icon: '⚙️' },
 ];
 
+const ADMIN_NAV_ITEMS = [
+  { path: '/admin', label: 'Admin Dashboard', icon: '📊' },
+];
+
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();

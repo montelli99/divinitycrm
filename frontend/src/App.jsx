@@ -9,6 +9,7 @@ import Training from './pages/Training';
 import StudentRoster from './pages/StudentRoster';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
+import Notifications from './pages/Notifications';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
 
@@ -203,6 +204,7 @@ export default function App() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/pipeline" element={<Pipeline />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/leads/:id" element={<LeadDetail />} />

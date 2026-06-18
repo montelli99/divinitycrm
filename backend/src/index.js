@@ -14,7 +14,7 @@ const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
 // Lazy-load routes
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter;
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter;
 
 try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
@@ -27,6 +27,7 @@ try { webhooksRouter = require('./routes/webhooks'); console.log('webhooks route
 try { calculatorRouter = require('./routes/calculator'); console.log('calculator route OK'); } catch(e) { console.error('calculator route FAIL:', e.message); }
 try { trainingRouter = require('./routes/training'); console.log('training route OK'); } catch(e) { console.error('training route FAIL:', e.message); }
 try { adminRouter = require('./routes/admin'); console.log('admin route OK'); } catch(e) { console.error('admin route FAIL:', e.message); }
+try { notificationsRouter = require('./routes/notifications'); console.log('notifications route OK'); } catch(e) { console.error('notifications route FAIL:', e.message); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -82,6 +83,7 @@ if (webhooksRouter) app.use('/api/webhooks', webhooksRouter);
 if (calculatorRouter) app.use('/api/calculator', authMiddleware, calculatorRouter);
 if (trainingRouter) app.use('/api/training', authMiddleware, trainingRouter);
 if (adminRouter) app.use('/api/admin', authMiddleware, adminRouter);
+if (notificationsRouter) app.use('/api/notifications', authMiddleware, notificationsRouter);
 
 // Error handler
 app.use((err, req, res, next) => {

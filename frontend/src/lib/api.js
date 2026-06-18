@@ -114,6 +114,13 @@ export const api = {
 
   // Admin Dashboard
   getAdminDashboard: () => request('/admin/dashboard'),
+
+  // Notifications
+  getNotifications: (filter = 'all') => request(`/notifications?filter=${filter}`),
+  getUnreadCount: () => request('/notifications/unread-count'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
+  archiveNotification: (id) => request(`/notifications/${id}/archive`, { method: 'POST' }),
 };
 
 export { getToken, setToken, clearToken };
