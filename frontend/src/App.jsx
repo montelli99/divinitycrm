@@ -7,6 +7,7 @@ import Contracts from './pages/Contracts';
 import Calculator from './pages/Calculator';
 import Training from './pages/Training';
 import StudentRoster from './pages/StudentRoster';
+import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
@@ -201,6 +202,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/pipeline" element={<Pipeline />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/leads/:id" element={<LeadDetail />} />

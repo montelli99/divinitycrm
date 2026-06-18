@@ -111,6 +111,9 @@ export const api = {
   getGoogleAuthUrl: () => request('/auth/google/url'),
   getGoogleStatus: () => request('/auth/google/status'),
   disconnectGoogle: () => request('/auth/google/disconnect', { method: 'POST' }),
+
+  // Admin Dashboard
+  getAdminDashboard: () => request('/admin/dashboard'),
 };
 
 export { getToken, setToken, clearToken };
