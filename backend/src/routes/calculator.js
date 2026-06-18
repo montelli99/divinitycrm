@@ -264,4 +264,75 @@ router.get('/closing-costs/state-fees', async (req, res) => {
   }
 });
 
+// =============================================================
+// MID-TERM PIVOT
+// =============================================================
+
+const {
+  evaluateMidTerm,
+  generateMidTermPitch,
+  runMidTermPivot,
+  getMarketData,
+  MIDTERM_MARKET_DATA,
+} = require('../services/mid-term-pivot');
+
+// POST /api/calculator/midterm — Evaluate mid-term rental viability
+router.post('/midterm', async (req, res) => {
+  try {
+    const { longTermRent, purchasePrice, city, threshold } = req.body;
+
+    if (!longTermRent || !purchasePrice) {
+      return res.status(400).json({ error: 'longTermRent and purchasePrice are required' });
+    }
+
+    const evaluation = evaluateMidTerm({
+      longTermRent: Number(longTermRent),
+      purchasePrice: Number(purchasePrice),
+      city: city || undefined,
+      threshold: threshold ? Number(threshold) : undefined,
+    });
+
+    const pitch = generateMidTermPitch({
+      address: req.body.address || 'your property',
+      longTermRent: Number(longTermRent),
+      midTermRent: evaluation.midTermRent,
+      midTermPct: evaluation.midTermPct,
+      additionalMonthly: evaluation.additionalMonthly,
+      additionalAnnual: evaluation.additionalAnnual,
+      city: city || undefined,
+    });
+
+    res.json({ success: true, evaluation, pitch });
+  } catch (err) {
+    console.error('Mid-term pivot error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/calculator/midterm/lead/:id — Run mid-term pivot for a lead
+router.post('/midterm/lead/:id', async (req, res) => {
+  try {
+    const result = await runMidTermPivot(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Mid-term pivot lead error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/calculator/midterm/markets — Get mid-term market data
+router.get('/midterm/markets', async (req, res) => {
+  try {
+    const { city } = req.query;
+    if (city) {
+      const market = getMarketData(city);
+      res.json({ success: true, city, market });
+    } else {
+      res.json({ success: true, markets: MIDTERM_MARKET_DATA });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
