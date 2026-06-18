@@ -18,6 +18,9 @@
 
 const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
+const { sendStageEmail } = require('./email-service');
+const { sendStageSMS } = require('./sms-service');
+const { generateCompsReport, saveCompsReport } = require('./comps-engine');
 
 // =============================================================
 // OWNER SECTIONS
@@ -128,6 +131,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
+      { type: 'send_sms' },
       { type: 'log', message: 'Contact made. INT + CCC sent. Notes recorded.' },
     ],
   },
@@ -194,9 +198,10 @@ const STAGE_TRANSITIONS = {
       reminders: [],
     },
     automations: [
+      { type: 'run_comps' },
       { type: 'run_underwriting' },
-      { type: 'notify', role: 'closer', message: 'Offer ready — prepare LOI' },
-      { type: 'log', message: 'Deal evaluated. Underwriting run. Kayla notified.' },
+      { type: 'send_email' },
+      { type: 'log', message: 'Deal evaluated. Comps + underwriting run. Seth emailed.' },
     ],
   },
 
@@ -264,11 +269,14 @@ const STAGE_TRANSITIONS = {
       ],
     },
     automations: [
+      { type: 'run_comps' },
+      { type: 'run_underwriting' },
       { type: 'set_field', field: 'offer_sent_date', value: 'now' },
       { type: 'set_field', field: 'follow_up_48hr_due', value: 'now+48h' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
-      { type: 'notify', role: 'closer', message: 'Offer sent. 48hr timer started.' },
-      { type: 'log', message: 'Offer sent. Group chat created. 48hr timer started.' },
+      { type: 'send_email' },
+      { type: 'send_sms' },
+      { type: 'log', message: 'Offer sent. Comps run. LOI prepared. Kayla + Seth emailed. GCJ SMS sent. 48hr timer started.' },
     ],
   },
 
@@ -309,8 +317,8 @@ const STAGE_TRANSITIONS = {
       ],
     },
     automations: [
-      { type: 'notify', role: 'closer', message: 'Offer received — awaiting seller response' },
-      { type: 'log', message: 'Offer received. Monitoring for response.' },
+      { type: 'send_email' },
+      { type: 'log', message: 'Offer received. Kayla notified. Monitoring for response.' },
     ],
   },
 
@@ -365,7 +373,8 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_field', field: 'follow_up_48hr_done', value: true },
-      { type: 'log', message: 'Feedback gained. Realignment call completed.' },
+      { type: 'send_sms' },
+      { type: 'log', message: 'Feedback gained. Realignment call completed. LOI SMS sent.' },
     ],
   },
 
@@ -419,6 +428,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'dom_181' },
+      { type: 'send_sms' },
       { type: 'log', message: 'No answer. Voice memo + LOI2DAYS + SD sent. DOM tracked.' },
     ],
   },
@@ -494,7 +504,8 @@ const STAGE_TRANSITIONS = {
       { type: 'set_reminder', reminder_type: '60_day_nurture', offset_days: 60 },
       { type: 'set_reminder', reminder_type: '90_day_nurture', offset_days: 90 },
       { type: 'set_reminder', reminder_type: '181_day_nurture', offset_days: 181 },
-      { type: 'log', message: 'Seller declined. 30/60/90/181 nurture chain started.' },
+      { type: 'send_sms' },
+      { type: 'log', message: 'Seller declined. SD SMS sent. 30/60/90/181 nurture chain started.' },
     ],
   },
 
@@ -543,9 +554,10 @@ const STAGE_TRANSITIONS = {
       reminders: [],
     },
     automations: [
+      { type: 'run_comps' },
       { type: 'run_underwriting' },
-      { type: 'notify', role: 'closer', message: 'Counter received — re-engaged negotiation' },
-      { type: 'log', message: 'Active negotiation. Comps re-run. Counter handled.' },
+      { type: 'send_email' },
+      { type: 'log', message: 'Active negotiation. Comps re-run. Counter handled. Kayla+Jaxon emailed.' },
     ],
   },
 
@@ -593,8 +605,8 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
-      { type: 'notify', role: 'closer', message: 'Terms agreed — contract draft ready' },
-      { type: 'log', message: 'Terms agreed. Contract drafted. Contract Type set.' },
+      { type: 'send_email' },
+      { type: 'log', message: 'Terms agreed. Contract drafted. Contract Type set. Kayla emailed.' },
     ],
   },
 
@@ -731,8 +743,9 @@ const STAGE_TRANSITIONS = {
       { type: 'set_field', field: 'emd_amount', value: 100 },
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },
-      { type: 'notify', role: 'closer', message: 'Contract out — PSA signed. TC handshake sent.' },
-      { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake.' },
+      { type: 'send_email' },
+      { type: 'send_sms' },
+      { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake emailed. CONTRACT_OUT SMS sent.' },
     ],
   },
 
@@ -784,8 +797,9 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
-      { type: 'notify', role: 'closer', message: 'Under contract. TC handoff complete.' },
-      { type: 'log', message: 'Under contract. TC handoff sent. 14-day inspection countdown started.' },
+      { type: 'send_email' },
+      { type: 'send_sms' },
+      { type: 'log', message: 'Under contract. TC handoff emailed. INSPECTION_SCHEDULED SMS sent. 14-day countdown started.' },
     ],
   },
 
@@ -1253,6 +1267,22 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
               [onePercentRule, onePercentValue, rate, repairs, cash, f50, Math.round(f50 * 0.5), Math.round(f50 * 0.5), f50, Math.round(f50 * 0.1), Math.round(f50 * 0.9), subto, rec, leadId]
             );
             results.push({ type: 'run_underwriting', ok: true, data: { onePercentRule, cash, f50, subto, rec } });
+            break;
+          }
+          case 'run_comps': {
+            const report = generateCompsReport(leadData);
+            await saveCompsReport(leadId, userId, report);
+            results.push({ type: 'run_comps', ok: true, data: { buyBoxPass: report.buyBox.allPass, strategy: report.strategy.strategy } });
+            break;
+          }
+          case 'send_email': {
+            const emailResult = await sendStageEmail(fromStage, toStage, leadData);
+            results.push({ type: 'send_email', ...emailResult });
+            break;
+          }
+          case 'send_sms': {
+            const smsResult = await sendStageSMS(fromStage, toStage, leadData);
+            results.push({ type: 'send_sms', ...smsResult });
             break;
           }
           case 'notify': {
