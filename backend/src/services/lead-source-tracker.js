@@ -99,6 +99,48 @@ const LEAD_SOURCES = {
     qualityTier: 'D',
     closeRate: 'Unknown',
   },
+  zillow: {
+    name: 'Zillow',
+    description: 'Zillow listing / Zillow-sourced lead',
+    typicalCAC: '$0',
+    qualityTier: 'B',
+    closeRate: '3-8%',
+  },
+  redfin: {
+    name: 'Redfin',
+    description: 'Redfin listing / Redfin-sourced lead',
+    typicalCAC: '$0',
+    qualityTier: 'B',
+    closeRate: '3-8%',
+  },
+  kayla_sheet: {
+    name: 'Kayla Sheet',
+    description: 'Lead from Kayla\'s deal sheet',
+    typicalCAC: '$0',
+    qualityTier: 'A',
+    closeRate: '10-20%',
+  },
+  ppc: {
+    name: 'PPC',
+    description: 'Pay-per-click advertising lead',
+    typicalCAC: '$50 - $200',
+    qualityTier: 'A',
+    closeRate: '5-15%',
+  },
+  list_pull: {
+    name: 'List Pull',
+    description: 'Standard list pull from internal CRM',
+    typicalCAC: '$0',
+    qualityTier: 'B',
+    closeRate: '2-8%',
+  },
+  referral: {
+    name: 'Referral',
+    description: 'Referral from past client or partner',
+    typicalCAC: '$0',
+    qualityTier: 'A+',
+    closeRate: '15-30%',
+  },
 };
 
 // =============================================================

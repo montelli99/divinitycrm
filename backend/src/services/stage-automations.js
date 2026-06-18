@@ -1298,12 +1298,12 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             break;
           }
           case 'run_doc_analysis': {
-            const docResult = await runDocAnalysis(leadData);
+            const docResult = await runDocAnalysis(leadId);
             results.push({ type: 'run_doc_analysis', ok: true, data: docResult });
             break;
           }
           case 'quick_buybox': {
-            const bbResult = quickBuyBoxCheck(leadData);
+            const bbResult = quickBuyBoxCheck(leadId);
             results.push({ type: 'quick_buybox', ok: true, data: bbResult });
             break;
           }
