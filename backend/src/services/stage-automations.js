@@ -21,6 +21,15 @@ const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMP
 const { sendStageEmail } = require('./email-service');
 const { sendStageSMS } = require('./sms-service');
 const { generateCompsReport, saveCompsReport } = require('./comps-engine');
+const { createMenteeRecord, reassignLead, setVacationMode, endVacationMode } = require('./student-roster');
+const { createDispoRecord, transitionDispoStatus } = require('./dispo-tracker');
+const { scanPipeline, getStalledLeads, getOverdueFollowUps } = require('./pipeline-monitor');
+const { scanOverdueFollowUps, createFollowUpAlerts } = require('./followup-alert');
+const { registerPostClose, sendTestimonialRequest, sendReferralRequest, runPokemonSpawn } = require('./post-close-engine');
+const { allocateClosingCosts, saveAllocationToLead } = require('./closing-cost-allocator');
+const { evaluateMidTerm, generateMidTermPitch } = require('./mid-term-pivot');
+const { runDocAnalysis, quickBuyBoxCheck } = require('./doc-analyzer');
+const { tagLeadSource, scoreLead } = require('./lead-source-tracker');
 
 // =============================================================
 // OWNER SECTIONS
@@ -130,6 +139,8 @@ const STAGE_TRANSITIONS = {
       ],
     },
     automations: [
+      { type: 'quick_buybox' },
+      { type: 'tag_source' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
       { type: 'send_sms' },
       { type: 'log', message: 'Contact made. INT + CCC sent. Notes recorded.' },
@@ -198,10 +209,11 @@ const STAGE_TRANSITIONS = {
       reminders: [],
     },
     automations: [
+      { type: 'run_doc_analysis' },
       { type: 'run_comps' },
       { type: 'run_underwriting' },
       { type: 'send_email' },
-      { type: 'log', message: 'Deal evaluated. Comps + underwriting run. Seth emailed.' },
+      { type: 'log', message: 'Deal evaluated. Doc analysis + comps + underwriting run. Seth emailed.' },
     ],
   },
 
@@ -1283,6 +1295,56 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
           case 'send_sms': {
             const smsResult = await sendStageSMS(fromStage, toStage, leadData);
             results.push({ type: 'send_sms', ...smsResult });
+            break;
+          }
+          case 'run_doc_analysis': {
+            const docResult = await runDocAnalysis(leadData);
+            results.push({ type: 'run_doc_analysis', ok: true, data: docResult });
+            break;
+          }
+          case 'quick_buybox': {
+            const bbResult = quickBuyBoxCheck(leadData);
+            results.push({ type: 'quick_buybox', ok: true, data: bbResult });
+            break;
+          }
+          case 'tag_source': {
+            const sourceResult = tagLeadSource(leadId, leadData.source || 'other');
+            const scoreResult = scoreLead(leadData);
+            results.push({ type: 'tag_source', ok: true, data: { source: sourceResult, score: scoreResult } });
+            break;
+          }
+          case 'run_midterm': {
+            const mtResult = evaluateMidTerm(leadData);
+            if (mtResult.pivot) {
+              const pitch = generateMidTermPitch(leadData, mtResult);
+              results.push({ type: 'run_midterm', ok: true, data: { pivot: true, ...mtResult, pitch } });
+            } else {
+              results.push({ type: 'run_midterm', ok: true, data: { pivot: false, ...mtResult } });
+            }
+            break;
+          }
+          case 'allocate_closing': {
+            const allocResult = allocateClosingCosts(leadData);
+            await saveAllocationToLead(leadId, userId, allocResult);
+            results.push({ type: 'allocate_closing', ok: true, data: allocResult });
+            break;
+          }
+          case 'register_postclose': {
+            const pcResult = await registerPostClose(leadId, userId, leadData);
+            results.push({ type: 'register_postclose', ok: true, data: pcResult });
+            break;
+          }
+          case 'create_dispo': {
+            const dispoResult = await createDispoRecord(leadId, userId, leadData);
+            results.push({ type: 'create_dispo', ok: true, data: dispoResult });
+            break;
+          }
+          case 'scan_followups': {
+            const fuResult = await scanOverdueFollowUps(leadId);
+            if (fuResult.overdue) {
+              await createFollowUpAlerts(leadId, userId, fuResult);
+            }
+            results.push({ type: 'scan_followups', ok: true, data: fuResult });
             break;
           }
           case 'notify': {
