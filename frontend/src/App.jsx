@@ -40,7 +40,7 @@ function LoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'var(--bg-primary)',
+      background: 'radial-gradient(ellipse at top, #111827, #0a0c14)',
       padding: '1rem',
     }}>
       <div style={{
@@ -49,40 +49,58 @@ function LoginPage() {
         borderRadius: 'var(--radius-xl)',
         padding: '2.5rem 2rem',
         width: '100%',
-        maxWidth: '420px',
-        boxShadow: 'var(--shadow-xl)',
+        maxWidth: '440px',
+        boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(91,108,240,0.08)',
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <h1 style={{
-            fontSize: '1.75rem',
-            fontWeight: '800',
-            marginBottom: '0.25rem',
+        {/* Logo / Brand */}
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{
+            width: '56px', height: '56px',
+            borderRadius: '16px',
             background: 'linear-gradient(135deg, #5b6cf0, #818cf8, #a78bfa)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1rem',
+            boxShadow: '0 8px 24px rgba(91,108,240,0.35)',
+          }}>
+            <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'white' }}>D</span>
+          </div>
+          <h1 style={{
+            fontSize: '1.6rem',
+            fontWeight: '800',
+            marginBottom: '0.15rem',
+            background: 'linear-gradient(135deg, #f0f2f8, #a8aec6)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             letterSpacing: '-0.02em',
           }}>Divinity CRM</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.82rem', marginTop: '0.15rem' }}>
             Student Pipeline Platform
           </p>
         </div>
 
+        {/* Credentials card */}
         <div style={{
-          background: 'var(--bg-tertiary)',
-          border: '1px solid var(--border-subtle)',
+          background: 'linear-gradient(135deg, rgba(91,108,240,0.06), rgba(129,140,248,0.04))',
+          border: '1px solid rgba(91,108,240,0.15)',
           borderRadius: 'var(--radius-md)',
-          padding: '0.75rem 1rem',
-          marginBottom: '1.25rem',
+          padding: '0.85rem 1rem',
+          marginBottom: '1.5rem',
           fontSize: '0.78rem',
           color: 'var(--text-secondary)',
-          lineHeight: '1.5',
+          lineHeight: '1.6',
         }}>
-          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.4rem', fontSize: '0.8rem' }}>
             🔑 Account Credentials
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-            <div><strong style={{ color: 'var(--brand-primary)' }}>Montelli:</strong> montelliscottrei@gmail.com / Prolific2026!</div>
-            <div><strong style={{ color: '#f59e0b' }}>Kayla:</strong> homewithkaylamauser@gmail.com / Divinity2026!</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ background: 'var(--brand-primary)', color: 'white', borderRadius: '4px', padding: '0.1rem 0.35rem', fontSize: '0.65rem', fontWeight: '700' }}>M</span>
+              <span><strong style={{ color: 'var(--text-primary)' }}>montelliscottrei@gmail.com</strong></span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ background: '#f59e0b', color: '#0a0c14', borderRadius: '4px', padding: '0.1rem 0.35rem', fontSize: '0.65rem', fontWeight: '700' }}>K</span>
+              <span><strong style={{ color: 'var(--text-primary)' }}>homewithkaylamauser@gmail.com</strong></span>
+            </div>
           </div>
         </div>
 

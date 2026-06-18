@@ -1,0 +1,18 @@
+auth route OK
+leads route OK
+contracts route OK
+pipeline route OK
+scripts route OK
+script-prompts route OK
+users route OK
+webhooks route OK
+calculator route OK
+training route OK
+Neon database connected: OK
+Divinity CRM API running on port 3001
+[0mPOST /api/auth/login [32m200[0m 361.175 ms - 417[0m
+[0mGET /api/auth/google/url [32m200[0m 6.208 ms - 420[0m
+[0mGET /api/scripts/prompts/shortcuts [32m200[0m 17.542 ms - 7844[0m
+[0mGET / [32m200[0m 24.496 ms - 612[0m
+[0mGET /api/auth/google/status [32m200[0m 65.078 ms - 78[0m
+[0mGET /api/pipeline [32m200[0m 304.545 ms - 809[0m
