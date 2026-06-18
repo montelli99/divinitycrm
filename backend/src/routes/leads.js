@@ -542,4 +542,54 @@ router.patch('/:id/followups/:followUpId', async (req, res, next) => {
   }
 });
 
+// =============================================================
+// FOLLOW-UP ALERTS
+// =============================================================
+
+const {
+  scanOverdueFollowUps,
+  createFollowUpAlerts,
+  markFollowUpDone,
+  getFollowUps,
+  run: runFollowupScan,
+} = require('../services/followup-alert');
+
+// GET /api/leads/:id/followups — Follow-up status for a specific lead
+router.get('/:id/followups', async (req, res, next) => {
+  try {
+    const result = await getFollowUps(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Lead not found' });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/:id/followups/complete — Mark 48hr follow-up as done
+router.post('/:id/followups/complete', async (req, res, next) => {
+  try {
+    const result = await markFollowUpDone(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/followups/scan — Run follow-up scan (admin/cron)
+router.post('/followups/scan', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const scanResult = await scanOverdueFollowUps();
+    const result = await createFollowUpAlerts(scanResult);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
