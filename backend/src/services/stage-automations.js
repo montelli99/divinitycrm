@@ -19,7 +19,8 @@
 const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
 const { sendStageEmail } = require('./email-service');
-const { sendStageSMS } = require('./sms-service');
+// SMS: Students copy pre-filled templates from prompts and paste into their own phones.
+// No automated SMS sending in student CRM.
 const { generateCompsReport, saveCompsReport } = require('./comps-engine');
 const { createMenteeRecord, reassignLead, setVacationMode, endVacationMode } = require('./student-roster');
 const { createDispoRecord, transitionDispoStatus } = require('./dispo-tracker');
@@ -142,8 +143,7 @@ const STAGE_TRANSITIONS = {
       { type: 'quick_buybox' },
       { type: 'tag_source' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Contact made. INT + CCC sent. Notes recorded.' },
+      { type: 'log', message: 'Contact made. INT + CCC templates ready. Notes recorded.' },
     ],
   },
 
@@ -287,8 +287,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_field', field: 'follow_up_48hr_due', value: 'now+48h' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
       { type: 'send_email' },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Offer sent. Comps run. LOI prepared. Kayla + Seth emailed. GCJ SMS sent. 48hr timer started.' },
+      { type: 'log', message: 'Offer sent. Comps run. LOI prepared. Kayla + Seth emailed. 48hr timer started.' },
     ],
   },
 
@@ -385,8 +384,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_field', field: 'follow_up_48hr_done', value: true },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Feedback gained. Realignment call completed. LOI SMS sent.' },
+      { type: 'log', message: 'Feedback gained. Realignment call completed. LOI template ready.' },
     ],
   },
 
@@ -440,8 +438,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'dom_181' },
-      { type: 'send_sms' },
-      { type: 'log', message: 'No answer. Voice memo + LOI2DAYS + SD sent. DOM tracked.' },
+      { type: 'log', message: 'No answer. Voice memo + LOI2DAYS + SD templates ready. DOM tracked.' },
     ],
   },
 
@@ -516,8 +513,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_reminder', reminder_type: '60_day_nurture', offset_days: 60 },
       { type: 'set_reminder', reminder_type: '90_day_nurture', offset_days: 90 },
       { type: 'set_reminder', reminder_type: '181_day_nurture', offset_days: 181 },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Seller declined. SD SMS sent. 30/60/90/181 nurture chain started.' },
+      { type: 'log', message: 'Seller declined. SD template ready. 30/60/90/181 nurture chain started.' },
     ],
   },
 
@@ -756,8 +752,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },
       { type: 'send_email' },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake emailed. CONTRACT_OUT SMS sent.' },
+      { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake emailed. CONTRACT_OUT template ready.' },
     ],
   },
 
@@ -810,8 +805,7 @@ const STAGE_TRANSITIONS = {
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
       { type: 'send_email' },
-      { type: 'send_sms' },
-      { type: 'log', message: 'Under contract. TC handoff emailed. INSPECTION_SCHEDULED SMS sent. 14-day countdown started.' },
+      { type: 'log', message: 'Under contract. TC handoff emailed. INSPECTION_SCHEDULED template ready. 14-day countdown started.' },
     ],
   },
 
@@ -1290,11 +1284,6 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
           case 'send_email': {
             const emailResult = await sendStageEmail(fromStage, toStage, leadData);
             results.push({ type: 'send_email', ...emailResult });
-            break;
-          }
-          case 'send_sms': {
-            const smsResult = await sendStageSMS(fromStage, toStage, leadData);
-            results.push({ type: 'send_sms', ...smsResult });
             break;
           }
           case 'run_doc_analysis': {
