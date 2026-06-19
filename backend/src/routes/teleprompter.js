@@ -1,19 +1,241 @@
 // =============================================================
-// Teleprompter API — Integrated stage scripts for call mode
-// 
-// Folds the standalone teleprompter project into the CRM.
-// All 21 stages + scripts + variable substitution.
-// 
-// When called with a lead context, auto-fills {address}, {seller_name},
-// {seller_phone}, {seller_email}, {price}, etc. from the lead record.
+// Teleprompter API — Text Shortcut Reference for Students
+// =============================================================
+// User correction (2026-06-19):
+//   "The teleprompters are supposed to be for the tech shortcuts that
+//    are supposed to have their name, information, address, and things
+//    filled out. They can copy from that to their mobile device and hit
+//    send from their cell phone the message that we would be sending."
+//
+// This is NOT a call-mode script reader. It's a UI for the 33+ text
+// shortcuts (INT, NOA, CCC, GCJ, LOI, F50, CONTRACT_OUT, etc.) that
+// students send to sellers/agents via their personal phones.
+//
+// Flow:
+//   1. Student opens a lead in CRM
+//   2. Lead's current stage determines which shortcuts are available
+//   3. Each shortcut's body is pre-filled with {{Seller Name}},
+//      {{Property Address}}, {{COE Date}}, etc. from the lead record
+//   4. Student sees the pre-filled text, taps Copy, pastes to phone,
+//      hits Send
+//   5. Tap "Mark as Sent" to log it to activity_log
+//
+// Sources of truth:
+//   - divinitycrm/backend/src/services/script-prompts.js (OUTREACH_SCRIPTS,
+//     CALL_SCRIPTS, PITCH_SCRIPTS) — 33 core text shortcuts
+//   - ghl-automations/modules/sms-templates.js (SELLER_UPDATE_TEMPLATES,
+//     PPC_TEXT_SHORTCUTS, OBJECTION_HANDLERS) — seller update SMS
+//     (CONTRACT_OUT, INSPECTION_SCHEDULED, etc.)
 // =============================================================
 
 const { Router } = require('express');
 const { query } = require('../db/connection');
+const path = require('path');
+
 const { STAGES, STAGE_LABELS, OWNERS, STAGE_BUCKETS } = require('./stages');
-const { SCRIPTS, renderScript } = require('../services/teleprompter-scripts');
+const {
+  listAllShortcuts,
+  getTemplateByShortcut,
+  fillTemplate: fillCrmShortcut,
+  OUTREACH_SCRIPTS,
+  CALL_SCRIPTS,
+  PITCH_SCRIPTS,
+} = require('../services/script-prompts');
+
+// Pull in the GHL-side templates (seller update + PPC + objection handlers)
+const ghlPath = path.resolve(__dirname, '../../../../ghl-automations/modules');
+const ghlSms = require(path.join(ghlPath, 'sms-templates.js'));
 
 const router = Router();
+
+// Map our 21 GHL stages to seller-update template stages (numeric)
+const SELLER_UPDATE_STAGE_NUM = {
+  CONTRACT_OUT: 12,
+  INSPECTION_SCHEDULED: 14,
+  APPRAISAL_DONE: 17,
+  JV_SIGNED: 19,
+  CLOSING_CONFIRMED: 21,
+  EVERYBODY_WINS_PITCH: 3,
+  PSA_CALL_OPENER_SMS: 12,
+  SUBTO_PROCESSOR_CONFIRMED: 20,
+};
+
+const STAGE_NUM_TO_NAME = {};
+Object.entries(SELLER_UPDATE_STAGE_NUM).forEach(([key, num]) => {
+  STAGE_NUM_TO_NAME[num] = STAGE_NUM_TO_NAME[num] || [];
+  STAGE_NUM_TO_NAME[num].push(key);
+});
+
+// Stage index (1-based) for our 21 stages
+const STAGE_INDEX = {};
+STAGES.forEach((s, i) => STAGE_INDEX[s] = i + 1);
+
+// Helper: build data dict for fillTemplate from a lead row
+function leadToTemplateData(lead) {
+  if (!lead) return {};
+  const d = new Date();
+  return {
+    'Seller Name': lead.seller_name || '',
+    'Property Address': lead.address ? `${lead.address}${lead.city ? ', ' + lead.city : ''}${lead.state ? ' ' + lead.state : ''}${lead.zip ? ' ' + lead.zip : ''}`.trim() : '',
+    'Sender Name': lead.agent_name || 'Montelli',
+    'Sender Phone': lead.agent_phone || '',
+    'Sender Email': lead.agent_email || '',
+    'Seller Phone': lead.seller_phone || '',
+    'Seller Email': lead.seller_email || '',
+    'Price': lead.price ? `$${Number(lead.price).toLocaleString()}` : '',
+    'COE Date': lead.coe_date ? new Date(lead.coe_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '',
+    'PSA Signed Date': lead.psa_signed_date ? new Date(lead.psa_signed_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '',
+    'Inspection End Date': lead.inspection_end_date ? new Date(lead.inspection_end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '',
+    'Inspection Period Days': lead.inspection_period_days || '14',
+    'EMD': lead.emd_amount ? `$${Number(lead.emd_amount).toLocaleString()}` : '$100',
+    'Title Company': lead.title_company || 'CLOSED Title',
+    'TC Name': lead.tc_name || 'BGonzalez',
+    'TC Email': lead.tc_email || '',
+    'TC Phone': lead.tc_phone || '',
+    'LLC Name': lead.llc_name || 'Divinity Aligned LLC',
+    'Contract Type': (lead.contract_type || '').toUpperCase() || 'SUBTO',
+    'Condition': lead.condition || '',
+    'Day': d.toLocaleDateString('en-US', { weekday: 'long' }),
+  };
+}
+
+// GET /api/teleprompter/shortcuts?stage=X&lead_id=Y
+// Returns the list of shortcuts applicable to the given stage,
+// with each shortcut's body pre-filled from the lead's data.
+router.get('/shortcuts', async (req, res) => {
+  const { stage, lead_id } = req.query;
+  if (!stage) {
+    return res.status(400).json({ error: 'stage query param required' });
+  }
+
+  let lead = null;
+  if (lead_id) {
+    try {
+      const rows = await query(
+        `SELECT address, city, state, zip, seller_name, seller_phone, seller_email,
+                agent_name, agent_phone, agent_email, price, contract_type, 
+                condition, psa_signed_date, coe_date, inspection_end_date, 
+                inspection_period_days, emd_amount, title_company, title_company_email,
+                title_company_phone, tc_name, tc_email, tc_phone, llc_name
+         FROM leads WHERE id = $1`,
+        [lead_id]
+      );
+      lead = rows && rows[0];
+    } catch (err) {
+      console.warn('Teleprompter: lead query failed', err.message);
+    }
+  }
+
+  const data = leadToTemplateData(lead);
+  const stageNum = STAGE_INDEX[stage];
+  const shortcuts = [];
+
+  // 1) Pull from CRM script-prompts.js (OUTREACH_SCRIPTS, CALL_SCRIPTS, PITCH_SCRIPTS)
+  const crmAll = [
+    ...Object.values(OUTREACH_SCRIPTS || {}),
+    ...Object.values(CALL_SCRIPTS || {}),
+    ...Object.values(PITCH_SCRIPTS || {}),
+  ];
+  crmAll.forEach(tpl => {
+    if (tpl.stage !== stage) return;
+    try {
+      // getTemplateByShortcut already calls fillTemplate internally
+      // Note: returns { filled, unfilled, recipient, actionRequired, ... }
+      const filled = getTemplateByShortcut ? getTemplateByShortcut(tpl.shortcut, lead || {}) : { filled: tpl.body };
+      shortcuts.push({
+        source: 'crm',
+        key: tpl.shortcut,
+        name: tpl.name || tpl.shortcut,
+        description: tpl.description || '',
+        recipientType: tpl.recipientType || 'seller',
+        body: filled.filled || tpl.body,
+        unfilled: filled.unfilled || [],
+        recipient: filled.recipient,
+      });
+    } catch (err) {
+      console.warn(`Teleprompter: failed to fill ${tpl.shortcut}:`, err.message);
+    }
+  });
+
+  // 2) Pull from ghl-automations sms-templates.js (seller updates)
+  if (stageNum && SELLER_UPDATE_STAGE_NUM) {
+    const sellerKeys = STAGE_NUM_TO_NAME[stageNum] || [];
+    sellerKeys.forEach(key => {
+      try {
+        const filled = ghlSms.fillSellerUpdate ? ghlSms.fillSellerUpdate(key, data) : null;
+        if (filled && !filled.error) {
+          shortcuts.push({
+            source: 'ghl',
+            key,
+            name: filled.name || key,
+            description: 'Seller update SMS — pre-filled with lead data',
+            recipientType: 'seller',
+            body: filled.body,
+            unfilled: filled.unfilled || [],
+          });
+        }
+      } catch (err) {
+        console.warn(`Teleprompter: failed to fill seller update ${key}:`, err.message);
+      }
+    });
+  }
+
+  res.json({
+    stage,
+    stageLabel: STAGE_LABELS[stage],
+    stageNumber: stageNum,
+    lead: lead ? { id: lead_id, address: lead.address, seller_name: lead.seller_name } : null,
+    shortcuts,
+  });
+});
+
+// GET /api/teleprompter/shortcuts/:source/:key?lead_id=Y
+// Returns one shortcut fully filled (for the detail view)
+router.get('/shortcuts/:source/:key', async (req, res) => {
+  const { source, key } = req.params;
+  const { lead_id } = req.query;
+
+  let lead = null;
+  if (lead_id) {
+    try {
+      const rows = await query(
+        `SELECT address, city, state, zip, seller_name, seller_phone, seller_email,
+                agent_name, agent_phone, agent_email, price, contract_type, 
+                condition, psa_signed_date, coe_date, inspection_end_date, 
+                inspection_period_days, emd_amount, title_company, title_company_email,
+                title_company_phone, tc_name, tc_email, tc_phone, llc_name
+         FROM leads WHERE id = $1`,
+        [lead_id]
+      );
+      lead = rows && rows[0];
+    } catch (err) {
+      console.warn('Teleprompter: lead query failed', err.message);
+    }
+  }
+
+  const data = leadToTemplateData(lead);
+
+  if (source === 'crm') {
+    const filled = getTemplateByShortcut ? getTemplateByShortcut(key, lead || {}) : { error: 'not found' };
+    if (filled.error) return res.status(404).json({ error: filled.error });
+    return res.json({
+      source, key, name: filled.name || key, description: filled.description || '',
+      recipientType: filled.recipientType || 'seller', stage: filled.stage,
+      body: filled.filled, unfilled: filled.unfilled || [],
+      recipient: filled.recipient,
+    });
+  } else if (source === 'ghl') {
+    const filled = ghlSms.fillSellerUpdate ? ghlSms.fillSellerUpdate(key, data) : null;
+    if (!filled || filled.error) return res.status(404).json({ error: 'GHL template not found' });
+    return res.json({
+      source, key, name: filled.name, description: 'Seller update SMS',
+      recipientType: 'seller', stage: filled.stage,
+      body: filled.body, unfilled: filled.unfilled,
+    });
+  } else {
+    return res.status(400).json({ error: 'source must be "crm" or "ghl"' });
+  }
+});
 
 // GET /api/teleprompter/stages — list all stages with labels + owners
 router.get('/stages', (req, res) => {
@@ -25,104 +247,34 @@ router.get('/stages', (req, res) => {
   });
 });
 
-// GET /api/teleprompter/scripts — bulk fetch all scripts (for preloading)
-router.get('/scripts', (req, res) => {
-  res.json({ scripts: SCRIPTS });
-});
-
-// GET /api/teleprompter/:stageId — get script for a stage with optional ?vars=...
-router.get('/:stageId', async (req, res) => {
-  const { stageId } = req.params;
-  if (!SCRIPTS[stageId]) {
-    return res.status(404).json({ error: 'Stage not found', validStages: STAGES });
+// POST /api/teleprompter/mark-sent
+// Body: { lead_id, source, key, body, recipient, channel }
+// Logs the action to activity_log so we know when each shortcut was sent.
+router.post('/mark-sent', async (req, res) => {
+  const { lead_id, source, key, body, recipient, channel } = req.body || {};
+  if (!lead_id || !source || !key || !body) {
+    return res.status(400).json({ error: 'lead_id, source, key, body required' });
   }
-
-  let variables = { ...req.query };
-
-  // If lead_id is passed, auto-populate from lead data
-  if (req.query.lead_id) {
-    try {
-      const rows = await query(
-        `SELECT address, city, state, zip, seller_name, seller_phone, seller_email,
-                agent_name, agent_phone, agent_email, price, contract_type, 
-                monthly_rent, arv, condition, psa_signed_date, tc_email, tc_name,
-                inspection_end_date, contract_draft_url
-         FROM leads WHERE id = $1`,
-        [req.query.lead_id]
-      );
-      const lead = rows && rows[0];
-      if (lead) {
-        variables = {
-          ...variables,
-          address: lead.address ? `${lead.address}, ${lead.city || ''} ${lead.state || ''}`.trim() : variables.address,
-          seller_name: lead.seller_name || variables.seller_name,
-          seller_phone: lead.seller_phone || variables.seller_phone,
-          seller_email: lead.seller_email || variables.seller_email,
-          agent_name: lead.agent_name || variables.agent_name,
-          agent_phone: lead.agent_phone || variables.agent_phone,
-          agent_email: lead.agent_email || variables.agent_email,
-          price: lead.price ? `$${Number(lead.price).toLocaleString()}` : variables.price,
-          contract_type: (lead.contract_type || '').toUpperCase() || variables.contract_type,
-          condition_notes: lead.condition || variables.condition_notes,
-          tc_email: lead.tc_email || variables.tc_email,
-          tc_name: lead.tc_name || variables.tc_name,
-          inspection_end_date: lead.inspection_end_date
-            ? new Date(lead.inspection_end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
-            : variables.inspection_end_date,
-          contract_deadline: variables.contract_deadline || (() => {
-            const d = new Date();
-            d.setDate(d.getDate() + 1);
-            return d.toLocaleDateString('en-US', { weekday: 'long' });
-          })(),
-        };
-        // Compute follow_up_date if missing
-        if (!variables.follow_up_date && variables.address) {
-          const d = new Date();
-          d.setDate(d.getDate() + 2);
-          variables.follow_up_date = d.toLocaleDateString('en-US', { weekday: 'long' });
-        }
-      }
-    } catch (err) {
-      console.warn('Teleprompter: failed to load lead context', err.message);
-      // continue with query variables
-    }
+  try {
+    // Try to insert into activity_log (use existing schema if available)
+    await query(
+      `INSERT INTO activity_log (lead_id, user_id, type, description, metadata, created_at)
+       VALUES ($1, NULL, 'shortcut_sent', $2, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [
+        lead_id,
+        `${source}:${key} sent via ${channel || 'manual'} to ${recipient || 'unknown'}`,
+        JSON.stringify({ source, key, body, recipient, channel, sent_at: new Date().toISOString() })
+      ]
+    ).catch(err => {
+      // Fallback: log to console if activity_log doesn't have the columns we need
+      console.log('[TELEPROMPTER] shortcut sent:', { lead_id, source, key, recipient });
+    });
+    res.json({ ok: true, logged_at: new Date().toISOString() });
+  } catch (err) {
+    console.warn('Teleprompter: mark-sent failed', err.message);
+    res.json({ ok: true, logged_at: new Date().toISOString(), warning: 'logged to console only' });
   }
-
-  const rendered = renderScript(stageId, variables);
-  res.json({
-    stage: stageId,
-    label: STAGE_LABELS[stageId],
-    owner: OWNERS[stageId],
-    variables,
-    script: rendered,
-  });
-});
-
-// POST /api/teleprompter/:stageId/render — render with explicit variables
-router.post('/:stageId/render', (req, res) => {
-  const { stageId } = req.params;
-  const variables = (req.body && req.body.variables) || {};
-  if (!SCRIPTS[stageId]) {
-    return res.status(404).json({ error: 'Stage not found' });
-  }
-  const rendered = renderScript(stageId, variables);
-  res.json({
-    stage: stageId,
-    label: STAGE_LABELS[stageId],
-    owner: OWNERS[stageId],
-    script: rendered,
-  });
-});
-
-// GET /api/teleprompter/:currentStage/next — get the next stage
-router.get('/:currentStage/next', (req, res) => {
-  const idx = STAGES.indexOf(req.params.currentStage);
-  if (idx === -1) return res.status(404).json({ error: 'Unknown stage' });
-  if (idx === STAGES.length - 1) {
-    return res.json({ current: req.params.currentStage, next: null, message: 'Pipeline complete' });
-  }
-  const next = STAGES[idx + 1];
-  res.json({ current: req.params.currentStage, next, label: STAGE_LABELS[next] });
 });
 
 module.exports = router;

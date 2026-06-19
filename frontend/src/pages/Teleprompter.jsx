@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getToken } from '../lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+
+function getToken() {
+  return localStorage.getItem('divinity_token');
+}
 
 async function apiGet(path) {
   const token = getToken();
@@ -14,22 +17,54 @@ async function apiGet(path) {
   return res.json();
 }
 
-const DEFAULT_FONT_SIZE = 3;
-const DEFAULT_WPM = 200;
-const WPM_TO_PX_PER_SEC = (wpm, fontSizeRem) => {
-  return (wpm / 60) * 5 * (fontSizeRem * 0.6 * 16) * 1.4 / 5;
+async function apiPost(path, body) {
+  const token = getToken();
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+const STAGE_LABELS = {
+  LEAD_ENTERED: 'Lead Entered',
+  CONTACT_MADE: 'Contact Made',
+  OFFER_READY: 'Offer Ready',
+  OFFER_SENT: 'Offer Sent',
+  OFFER_RECEIVED: 'Offer Received',
+  GAIN_FEEDBACK: 'Gain Feedback',
+  NO_ANSWER: 'No Answer',
+  SELLER_DECLINED: 'Seller Declined',
+  ACTIVE_NEGOTIATION: 'Active Negotiation',
+  TERMS_AGREED: 'Terms Agreed',
+  AWAITING_TITLE: 'Awaiting Title',
+  CONTRACT_OUT: 'Contract Out',
+  UNDER_CONTRACT: 'Under Contract',
+  INSPECTION_PERIOD: 'Inspection Period',
+  INSPECTION_COMPLETE: 'Inspection Complete',
+  APPRAISAL_ORDERED: 'Appraisal Ordered',
+  APPRAISAL_DONE: 'Appraisal Done',
+  JV_SENT: 'JV Sent',
+  JV_SIGNED: 'JV Signed',
+  WIRE_SETUP: 'Wire Setup',
+  CLOSING_DATE: 'Closing Date',
 };
 
-function highlightPlaceholders(text) {
-  if (!text) return null;
-  const parts = text.split(/(\{[\w_]+\})/g);
-  return parts.map((p, i) => {
-    if (p.match(/^\{[\w_]+\}$/)) {
-      return <span key={i} className="placeholder">{p}</span>;
-    }
-    return <span key={i}>{p}</span>;
-  });
-}
+const ALL_STAGES = Object.keys(STAGE_LABELS);
+
+const RECIPIENT_BADGE = {
+  agent_or_seller: { label: 'Agent / Seller', color: '#6366f1' },
+  seller: { label: 'Seller', color: '#10b981' },
+  agent: { label: 'Agent', color: '#f59e0b' },
+};
 
 export default function Teleprompter() {
   const [searchParams] = useSearchParams();
@@ -37,455 +72,349 @@ export default function Teleprompter() {
   const leadId = searchParams.get('lead_id');
   const initialStage = searchParams.get('stage');
 
-  const [stages, setStages] = useState([]);
-  const [labels, setLabels] = useState({});
-  const [owners, setOwners] = useState({});
-  const [buckets, setBuckets] = useState({});
-  const [currentStage, setCurrentStage] = useState(initialStage || (leadId ? null : 'CONTACT_MADE'));
-  const [script, setScript] = useState(null);
-  const [variables, setVariables] = useState({});
-  const [showStagePicker, setShowStagePicker] = useState(false);
-  const [showVarForm, setShowVarForm] = useState(false);
-  const [scrolling, setScrolling] = useState(false);
-  const [wpm, setWpm] = useState(DEFAULT_WPM);
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
-  const [scrollPos, setScrollPos] = useState(0);
-  const [error, setError] = useState(null);
+  const [currentStage, setCurrentStage] = useState(initialStage || (leadId ? null : 'LEAD_ENTERED'));
+  const [shortcuts, setShortcuts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selected, setSelected] = useState(null); // expanded shortcut
+  const [copied, setCopied] = useState(null);
+  const [sentLog, setSentLog] = useState({});
 
-  const scrollerRef = useRef(null);
-  const animFrameRef = useRef(null);
-  const lastTimeRef = useRef(0);
-
-  // Load stages
-  useEffect(() => {
-    apiGet('/teleprompter/stages')
-      .then(d => {
-        setStages(d.stages);
-        setLabels(d.labels);
-        setOwners(d.owners);
-        setBuckets(d.buckets);
-      })
-      .catch(e => setError('Failed to load stages: ' + e.message));
-  }, []);
-
-  // If lead_id is provided and no initial stage, default to CONTACT_MADE
+  // Default stage if lead_id present
   useEffect(() => {
     if (leadId && !currentStage) {
-      setCurrentStage('CONTACT_MADE');
+      setCurrentStage('LEAD_ENTERED');
     }
   }, [leadId, currentStage]);
 
-  // Load script
+  // Load shortcuts for current stage
   useEffect(() => {
     if (!currentStage) return;
     setLoading(true);
     const qs = new URLSearchParams();
+    qs.set('stage', currentStage);
     if (leadId) qs.set('lead_id', leadId);
-    Object.entries(variables).forEach(([k, v]) => {
-      if (k !== 'lead_id' && v) qs.set(k, v);
-    });
-    apiGet(`/teleprompter/${currentStage}?${qs.toString()}`)
+    apiGet(`/teleprompter/shortcuts?${qs.toString()}`)
       .then(d => {
-        setScript(d.script);
-        // Auto-populate variables from script's declared list
-        const initialVars = { ...variables };
-        let changed = false;
-        (d.script.variables || []).forEach(v => {
-          if (initialVars[v] === undefined) {
-            initialVars[v] = '';
-            changed = true;
-          }
-        });
-        if (changed) setVariables(initialVars);
-        setScrollPos(0);
+        setShortcuts(d.shortcuts || []);
         setError(null);
       })
-      .catch(e => setError('Failed to load script: ' + e.message))
+      .catch(e => setError('Failed to load shortcuts: ' + e.message))
       .finally(() => setLoading(false));
   }, [currentStage, leadId]);
 
-  // Re-render script with current variables
-  const renderedScript = useMemo(() => {
-    if (!script) return null;
-    const substitute = (text) => {
-      if (!text) return text;
-      return text.replace(/\{(\w+)\}/g, (match, key) => variables[key] || match);
-    };
-    return {
-      ...script,
-      opener: substitute(script.opener),
-      close: substitute(script.close),
-      goal: substitute(script.goal),
-      discovery: (script.discovery || []).map(substitute),
-      objection: Object.fromEntries(
-        Object.entries(script.objection || {}).map(([k, v]) => [substitute(k), substitute(v)])
-      )
-    };
-  }, [script, variables]);
-
-  // Auto-scroll loop
-  useEffect(() => {
-    if (!scrolling) {
-      cancelAnimationFrame(animFrameRef.current);
-      lastTimeRef.current = 0;
-      return;
+  // Copy to clipboard
+  async function handleCopy(shortcut) {
+    const text = shortcut.body;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(shortcut.key);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (e) {
+      // Fallback: select text in modal
+      setSelected(shortcut);
     }
-    const tick = (ts) => {
-      if (!lastTimeRef.current) lastTimeRef.current = ts;
-      const dt = (ts - lastTimeRef.current) / 1000;
-      lastTimeRef.current = ts;
-      const velocity = WPM_TO_PX_PER_SEC(wpm, fontSize);
-      setScrollPos(p => {
-        const next = p + velocity * dt;
-        const maxScroll = scrollerRef.current 
-          ? scrollerRef.current.scrollHeight - scrollerRef.current.clientHeight
-          : 0;
-        if (next >= maxScroll) {
-          setScrolling(false);
-          return maxScroll;
-        }
-        return next;
-      });
-      animFrameRef.current = requestAnimationFrame(tick);
-    };
-    animFrameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [scrolling, wpm, fontSize]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      switch (e.key) {
-        case ' ': e.preventDefault(); setScrolling(s => !s); break;
-        case 'Escape': setShowStagePicker(false); setShowVarForm(false); break;
-        case 'ArrowUp': e.preventDefault(); setWpm(w => Math.min(500, w + 25)); break;
-        case 'ArrowDown': e.preventDefault(); setWpm(w => Math.max(50, w - 25)); break;
-        case 'g': case 'G': setShowStagePicker(s => !s); break;
-        case 'v': case 'V': setShowVarForm(s => !s); break;
-        case 'r': case 'R': setScrollPos(0); break;
-        case '+': case '=': setFontSize(s => Math.min(6, s + 0.25)); break;
-        case '-': setFontSize(s => Math.max(1.5, s - 0.25)); break;
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  if (error) {
-    return (
-      <div className="tp-error" style={{ padding: '2rem' }}>
-        <h2 style={{ color: 'var(--danger)' }}>❌ Error</h2>
-        <p>{error}</p>
-        <p style={{ color: 'var(--text-tertiary)', marginTop: '1rem' }}>
-          Make sure you're logged in to the CRM.
-        </p>
-      </div>
-    );
   }
 
-  if (loading || !renderedScript) {
-    return (
-      <div className="tp-loading" style={{ padding: '2rem' }}>
-        <h2>Loading teleprompter...</h2>
-      </div>
-    );
+  // Mark as sent
+  async function handleMarkSent(shortcut) {
+    if (!leadId) {
+      alert('Open this teleprompter from a specific lead to mark messages as sent.');
+      return;
+    }
+    try {
+      await apiPost('/teleprompter/mark-sent', {
+        lead_id: leadId,
+        source: shortcut.source,
+        key: shortcut.key,
+        body: shortcut.body,
+        recipient: shortcut.recipient || 'unknown',
+        channel: 'sms',
+      });
+      setSentLog(prev => ({ ...prev, [shortcut.key]: new Date().toLocaleTimeString() }));
+    } catch (e) {
+      alert('Failed to mark as sent: ' + e.message);
+    }
   }
 
   return (
-    <div className="tp-app">
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1rem' }}>
       <style>{`
-        .tp-app {
+        .tp-header {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+          flex-wrap: wrap;
+        }
+        .tp-stage-select {
+          background: #1f2937;
+          color: #fff;
+          border: 1px solid #374151;
+          padding: 0.5rem 0.75rem;
+          border-radius: 6px;
+          font-size: 0.9rem;
+          font-family: inherit;
+          min-width: 200px;
+        }
+        .tp-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 1rem;
+        }
+        .tp-card {
+          background: #1f2937;
+          border: 1px solid #374151;
+          border-radius: 8px;
+          padding: 1rem;
+          cursor: pointer;
+          transition: border-color 0.15s, transform 0.1s;
           display: flex;
           flex-direction: column;
-          height: calc(100vh - 60px);
-          background: #000;
-          color: #fff;
-          margin: -2rem;
-          margin-top: -1rem;
         }
-        .tp-controls {
-          display: flex;
-          gap: 0.75rem;
-          padding: 0.75rem 1.5rem;
-          background: rgba(255, 255, 255, 0.05);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-          align-items: center;
-          flex-shrink: 0;
+        .tp-card:hover {
+          border-color: #fbbf24;
+          transform: translateY(-2px);
         }
-        .tp-controls button, .tp-controls select {
-          background: #1f2937;
-          color: #fff;
-          border: 1px solid #374151;
-          padding: 0.4rem 0.7rem;
-          border-radius: 6px;
-          font-size: 0.85rem;
-          cursor: pointer;
-          font-family: inherit;
-        }
-        .tp-controls button:hover { background: #374151; }
-        .tp-controls button.tp-primary { background: #fbbf24; color: #000; border-color: #fbbf24; font-weight: 600; }
-        .tp-controls button.tp-danger { background: #ef4444; border-color: #ef4444; }
-        .tp-stage-info { display: flex; flex-direction: column; margin-left: auto; text-align: right; }
-        .tp-stage-info .tp-label { font-weight: 700; font-size: 1rem; }
-        .tp-stage-info .tp-owner { color: #9ca3af; font-size: 0.8rem; }
-        .tp-scroller-wrap { flex: 1; overflow: hidden; position: relative; }
-        .tp-scroller {
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          padding: 3rem 5rem;
-          font-size: 3rem;
-          line-height: 1.4;
-          font-weight: 500;
-          color: #fff;
-          transition: transform 0.1s linear;
-        }
-        .tp-scroller .tp-section { margin-bottom: 2.5rem; }
-        .tp-scroller .tp-section-label {
-          font-size: 1.25rem;
-          color: #fbbf24;
+        .tp-card-name {
           font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          margin-bottom: 0.4rem;
-        }
-        .tp-scroller .tp-placeholder {
-          background: rgba(251, 191, 36, 0.2);
-          border: 2px dashed #fbbf24;
-          padding: 0 0.3em;
-          border-radius: 4px;
-        }
-        .tp-scroller .tp-red-flag { color: #ef4444; font-weight: 700; }
-        .tp-scroller .tp-objection-q { color: #fbbf24; font-style: italic; }
-        .tp-scroller .tp-objection-a { margin-left: 1.5rem; }
-        .tp-bottom {
+          font-size: 1rem;
+          margin-bottom: 0.5rem;
           display: flex;
-          gap: 1.5rem;
-          padding: 0.6rem 1.5rem;
-          background: rgba(255, 255, 255, 0.05);
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
           align-items: center;
-          font-size: 0.85rem;
-          flex-shrink: 0;
+          gap: 0.5rem;
         }
-        .tp-bottom .tp-speed { display: flex; align-items: center; gap: 0.5rem; }
-        .tp-bottom input[type=range] { width: 160px; }
-        .tp-bottom .tp-wpm { font-size: 1.5rem; font-weight: 800; color: #fbbf24; min-width: 60px; text-align: right; }
-        .tp-bottom .tp-hint { color: #9ca3af; margin-left: auto; }
-        .tp-bottom kbd {
-          background: #1f2937;
-          border: 1px solid #374151;
-          border-radius: 3px;
-          padding: 0.1em 0.4em;
-          font-family: monospace;
-          font-size: 0.75rem;
+        .tp-card-desc {
+          color: #9ca3af;
+          font-size: 0.8rem;
+          margin-bottom: 0.75rem;
+          line-height: 1.4;
+        }
+        .tp-card-body {
+          color: #d1d5db;
+          font-size: 0.85rem;
+          line-height: 1.5;
+          flex: 1;
+          margin-bottom: 0.75rem;
+          white-space: pre-wrap;
+          max-height: 120px;
+          overflow: hidden;
+          position: relative;
+        }
+        .tp-card-body::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 30px;
+          background: linear-gradient(transparent, #1f2937);
+        }
+        .tp-card-actions {
+          display: flex;
+          gap: 0.5rem;
+          margin-top: auto;
+        }
+        .tp-btn {
+          background: #fbbf24;
+          color: #000;
+          border: none;
+          padding: 0.5rem 0.75rem;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 0.85rem;
+          font-family: inherit;
+          flex: 1;
+        }
+        .tp-btn:hover { background: #f59e0b; }
+        .tp-btn.tp-btn-secondary {
+          background: #374151;
+          color: #fff;
+        }
+        .tp-btn.tp-btn-secondary:hover { background: #4b5563; }
+        .tp-btn.tp-btn-success {
+          background: #10b981;
+          color: #000;
+        }
+        .tp-badge {
+          display: inline-block;
+          padding: 0.15rem 0.5rem;
+          border-radius: 4px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .tp-modal-bg {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.95);
+          background: rgba(0, 0, 0, 0.85);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 100;
+          padding: 1rem;
         }
-        .tp-stage-grid {
-          display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          gap: 0.5rem;
-          max-width: 90vw;
-          max-height: 80vh;
-          overflow-y: auto;
-          padding: 2rem;
-        }
-        .tp-stage-grid h2 { grid-column: 1 / -1; color: #fbbf24; margin-bottom: 1rem; font-size: 1.5rem; }
-        .tp-stage-grid .tp-bucket { grid-column: 1 / -1; font-weight: 700; color: #fbbf24; margin-top: 0.5rem; }
-        .tp-stage-grid button {
+        .tp-modal {
           background: #1f2937;
-          color: #fff;
           border: 1px solid #374151;
-          padding: 0.75rem 0.5rem;
-          border-radius: 6px;
-          cursor: pointer;
-          text-align: left;
-          font-size: 0.8rem;
-          min-height: 50px;
-          font-family: inherit;
-        }
-        .tp-stage-grid button:hover { background: #374151; border-color: #fbbf24; }
-        .tp-stage-grid button .tp-owner { color: #9ca3af; font-size: 0.65rem; margin-top: 0.2rem; }
-        .tp-var-form {
-          background: #1f2937;
-          padding: 1.5rem;
           border-radius: 12px;
-          max-width: 500px;
-          width: 90%;
+          padding: 1.5rem;
+          max-width: 600px;
+          width: 100%;
+          max-height: 90vh;
+          overflow-y: auto;
         }
-        .tp-var-form h2 { color: #fbbf24; margin-bottom: 0.75rem; }
-        .tp-var-form input {
-          background: #111827;
+        .tp-modal h2 {
+          margin-bottom: 0.5rem;
           color: #fff;
-          border: 1px solid #374151;
-          padding: 0.4rem 0.6rem;
-          border-radius: 4px;
-          font-size: 0.85rem;
-          width: 200px;
-          font-family: inherit;
         }
-        .tp-var-form .tp-var-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
-        .tp-var-form .tp-var-row label { min-width: 120px; color: #9ca3af; font-size: 0.85rem; }
+        .tp-modal-body {
+          background: #111827;
+          border: 1px solid #374151;
+          border-radius: 8px;
+          padding: 1rem;
+          color: #fff;
+          white-space: pre-wrap;
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.95rem;
+          line-height: 1.5;
+          margin: 1rem 0;
+          user-select: all;
+        }
+        .tp-empty {
+          text-align: center;
+          padding: 3rem;
+          color: #9ca3af;
+        }
+        .tp-error {
+          background: #7f1d1d;
+          color: #fecaca;
+          padding: 1rem;
+          border-radius: 6px;
+          margin-bottom: 1rem;
+        }
+        .tp-sent-toast {
+          position: fixed;
+          bottom: 1rem;
+          right: 1rem;
+          background: #10b981;
+          color: #000;
+          padding: 0.75rem 1rem;
+          border-radius: 6px;
+          font-weight: 600;
+          z-index: 200;
+          animation: tp-fade 0.2s;
+        }
+        @keyframes tp-fade { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
 
-      <div className="tp-controls">
-        <button onClick={() => setShowStagePicker(true)}>
-          📋 {labels[currentStage] || currentStage}
-        </button>
-        <button onClick={() => setShowVarForm(s => !s)}>
-          ✏️ Vars ({Object.values(variables).filter(v => v && v !== '').length})
-        </button>
-        <button onClick={() => setScrolling(s => !s)} className={scrolling ? 'tp-danger' : 'tp-primary'}>
-          {scrolling ? '⏸ Pause' : '▶ Play'}
-        </button>
-        <button onClick={() => setScrollPos(0)}>⏮ Reset</button>
+      <div className="tp-header">
+        <h1 style={{ margin: 0, color: '#fff' }}>🎙️ Teleprompter</h1>
+        <select
+          className="tp-stage-select"
+          value={currentStage || ''}
+          onChange={e => setCurrentStage(e.target.value)}
+        >
+          {ALL_STAGES.map(s => (
+            <option key={s} value={s}>{STAGE_LABELS[s]}</option>
+          ))}
+        </select>
         {leadId && (
-          <button onClick={() => navigate(`/leads/${leadId}`)}>
+          <button
+            onClick={() => navigate(`/leads/${leadId}`)}
+            className="tp-btn tp-btn-secondary"
+            style={{ flex: 'none' }}
+          >
             ← Back to Lead
           </button>
         )}
-        <div className="tp-stage-info">
-          <div className="tp-label">{renderedScript.title}</div>
-          <div className="tp-owner">Owner: {owners[currentStage]}</div>
-        </div>
       </div>
 
-      <div className="tp-scroller-wrap" ref={scrollerRef}>
-        <div
-          className="tp-scroller"
-          style={{
-            transform: `translateY(-${scrollPos}px)`,
-            fontSize: `${fontSize}rem`
-          }}
-        >
-          <div className="tp-section">
-            <div className="tp-section-label">🎯 Goal</div>
-            <div>{highlightPlaceholders(renderedScript.goal)}</div>
-          </div>
+      {error && <div className="tp-error">❌ {error}</div>}
 
-          <div className="tp-section">
-            <div className="tp-section-label">👋 Opener</div>
-            <div>{highlightPlaceholders(renderedScript.opener)}</div>
-          </div>
-
-          {renderedScript.discovery && renderedScript.discovery.length > 0 && (
-            <div className="tp-section">
-              <div className="tp-section-label">❓ Discovery Questions</div>
-              <ul style={{ listStyle: 'none' }}>
-                {renderedScript.discovery.map((q, i) => (
-                  <li key={i} style={{ marginBottom: '0.4em' }}>• {highlightPlaceholders(q)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {renderedScript.objection && Object.keys(renderedScript.objection).length > 0 && (
-            <div className="tp-section">
-              <div className="tp-section-label">⚡ Objection Handling</div>
-              {Object.entries(renderedScript.objection).map(([q, a], i) => (
-                <div key={i} style={{ marginBottom: '0.8em' }}>
-                  <div className="tp-objection-q">"{q}"</div>
-                  <div className="tp-objection-a">→ {a}</div>
+      {loading ? (
+        <div className="tp-empty">Loading shortcuts...</div>
+      ) : shortcuts.length === 0 ? (
+        <div className="tp-empty">
+          <p>No shortcuts configured for <strong>{STAGE_LABELS[currentStage]}</strong>.</p>
+          {leadId && <p style={{ fontSize: '0.85rem' }}>Try selecting a different stage, or this stage may not have any text shortcuts to send.</p>}
+        </div>
+      ) : (
+        <div className="tp-grid">
+          {shortcuts.map(s => {
+            const recipientInfo = RECIPIENT_BADGE[s.recipientType] || RECIPIENT_BADGE.seller;
+            const isSent = sentLog[s.key];
+            return (
+              <div key={`${s.source}-${s.key}`} className="tp-card" onClick={() => setSelected(s)}>
+                <div className="tp-card-name">
+                  {s.name}
+                  <span className="tp-badge" style={{ background: recipientInfo.color, color: '#000' }}>
+                    {recipientInfo.label}
+                  </span>
+                  {s.source === 'ghl' && (
+                    <span className="tp-badge" style={{ background: '#3b82f6', color: '#fff' }}>
+                      Seller Update
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-
-          <div className="tp-section">
-            <div className="tp-section-label">🎬 Close / Next Step</div>
-            <div>{highlightPlaceholders(renderedScript.close)}</div>
-          </div>
-
-          {renderedScript.red_flags && renderedScript.red_flags.length > 0 && (
-            <div className="tp-section">
-              <div className="tp-section-label" style={{ color: '#ef4444' }}>🚩 Red Flags</div>
-              <ul style={{ listStyle: 'none' }}>
-                {renderedScript.red_flags.map((rf, i) => (
-                  <li key={i} className="tp-red-flag">⚠ {rf}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="tp-bottom">
-        <div className="tp-speed">
-          <span>WPM:</span>
-          <input
-            type="range"
-            min="50" max="500" step="25"
-            value={wpm}
-            onChange={e => setWpm(Number(e.target.value))}
-          />
-          <span className="tp-wpm">{wpm}</span>
-        </div>
-        <div className="tp-speed">
-          <span>Font:</span>
-          <input
-            type="range"
-            min="1.5" max="6" step="0.25"
-            value={fontSize}
-            onChange={e => setFontSize(Number(e.target.value))}
-          />
-          <span>{fontSize}rem</span>
-        </div>
-        <div className="tp-hint">
-          <kbd>Space</kbd> play • <kbd>↑↓</kbd> speed • <kbd>+-</kbd> font • <kbd>G</kbd> stages • <kbd>V</kbd> vars • <kbd>R</kbd> reset
-        </div>
-      </div>
-
-      {showStagePicker && (
-        <div className="tp-modal-bg" onClick={() => setShowStagePicker(false)}>
-          <div className="tp-stage-grid" onClick={e => e.stopPropagation()}>
-            <h2>📋 Pick a Stage</h2>
-            {Object.entries(buckets).map(([bucket, stageList]) => (
-              <div key={bucket} style={{ display: 'contents' }}>
-                <div className="tp-bucket">{bucket} ({stageList.length})</div>
-                {stageList.map(s => (
-                  <button key={s} onClick={() => { setCurrentStage(s); setShowStagePicker(false); }}>
-                    {labels[s]}
-                    <div className="tp-owner">{owners[s]}</div>
+                {s.description && <div className="tp-card-desc">{s.description}</div>}
+                <div className="tp-card-body">{s.body}</div>
+                <div className="tp-card-actions" onClick={e => e.stopPropagation()}>
+                  <button className="tp-btn" onClick={() => handleCopy(s)}>
+                    {copied === s.key ? '✓ Copied' : '📋 Copy'}
                   </button>
-                ))}
+                  {leadId && (
+                    <button className="tp-btn tp-btn-success" onClick={() => handleMarkSent(s)}>
+                      {isSent ? `✓ Sent ${isSent}` : '✓ Mark Sent'}
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+      )}
+
+      {selected && (
+        <div className="tp-modal-bg" onClick={() => setSelected(null)}>
+          <div className="tp-modal" onClick={e => e.stopPropagation()}>
+            <h2>{selected.name}</h2>
+            {selected.description && <p style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{selected.description}</p>}
+            <div style={{ marginTop: '0.5rem' }}>
+              <span className="tp-badge" style={{ background: RECIPIENT_BADGE[selected.recipientType]?.color || '#6b7280', color: '#000' }}>
+                {RECIPIENT_BADGE[selected.recipientType]?.label || selected.recipientType}
+              </span>
+              {selected.recipient && <span style={{ marginLeft: '0.5rem', color: '#9ca3af', fontSize: '0.8rem' }}>To: {selected.recipient}</span>}
+            </div>
+            <div className="tp-modal-body">{selected.body}</div>
+            {selected.unfilled && selected.unfilled.length > 0 && (
+              <div style={{ background: '#7f1d1d', padding: '0.5rem 0.75rem', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                <strong style={{ color: '#fecaca' }}>⚠ Unfilled placeholders:</strong>
+                <div style={{ color: '#fca5a5', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                  {selected.unfilled.join(', ')}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="tp-btn" onClick={() => handleCopy(selected)}>
+                {copied === selected.key ? '✓ Copied!' : '📋 Copy to Clipboard'}
+              </button>
+              {leadId && (
+                <button className="tp-btn tp-btn-success" onClick={() => handleMarkSent(selected)}>
+                  ✓ Mark as Sent
+                </button>
+              )}
+              <button className="tp-btn tp-btn-secondary" onClick={() => setSelected(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
 
-      {showVarForm && (
-        <div className="tp-modal-bg" onClick={() => setShowVarForm(false)}>
-          <div className="tp-var-form" onClick={e => e.stopPropagation()}>
-            <h2>✏️ Variables</h2>
-            <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-              Fill in the values for placeholders. Press Enter to apply.
-            </p>
-            {(script?.variables || []).map(v => (
-              <div key={v} className="tp-var-row">
-                <label>{v}:</label>
-                <input
-                  type="text"
-                  value={variables[v] || ''}
-                  onChange={e => setVariables(prev => ({ ...prev, [v]: e.target.value }))}
-                  placeholder={`Enter ${v}...`}
-                />
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setVariables({})} style={{ background: '#1f2937', color: '#fff', border: '1px solid #374151', padding: '0.4rem 0.7rem', borderRadius: '6px', cursor: 'pointer' }}>Clear</button>
-              <button onClick={() => setShowVarForm(false)} className="tp-primary" style={{ background: '#fbbf24', color: '#000', border: '1px solid #fbbf24', padding: '0.4rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>Done</button>
-            </div>
-          </div>
+      {copied && (
+        <div className="tp-sent-toast">
+          📋 Copied {copied} to clipboard
         </div>
       )}
     </div>
