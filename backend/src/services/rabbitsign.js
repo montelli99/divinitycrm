@@ -45,7 +45,8 @@ function rsRequest(method, path, body = null) {
         'Content-Type': 'application/json',
         'Accept': '*/*',
         'Cache-Control': 'no-cache',
-        'User-Agent': 'DivinityCRM/1.0',
+        // CloudFront WAF blocks non-browser User-Agents. Use a browser-like UA.
+        'User-Agent': 'Mozilla/5.0 (compatible; DivinityCRM/1.0; +https://divinitycrm.com)',
       },
     };
     if (data) opts.headers['Content-Length'] = Buffer.byteLength(data);
