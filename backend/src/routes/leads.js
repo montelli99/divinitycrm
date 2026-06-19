@@ -81,6 +81,7 @@ router.post('/', async (req, res, next) => {
       agent_name, agent_phone, agent_email,
       seller_name, seller_phone, seller_email,
       notes,
+      contract_type, contract,
     } = req.body;
 
     if (!address) {
@@ -93,7 +94,7 @@ router.post('/', async (req, res, next) => {
         beds, baths, sqft, year_built, condition,
         agent_name, agent_phone, agent_email,
         seller_name, seller_phone, seller_email,
-        notes, stage
+        notes, stage, contract_type, contract
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8,
@@ -101,7 +102,7 @@ router.post('/', async (req, res, next) => {
         $13,
         $14, $15, $16,
         $17, $18, $19,
-        $20, $21
+        $20, $21, $22, $23
       )
       RETURNING *`,
       [
@@ -112,6 +113,7 @@ router.post('/', async (req, res, next) => {
         agent_name || null, agent_phone || null, agent_email || null,
         seller_name || null, seller_phone || null, seller_email || null,
         notes || '', 'LEAD_ENTERED',
+        contract_type || contract || null, contract || contract_type || null,
       ]
     );
 

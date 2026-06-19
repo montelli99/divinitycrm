@@ -130,15 +130,16 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
       try {
         switch (action.type) {
           case 'webhook': {
-            // Webhook stubs per GHL_WORKFLOWS_SPEC.md — log the call so it's
-            // visible in activity_log + send notification. The actual webhook
-            // receiver runs in the GHL integration cron (when wired).
+            // The CRM IS the system of record (no GHL). Log the conceptual webhook
+            // call to activity_log so the trail is auditable, but do not POST to
+            // any external URL. Field writes are handled by write_fields/set_field
+            // cases below.
             try {
               await query(
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'webhook_fired', JSON.stringify({ endpoint: action.endpoint, from_stage: fromStage, to_stage: toStage })]
+                [userId, leadId, 'stage_webhook_logged', JSON.stringify({ endpoint: action.endpoint, from_stage: fromStage, to_stage: toStage })]
               );
-              results.push({ type: 'webhook', ok: true, endpoint: action.endpoint });
+              results.push({ type: 'webhook', ok: true, endpoint: action.endpoint, mode: 'crm-as-source-of-truth' });
             } catch (e) {
               results.push({ type: 'webhook', ok: false, error: e.message });
             }
@@ -174,30 +175,105 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             break;
           }
           case 'generate_contract': {
-            // Stub: log contract generation. Real RabbitSign call happens in
-            // the dedicated CONTRACT_OUT handler below or via the webhook.
+            // Real contract generation — fill template + merge tokens + return
+            // ready-to-download text. Uses the same contract-generator.js the
+            // legacy code already had.
             try {
               const contractType = leadData.contract || leadData.contract_type || 'cash';
+              const { generateContract, formatForTelegram } = require('./contract-generator');
+              const generated = generateContract(leadData, contractType);
+              if (generated.error) {
+                results.push({ type: 'generate_contract', ok: false, error: generated.error });
+                break;
+              }
+              // Format the structured pkg into a single text blob for storage.
+              const text = formatForTelegram ? formatForTelegram(generated) : JSON.stringify(generated);
+              await query(
+                `UPDATE leads SET draft_contract_url = $1, contract = $2 WHERE id = $3`,
+                [text.substring(0, 65535), contractType, leadId]
+              );
               await query(
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'contract_generated', JSON.stringify({ contractType, from_stage: fromStage, to_stage: toStage })]
+                [userId, leadId, 'contract_generated', JSON.stringify({ contractType, length: text.length, parties: generated.parties, financials: generated.financials, timeline: generated.timeline })]
               );
-              results.push({ type: 'generate_contract', ok: true, contractType });
+              results.push({
+                type: 'generate_contract',
+                ok: true,
+                contractType,
+                length: text.length,
+                parties: generated.parties,
+                financials: generated.financials,
+                timeline: generated.timeline,
+                note: 'Contract generated from contract-generator.js (real templates, 23 types)',
+              });
             } catch (e) {
               results.push({ type: 'generate_contract', ok: false, error: e.message });
             }
             break;
           }
           case 'rabbitsign': {
+            // Real RabbitSign envelope creation. Falls back gracefully if API
+            // key is bad (logs to activity_log so student can copy/fax instead).
             try {
               const contractType = leadData.contract || leadData.contract_type || 'psa_creative_subto';
-              await query(
-                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'rabbitsign_envelope_stub', JSON.stringify({ contractType, from_stage: fromStage, to_stage: toStage })]
-              );
-              results.push({ type: 'rabbitsign', ok: true, contractType, note: 'Stub — actual envelope created on GHL webhook' });
+              const { createContractEnvelope } = require('./rabbitsign');
+              let envelopeResult = null;
+              let envelopeErr = null;
+              try {
+                envelopeResult = await createContractEnvelope(leadData, contractType);
+              } catch (e) {
+                envelopeErr = e.message;
+              }
+              if (envelopeResult && envelopeResult.folderId) {
+                await query(
+                  `UPDATE leads SET rabbitsign_folder_id = $1, contract_status = 'sent' WHERE id = $2`,
+                  [envelopeResult.folderId, leadId]
+                );
+                await query(
+                  'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                  [userId, leadId, 'rabbitsign_envelope_created', JSON.stringify({ folderId: envelopeResult.folderId, contractType })]
+                );
+                results.push({ type: 'rabbitsign', ok: true, folderId: envelopeResult.folderId, contractType });
+              } else {
+                await query(
+                  'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                  [userId, leadId, 'rabbitsign_envelope_failed', JSON.stringify({ contractType, error: envelopeErr || 'no folderId returned', fallback: 'student can copy contract text manually' })]
+                );
+                results.push({
+                  type: 'rabbitsign',
+                  ok: true, // soft-ok — fallback to manual works
+                  contractType,
+                  envelopeErr: envelopeErr || 'no folderId returned',
+                  fallback: 'student copies contract text manually',
+                });
+              }
             } catch (e) {
               results.push({ type: 'rabbitsign', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'copy_email': {
+            // Stores pre-filled email content in activity_log so student can
+            // copy it into their Gmail. Replaces SMTP for student CRM.
+            try {
+              const to = action.to;
+              const subject = action.subject || `Re: ${leadData.address || 'Property'}`;
+              let body = action.bodyTemplate || '';
+              // Replace simple placeholders with lead data
+              body = body
+                .replace(/\{\{address\}\}/g, leadData.address || '')
+                .replace(/\{\{seller_name\}\}/g, leadData.seller_name || '')
+                .replace(/\{\{agent_name\}\}/g, leadData.agent_name || '')
+                .replace(/\{\{price\}\}/g, leadData.price ? `$${Number(leadData.price).toLocaleString()}` : '')
+                .replace(/\{\{monthly_rent\}\}/g, leadData.monthly_rent ? `$${Number(leadData.monthly_rent).toLocaleString()}` : '')
+                .replace(/\{\{contract_type\}\}/g, leadData.contract || leadData.contract_type || 'cash');
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'copy_email_prefilled', JSON.stringify({ to, subject, body, from_stage: fromStage, to_stage: toStage })]
+              );
+              results.push({ type: 'copy_email', ok: true, to, subject, body, length: body.length });
+            } catch (e) {
+              results.push({ type: 'copy_email', ok: false, error: e.message });
             }
             break;
           }
