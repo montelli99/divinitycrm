@@ -14,7 +14,7 @@ const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
 // Lazy-load routes
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter;
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter;
 
 try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
@@ -29,6 +29,7 @@ try { trainingRouter = require('./routes/training'); console.log('training route
 try { adminRouter = require('./routes/admin'); console.log('admin route OK'); } catch(e) { console.error('admin route FAIL:', e.message); }
 try { notificationsRouter = require('./routes/notifications'); console.log('notifications route OK'); } catch(e) { console.error('notifications route FAIL:', e.message); }
 try { trainingDocsRouter = require('./routes/training-docs'); console.log('training-docs route OK'); } catch(e) { console.error('training-docs route FAIL:', e.message); }
+try { teleprompterRouter = require('./routes/teleprompter'); console.log('teleprompter route OK'); } catch(e) { console.error('teleprompter route FAIL:', e.message); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -86,6 +87,7 @@ if (trainingRouter) app.use('/api/training', authMiddleware, trainingRouter);
 if (adminRouter) app.use('/api/admin', authMiddleware, adminRouter);
 if (notificationsRouter) app.use('/api/notifications', authMiddleware, notificationsRouter);
 if (trainingDocsRouter) app.use('/api/training-docs', authMiddleware, trainingDocsRouter);
+if (teleprompterRouter) app.use('/api/teleprompter', authMiddleware, teleprompterRouter);
 
 // Error handler
 app.use((err, req, res, next) => {

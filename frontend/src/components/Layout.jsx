@@ -4,6 +4,7 @@ import { clearToken } from '../lib/api';
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/pipeline', label: 'Pipeline', icon: '📋' },
+  { path: '/teleprompter', label: 'Teleprompter', icon: '🎙️' },
   { path: '/calculator', label: 'Calculator', icon: '🧮' },
   { path: '/contracts', label: 'Contracts', icon: '📝' },
   { path: '/training', label: 'Training', icon: '📚' },

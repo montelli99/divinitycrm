@@ -113,6 +113,25 @@ export default function LeadDetail() {
       <div className="page-header">
         <h1>{lead.address}</h1>
         <div className="header-actions">
+          <button
+            onClick={() => navigate(`/teleprompter?lead_id=${id}&stage=${lead.stage}`)}
+            style={{
+              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+              color: '#000',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '6px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+            title="Open script for this lead's current stage"
+          >
+            🎙️ Open in Teleprompter
+          </button>
           <select 
             value={lead.stage} 
             onChange={e => handleStageChange(e.target.value)}
