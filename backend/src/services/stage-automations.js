@@ -60,22 +60,58 @@ const { tagLeadSource, scoreLead } = require('./lead-source-tracker');
 const OWNERS = {
   MONTELLI: {
     name: 'Montelli',
-    stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'GAIN_FEEDBACK', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION'],
+    stages: [
+      'EVALUATE_PROPERTY',
+      'LEAD_ENTERED',
+      'CONTACT_INITIATED',
+      'CALL_MADE',
+      'NOTES_TAKEN',
+      'CONTACT_MADE',
+      'DEAL_EVALUATED',
+      'OFFER_READY',
+      'GROUP_CHAT_CREATED',
+      'DAILY_REPORT_SENT',
+      'OFFER_SENT',
+      'GAIN_FEEDBACK',
+      'QUESTIONS_RELAYED',
+      'INSPECTION_REQUEST',
+      'NO_ANSWER',
+      'SELLER_DECLINED',
+      'PROPERTY_UC',
+      'GOOD_STANDING',
+      'ACTIVE_NEGOTIATION',
+      'TERMS_AGREED',
+    ],
     color: '#0066cc',
   },
   KAYLA: {
     name: 'Kayla',
-    stages: ['TERMS_AGREED', 'PSA_SENT'],
+    stages: [
+      'AGREEMENT_DRAFTED',
+      'PSA_SENT',
+    ],
     color: '#cc6600',
   },
   TC: {
     name: 'TC',
-    stages: ['UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE'],
+    stages: [
+      'AGREEMENT_AUTHORIZED',
+      'INSPECTION_SCHEDULED',
+      'INSPECTION_COMPLETE',
+      'APPRAISAL_ORDERED',
+      'APPRAISAL_DONE',
+      'TITLE_WORK',
+    ],
     color: '#00cc00',
   },
   CLOSING: {
     name: 'Closing',
-    stages: ['WIRE_SETUP', 'CLOSING_DATE'],
+    stages: [
+      'WIRE_SETUP',
+      'COE_SCHEDULED',
+      'CLOSING_DATE',
+      'ARCHIVED',
+    ],
     color: '#cc0066',
   },
 };
@@ -98,6 +134,553 @@ const STAGE_TRANSITIONS = {
   // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Steps 1-5
   // ============================================
   'LEAD_ENTERED→CONTACT_MADE': {
+  // ============================================
+  // STAGE 0: EVALUATE_PROPERTY → LEAD_ENTERED
+  // Owner: Montelli
+  // Source: Master Playbook Part 2 Step 1
+  // ============================================
+  'EVALUATE_PROPERTY→LEAD_ENTERED': {
+    name: 'Evaluate Property — Buy-Box Check',
+    owner: 'Montelli',
+    description: 'Verify buy box: red state, $150K-$550K, 3 bed+, 10K+ pop, no HOA, no pool, no flood.',
+    prompt: {
+      title: 'Stage 0: Evaluate Property',
+      description: 'Per Master Playbook Part 2 Step 1: Copy address → Google → Zillow. Check population, condition, buy box.',
+      steps: [
+        { step: 1, action: 'check_address', instruction: 'Copy address → Google → Zillow. Verify: red state, $150K-$550K, 3 bed+, 10K+ population.' },
+        { step: 2, action: 'check_population', instruction: 'Population check: must be ≥ 10K people (per SD text).' },
+        { step: 3, action: 'check_condition', instruction: 'Look at photos. Note: turnkey vs renovation candidate.' },
+        { step: 4, action: 'create_lead', instruction: 'If property passes buy box, create lead in CRM (Opportunity name = property address per Part 12).' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'quick_buybox' },
+      { type: 'log', message: 'Property evaluated. Buy-box check passed. Lead created.' },
+    ],
+  },
+
+  // STAGE 1a: LEAD_ENTERED → CONTACT_INITIATED
+  // Per Master Playbook Part 2 Step 3: "Send text FIRST so the name comes up on caller ID"
+  'LEAD_ENTERED→CONTACT_INITIATED': {
+    name: 'Contact Initiated — INT Text First',
+    owner: 'Montelli',
+    description: 'Send INT text BEFORE calling so name shows on caller ID.',
+    prompt: {
+      title: 'Stage 1a: Contact Initiated',
+      description: 'Per Step 3: "Send text FIRST so the name comes up on caller ID when you call."',
+      steps: [
+        { step: 1, action: 'send_text', template: 'INT', prefill: true, to: 'seller', instruction: 'SEND INT TEXT FIRST: "[name], are you still accepting offers for [address]?"', templateKey: 'INT' },
+        { step: 2, action: 'wait', instruction: 'WAIT 1-2 MINUTES after sending text. Then call.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'INT text sent. Caller ID will show name on next call.' },
+    ],
+  },
+
+  // STAGE 1b: CONTACT_INITIATED → CALL_MADE
+  'CONTACT_INITIATED→CALL_MADE': {
+    name: 'Call Made — Two Attempts',
+    owner: 'Montelli',
+    description: 'Call twice. If no answer, send voice memo.',
+    prompt: {
+      title: 'Stage 1b: Call Made',
+      description: 'Per Step 3: "Call the client. If they don\'t answer both times, send voice memo."',
+      steps: [
+        { step: 1, action: 'call', instruction: 'CALL 1: Use Agent Initial Script or Seller Initial Script.' },
+        { step: 2, action: 'call_again', instruction: 'CALL 2 (if no answer): Try different time of day.' },
+        { step: 3, action: 'voice_memo', instruction: 'If no answer twice, send voice memo using "No Answer After 2 Calls" script.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Called twice. Voice memo sent if no answer.' },
+    ],
+  },
+
+  // STAGE 1c: CALL_MADE → NOTES_TAKEN
+  'CALL_MADE→NOTES_TAKEN': {
+    name: 'Notes Taken — Condition + Rent + Roof',
+    owner: 'Montelli',
+    description: 'Log all property details per Step 4.',
+    prompt: {
+      title: 'Stage 1c: Take Notes',
+      description: 'Per Step 4: "Call Client 2x with full notes on: agent name, phone, email, roof age, HVAC age, occupancy, rent."',
+      steps: [
+        { step: 1, action: 'take_notes', instruction: 'LOG: agent name, phone, email, seller name, phone, roof age, HVAC age, occupancy, rent, lease type, utilities.', fields: ['agent_name', 'agent_phone', 'agent_email', 'seller_name', 'seller_phone', 'roof_age', 'hvac_age', 'occupancy', 'monthly_rent', 'lease_type', 'utilities_on'] },
+        { step: 2, action: 'classify', instruction: 'CLASSIFY DEAL: turnkey (F50) or renovation (F10).', fields: ['condition', 'rehab_estimate'] },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Notes taken. Deal classified.' },
+    ],
+  },
+
+  // STAGE 1d: NOTES_TAKEN → CONTACT_MADE
+  'NOTES_TAKEN→CONTACT_MADE': {
+    name: 'Contact Made — CCC Sent',
+    owner: 'Montelli',
+    description: 'Send CCC text + contact card per Step 5.',
+    prompt: {
+      title: 'Stage 1d: Contact Made',
+      description: 'Per Step 5: "After the call, send CCC + contact card."',
+      steps: [
+        { step: 1, action: 'send_text', template: 'CCC', prefill: true, to: 'seller_or_agent', instruction: 'SEND CCC TEXT after every call.', templateKey: 'CCC' },
+        { step: 2, action: 'log_contact', instruction: 'Mark contact as made in CRM.' },
+      ],
+      reminders: [{ type: '48hr_followup', offset_hours: 48, description: '48hr: Follow up if no response' }],
+    },
+    automations: [
+      { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
+      { type: 'log', message: 'CCC text sent. 48hr follow-up scheduled.' },
+    ],
+  },
+
+  // STAGE 6: CONTACT_MADE → DEAL_EVALUATED
+  'CONTACT_MADE→DEAL_EVALUATED': {
+    name: 'Deal Evaluated — 1% Rule + Seth Email',
+    owner: 'Montelli',
+    description: 'Run 1% rule. Email Seth for approved LOI per Step 6.',
+    prompt: {
+      title: 'Stage 6: Deal Evaluated',
+      description: 'Per Step 6: "If it passes underwriting, email Seth."',
+      steps: [
+        { step: 1, action: 'evaluate', instruction: 'EVALUATE: turnkey → F50 or F10. Renovation → F10.' },
+        { step: 2, action: 'check_rental_comps', instruction: '1% Rule: rent ≥ 1% of price.' },
+        { step: 3, action: 'send_email', instruction: 'EMAIL SETH: claytoninvestmentsolutions@gmail.com. Subject: "FB LOI Request" or "Renovation - LOI Request [address]".', to: 'claytoninvestmentsolutions@gmail.com' },
+        { step: 4, action: 'wait_for_seth', instruction: 'WAIT FOR SETH: If passes, Seth sends approved LOI.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'run_doc_analysis' },
+      { type: 'run_comps' },
+      { type: 'run_underwriting' },
+      { type: 'loi_request' },
+      { type: 'notify' },
+      { type: 'log', message: 'Deal evaluated. 1% rule tested. LOI requested from Seth.' },
+    ],
+  },
+
+  // STAGE 7: DEAL_EVALUATED → OFFER_READY
+  'DEAL_EVALUATED→OFFER_READY': {
+    name: 'Offer Ready — LOI Approved',
+    owner: 'Montelli',
+    description: 'Seth approved LOI. Import to CRM per Step 7.',
+    prompt: {
+      title: 'Stage 7: Offer Ready',
+      description: 'Per Step 7: "Import to CRM. Enter all data."',
+      steps: [
+        { step: 1, action: 'import_loi', instruction: 'IMPORT APPROVED LOI from Seth\'s email. Copy LOI link into CRM.', fields: ['loi_link'] },
+        { step: 2, action: 'log_data', instruction: 'LOG IN CRM: All call notes — agent/seller info, condition, rent, roof, HVAC, occupancy, utilities.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'LOI imported. Offer ready to send.' },
+    ],
+  },
+
+  // STAGE 8: OFFER_READY → GROUP_CHAT_CREATED
+  'OFFER_READY→GROUP_CHAT_CREATED': {
+    name: 'Group Chat Created — GCJ Text',
+    owner: 'Montelli',
+    description: 'Send GCJ text → loops Jaxon + client per Step 8.',
+    prompt: {
+      title: 'Stage 8: Group Chat Created',
+      description: 'Per Step 8: "Send GCJ text shortcut - loops Jaxon + client into group chat."',
+      steps: [
+        { step: 1, action: 'send_text', template: 'GCJ', prefill: true, to: 'seller', instruction: 'SEND GCJ TEXT: "Creating a group chat for the purchase on [address] with my business partner Kayla."', templateKey: 'GCJ' },
+        { step: 2, action: 'verify', instruction: 'Verify: seller in group chat. Jaxon + Kayla looped in.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Group chat created. Jaxon + Kayla + seller looped in.' },
+    ],
+  },
+
+  // STAGE 9: GROUP_CHAT_CREATED → DAILY_REPORT_SENT
+  'GROUP_CHAT_CREATED→DAILY_REPORT_SENT': {
+    name: 'Daily Report Sent — EOD Spreadsheet',
+    owner: 'Montelli',
+    description: 'Email lead sheet to Kayla + Jaxon at end of day per Step 9.',
+    prompt: {
+      title: 'Stage 9: Daily Report Sent',
+      description: 'Per Step 9: "For all leads called today, create new Google Sheet with lead status + all data. Email to Kayla + Jaxon."',
+      steps: [
+        { step: 1, action: 'create_sheet', instruction: 'CREATE GOOGLE SHEET: All leads called today with status, agent/seller info, condition, rent, notes.' },
+        { step: 2, action: 'email', instruction: 'EMAIL SHEET to: homewithkaylamauser@gmail.com AND JaxonDeasonHomes1@gmail.com' },
+        { step: 3, action: 'verify_handoff', instruction: 'CONFIRM all clients are in group chats for proper hand-off.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'EOD spreadsheet emailed to Kayla + Jaxon.' },
+    ],
+  },
+
+  // STAGE 10: DAILY_REPORT_SENT → OFFER_SENT
+  'DAILY_REPORT_SENT→OFFER_SENT': {
+    name: 'Offer Sent — AI Sends',
+    owner: 'Montelli',
+    description: 'AI sends the offer per Step 10.',
+    prompt: {
+      title: 'Stage 10: Offer Sent',
+      description: 'Per Step 10: "Once offer link is generated — import into CRM. Move lead from Lead Entered to Offer Sent. AI sends the actual offer emails."',
+      steps: [
+        { step: 1, action: 'import_offer', instruction: 'IMPORT offer link into CRM.' },
+        { step: 2, action: 'move_stage', instruction: 'MOVE LEAD from "Lead Entered" to "Offer Sent".' },
+        { step: 3, action: 'ai_sends', instruction: 'AI SENDS the offer email to seller.' },
+      ],
+      reminders: [{ type: '48hr_followup', offset_hours: 48, description: '48hr: Call to gain feedback' }],
+    },
+    automations: [
+      { type: 'set_field', field: 'offer_sent_date', value: 'now' },
+      { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
+      { type: 'log', message: 'Offer sent. AI sent the offer email. 48hr timer started.' },
+    ],
+  },
+
+  // STAGE 11a: GAIN_FEEDBACK → QUESTIONS_RELAYED
+  'GAIN_FEEDBACK→QUESTIONS_RELAYED': {
+    name: 'Questions Relayed — Email Jaxon',
+    owner: 'Montelli',
+    description: 'Seller had questions on the offer. Relay to Jaxon per Part 4.',
+    prompt: {
+      title: 'Stage 11a: Questions Relayed',
+      description: 'Per Part 4: "Noted - what I will do is relay this over to my business partner and will get back with you." TEXT JAXON.',
+      steps: [
+        { step: 1, action: 'email_jaxon', instruction: 'EMAIL JAXON: JaxonDeasonHomes1@gmail.com with the seller\'s questions.' },
+        { step: 2, action: 'await_jaxon', instruction: 'WAIT for Jaxon to respond. Relay response to seller.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Seller questions relayed to Jaxon. Awaiting response.' },
+    ],
+  },
+
+  // STAGE 11b: GAIN_FEEDBACK → INSPECTION_REQUEST
+  'GAIN_FEEDBACK→INSPECTION_REQUEST': {
+    name: 'Inspection Request — 24hr Inspection',
+    owner: 'Montelli',
+    description: 'Seller asked if we have viewed the property. Per Part 4: "We will set up a home inspection - within 24 hours."',
+    prompt: {
+      title: 'Stage 11b: Inspection Request',
+      description: 'Per Part 4: "Our assistant drove past the property... We will set up a home inspection - within 24 hours."',
+      steps: [
+        { step: 1, action: 'send_response', instruction: 'TELL SELLER: "We will set up a home inspection like any real estate transaction — within 24 hours."' },
+        { step: 2, action: 'schedule', instruction: 'Once terms agreed, hand off to Kayla who arranges home inspector + sewer scope.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Inspection promised within 24hr of contract.' },
+    ],
+  },
+
+  // STAGE 11c: GAIN_FEEDBACK → NO_ANSWER
+  'GAIN_FEEDBACK→NO_ANSWER': {
+    name: 'No Answer — Voice Memo',
+    owner: 'Montelli',
+    description: 'No answer twice. Send voice memo per Part 4.',
+    prompt: {
+      title: 'Stage 11c: No Answer',
+      description: 'Per Part 4: "If No Answer After 2 Calls" — send voice memo.',
+      steps: [
+        { step: 1, action: 'send_voice_memo', instruction: 'SEND VOICE MEMO: "Happy [day] [client_name] just tried to call you regarding the purchase of your property on [address]..."' },
+        { step: 2, action: 'continue_followup', instruction: 'Continue cadence: LOI2DAYS after 2 days, then SD + DOM-181.' },
+      ],
+      reminders: [{ type: 'dom_181', description: 'DOM-181: Circle back when listing expires' }],
+    },
+    automations: [
+      { type: 'set_reminder', reminder_type: 'dom_181' },
+      { type: 'log', message: 'Voice memo sent. DOM-181 nurture scheduled.' },
+    ],
+  },
+
+  // STAGE 11d: GAIN_FEEDBACK → PROPERTY_UC
+  'GAIN_FEEDBACK→PROPERTY_UC': {
+    name: 'Property UC — Under Contract Follow-Up',
+    owner: 'Montelli',
+    description: 'Seller mentioned the property went under contract per Part 4.',
+    prompt: {
+      title: 'Stage 11d: Property UC',
+      description: 'Per Part 4: "If Property Went Under Contract" — follow up.',
+      steps: [
+        { step: 1, action: 'call_seller', instruction: 'CALL SELLER: "Happy [day] [client_name] We spoke on [day_found_uc] you mentioned the property at [address] went under contract."' },
+        { step: 2, action: 'branch', instruction: 'If closing: "Congratulations... feel free to keep my offer in your back pocket." If fell apart: "Noted, I had made a note for our underwriters to keep this offer valid."' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Property UC follow-up. Either congrats or re-engage.' },
+    ],
+  },
+
+  // STAGE 11e: GAIN_FEEDBACK → GOOD_STANDING
+  'GAIN_FEEDBACK→GOOD_STANDING': {
+    name: 'Good Standing — Delay in Feedback',
+    owner: 'Montelli',
+    description: 'Seller is taking time to respond. Send good standing message per Part 4.',
+    prompt: {
+      title: 'Stage 11e: Good Standing',
+      description: 'Per Part 4: "Good Standing (delay in feedback)"',
+      steps: [
+        { step: 1, action: 'send_text', instruction: 'SEND: "Happy Wednesday! I appreciate your patience as we were in a few closings with clients the past few weeks..."' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Good standing message sent. Awaiting feedback.' },
+    ],
+  },
+
+  // STAGE 20: TERMS_AGREED → AGREEMENT_DRAFTED
+  'TERMS_AGREED→AGREEMENT_DRAFTED': {
+    name: 'Agreement Drafted — Kayla Drafts',
+    owner: 'Kayla',
+    description: 'Kayla drafts the agreement per Part 7 step 1.',
+    prompt: {
+      title: 'Stage 20: Agreement Drafted',
+      description: 'Per Part 7: "Acceptance → Kay sends agreement to transaction coordinator → TC sends to client for authorization."',
+      steps: [
+        { step: 1, action: 'kayla_drafts', instruction: 'KAYLA DRAFTS agreement from template (Creative SubTo / Stack / Cash / JV as appropriate).' },
+        { step: 2, action: 'llc_question', instruction: 'CONFIRM: LLC name for assignment fee or personal name? (Per Part 7: "Inform Kayla if you want fee in LLC name (instead of personal name).")' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Kayla drafting agreement. Mentee LLC vs personal name confirmed.' },
+    ],
+  },
+
+  // STAGE 21: AGREEMENT_DRAFTED → PSA_SENT
+  'AGREEMENT_DRAFTED→PSA_SENT': {
+    name: 'PSA Sent — For Seller Authorization',
+    owner: 'Kayla',
+    description: 'Kayla/TC sends PSA to seller for review and authorization per Part 7.',
+    prompt: {
+      title: 'Stage 21: PSA Sent',
+      description: 'Per Part 7: "TC gets the agreement together and gets that sent over for review and authorization."',
+      steps: [
+        { step: 1, action: 'kayla_to_tc', instruction: 'KAYLA SENDS agreement to TC.' },
+        { step: 2, action: 'tc_to_seller', instruction: 'TC SENDS agreement to seller for review and authorization.' },
+        { step: 3, action: 'await_signature', instruction: 'AWAIT SELLER AUTHORIZATION.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'set_field', field: 'psa_signed_date', value: 'now' },
+      { type: 'set_field', field: 'coe_date', value: 'now+30d' },
+      { type: 'log', message: 'PSA sent to seller for authorization.' },
+    ],
+  },
+
+  // STAGE 22: PSA_SENT → AGREEMENT_AUTHORIZED
+  'PSA_SENT→AGREEMENT_AUTHORIZED': {
+    name: 'Agreement Authorized — Seller Signed',
+    owner: 'TC',
+    description: 'Seller has signed/authorized the agreement.',
+    prompt: {
+      title: 'Stage 22: Agreement Authorized',
+      description: 'Seller has signed. Contract is now fully executed. Move to inspection.',
+      steps: [
+        { step: 1, action: 'log', instruction: 'Log: PSA signed by seller. Agreement fully executed.' },
+        { step: 2, action: 'arrange_inspection', instruction: 'KAYLA ARRANGES home inspector + sewer scope. (Per Part 7 step 2.)' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'PSA signed. Fully executed. Kayla arranging inspector.' },
+    ],
+  },
+
+  // STAGE 23: AGREEMENT_AUTHORIZED → INSPECTION_SCHEDULED
+  'AGREEMENT_AUTHORIZED→INSPECTION_SCHEDULED': {
+    name: 'Inspection Scheduled — TC Arranges',
+    owner: 'TC',
+    description: 'TC + Kayla arrange home inspector + sewer scope.',
+    prompt: {
+      title: 'Stage 23: Inspection Scheduled',
+      description: 'Per Part 7 step 2: "Kay arranges home inspector + sewer scope."',
+      steps: [
+        { step: 1, action: 'schedule_inspector', instruction: 'SCHEDULE home inspector + sewer scope.' },
+        { step: 2, action: 'notify_seller', instruction: 'Notify seller of inspection date. TC coordinates access.' },
+      ],
+      reminders: [{ type: 'inspection', offset_days: 7, description: 'Inspection reminder — 7 days in' }],
+    },
+    automations: [
+      { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
+      { type: 'log', message: 'Home inspector + sewer scope scheduled.' },
+    ],
+  },
+
+  // STAGE 24: INSPECTION_SCHEDULED → INSPECTION_COMPLETE
+  'INSPECTION_SCHEDULED→INSPECTION_COMPLETE': {
+    name: 'Inspection Complete — Move to Appraisal',
+    owner: 'TC',
+    description: 'Inspection done. Appraisal next per Part 7.',
+    prompt: {
+      title: 'Stage 24: Inspection Complete',
+      description: 'Per Part 7 step 2: "After completed, appraisal ordered."',
+      steps: [
+        { step: 1, action: 'log_inspection', instruction: 'Record inspection results, issues, repairs requested.', fields: ['inspection_results', 'repairs_requested'] },
+        { step: 2, action: 'order_appraisal', instruction: 'APPRAISAL ORDERED.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Inspection complete. Appraisal ordered.' },
+    ],
+  },
+
+  // STAGE 25: INSPECTION_COMPLETE → APPRAISAL_ORDERED
+  'INSPECTION_COMPLETE→APPRAISAL_ORDERED': {
+    name: 'Appraisal Ordered — Wait for Result',
+    owner: 'TC',
+    description: 'Appraisal ordered. Wait for result.',
+    prompt: {
+      title: 'Stage 25: Appraisal Ordered',
+      description: 'Appraisal has been ordered. Wait for the appraiser to complete the valuation.',
+      steps: [
+        { step: 1, action: 'await_appraisal', instruction: 'WAIT for appraiser to complete valuation. Typically 1-2 weeks.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Appraisal in progress. Awaiting result.' },
+    ],
+  },
+
+  // STAGE 26: APPRAISAL_ORDERED → APPRAISAL_DONE
+  'APPRAISAL_ORDERED→APPRAISAL_DONE': {
+    name: 'Appraisal Done — Re-Run Offer Calc',
+    owner: 'TC',
+    description: 'Appraisal result in. Re-run offer calc with appraisal value.',
+    prompt: {
+      title: 'Stage 26: Appraisal Done',
+      description: 'Appraisal result in. Re-run offer calc with appraisal value. If low, renegotiate or pull.',
+      steps: [
+        { step: 1, action: 'run_underwriting', instruction: 'RE-RUN OFFER CALC with appraisal value.', fields: ['appraisal_value'] },
+        { step: 2, action: 'evaluate', instruction: 'IF APPRAISAL ≥ PP: move forward. IF APPRAISAL < PP: alert Kayla, consider renegotiating or pulling deal.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'run_underwriting' },
+      { type: 'notify' },
+      { type: 'log', message: 'Appraisal done. Offer calc re-run.' },
+    ],
+  },
+
+  // STAGE 27: APPRAISAL_DONE → TITLE_WORK
+  'APPRAISAL_DONE→TITLE_WORK': {
+    name: 'Title Work — Title Company Setup',
+    owner: 'TC',
+    description: 'Title company set up. Seller picks title company (per Part 7: "Title company (sellers choice of company)").',
+    prompt: {
+      title: 'Stage 27: Title Work',
+      description: 'Per Part 7: "Title company (sellers choice of company)."',
+      steps: [
+        { step: 1, action: 'open_title',
+          instruction: 'OPEN TITLE with seller\'s chosen title company. TC handles this.' },
+        { step: 2, action: 'order_title_work',
+          instruction: 'ORDER title work: title search, lien search, ALTA policy.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Title work opened. Title search ordered.' },
+    ],
+  },
+
+  // STAGE 28: TITLE_WORK → WIRE_SETUP
+  'TITLE_WORK→WIRE_SETUP': {
+    name: 'Wire Setup — Montelli Contacts Title',
+    owner: 'Closing',
+    description: 'Per Part 7 step 2: "Montelli contacts title for wiring instructions."',
+    prompt: {
+      title: 'Stage 28: Wire Setup',
+      description: 'Per Part 7: "Montelli contacts title for wiring instructions."',
+      steps: [
+        { step: 1, action: 'kayla_sends_consulting',
+          instruction: 'KAYLA SENDS CONSULTING AGREEMENT (per Part 7 step 3: "Signed by Kayla + Mentee. Sent to title by TC.")' },
+        { step: 2, action: 'montelli_wire',
+          instruction: 'MONTELLI CONTACTS TITLE for wire instructions. (Per Part 7 step 2.)',
+          fields: ['wire_instructions'] },
+        { step: 3, action: 'student_final_ask',
+          instruction: 'FINAL CHECK-IN WITH SELLER: "Closing is [date]. Excited to close! Any last questions?"' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Wire setup. Consulting agreement sent. Title wire instructions requested.' },
+    ],
+  },
+
+  // STAGE 29: WIRE_SETUP → COE_SCHEDULED
+  'WIRE_SETUP→COE_SCHEDULED': {
+    name: 'COE Scheduled — 30-Day Standard Closing',
+    owner: 'Closing',
+    description: 'Per 10-STEP3-Pt2 closing call: "it would be a standard 30 day closing".',
+    prompt: {
+      title: 'Stage 29: COE Scheduled',
+      description: 'Per 10-STEP3-Pt2 closing call: "standard 30 day closing".',
+      steps: [
+        { step: 1, action: 'schedule_coe', instruction: 'SCHEDULE COE (Close of Escrow) per title company timeline.' },
+        { step: 2, action: 'confirm_wire', instruction: 'CONFIRM wire instructions from title.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'COE scheduled. 30-day standard closing per 10-STEP3-Pt2 transcript.' },
+    ],
+  },
+
+  // STAGE 30: COE_SCHEDULED → CLOSING_DATE
+  'COE_SCHEDULED→CLOSING_DATE': {
+    name: 'Closing Date — Wire Funds + Close',
+    owner: 'Closing',
+    description: 'Wire funds to title. Close at title company.',
+    prompt: {
+      title: 'Stage 30: Closing Date',
+      description: 'Wire funds. Close at title. Always ask for referrals (per Part 7 step 4).',
+      steps: [
+        { step: 1, action: 'wire_funds', instruction: 'WIRE FUNDS to title company. Verify all documents signed.', fields: ['wire_confirmed', 'wire_amount'] },
+        { step: 2, action: 'close_at_title', instruction: 'CLOSE AT TITLE. Funds distributed.' },
+        { step: 3, action: 'ask_referrals', instruction: 'ALWAYS ASK: "Do you have any other properties you are looking to offload? Anyone in your network who might be a fit? We pay referral fees."' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'set_field', field: 'closed_date', value: 'now' },
+      { type: 'log', message: 'Closed. Funds distributed. Always ask for referrals.' },
+    ],
+  },
+
+  // STAGE 31: CLOSING_DATE → ARCHIVED
+  'CLOSING_DATE→ARCHIVED': {
+    name: 'Archived — Deal Closed',
+    owner: 'Closing',
+    description: 'Lead archived. All documents preserved.',
+    prompt: {
+      title: 'Stage 31: Archived',
+      description: 'Deal closed and archived.',
+      steps: [
+        { step: 1, action: 'log', instruction: 'Lead archived. Data preserved.' },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Archived.' },
+    ],
+  },
+
     name: 'Initial Contact — First Outreach',
     owner: 'Montelli',
     description: 'Send INT/DNCT text, call seller/agent, log notes.',
