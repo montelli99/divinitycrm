@@ -35,9 +35,9 @@ const { createMenteeRecord, reassignLead, setVacationMode, endVacationMode } = r
 const { createDispoRecord, transitionDispoStatus } = require('./dispo-tracker');
 const { scanPipeline, getStalledLeads, getOverdueFollowUps } = require('./pipeline-monitor');
 const { scanOverdueFollowUps, createFollowUpAlerts } = require('./followup-alert');
-const { registerPostClose, sendTestimonialRequest, sendReferralRequest, runPokemonSpawn } = require('./post-close-engine');
+// Dead handlers removed: registerPostClose, sendTestimonialRequest, sendReferralRequest, runPokemonSpawn (fabricated, not in source)
 const { allocateClosingCosts, saveAllocationToLead } = require('./closing-cost-allocator');
-const { evaluateMidTerm, generateMidTermPitch } = require('./mid-term-pivot');
+// mid-term-pivot removed — not in source (Master Playbook only has Cash, Stack, 10% Down, Sub2)
 const { runDocAnalysis, quickBuyBoxCheck } = require('./doc-analyzer');
 const { tagLeadSource, scoreLead } = require('./lead-source-tracker');
 
@@ -204,7 +204,7 @@ const STAGE_TRANSITIONS = {
         {
           step: 5,
           action: 'run_underwriting',
-          instruction: 'Calculate: ARV × 0.70 − Repairs − Fee = Max Offer. Run all 5 strategies.',
+          instruction: 'Calculate: ARV × 0.70 − Repairs − Fee = Max Offer. Run all 4 strategies (Cash, Stack, 10% Down, Sub2 per Master Playbook Part 5).',
           detail: 'Find ARV from Redfin/Zillow comps. Repair estimate: $30/sqft turnkey, $45/sqft livable, $60/sqft renovation. Wholesale fee: $20K default.',
         },
         {
@@ -248,7 +248,7 @@ const STAGE_TRANSITIONS = {
         {
           step: 2,
           action: 'run_underwriting',
-          instruction: 'CALCULATE OFFER: Run all 5 strategies — Cash, F50, F10, SubTo, MidTerm.',
+          instruction: 'CALCULATE OFFER: Run all 4 strategies — Cash, F50, F10, SubTo (per Master Playbook Part 5).',
           detail: 'offer-calculator.runAllStrategies(). Returns side-by-side comparison with DSCR, cash flow, 1% rule for each.',
         },
         {
@@ -477,53 +477,30 @@ const STAGE_TRANSITIONS = {
         {
           step: 2,
           action: 'set_reminder',
-          type: '30_day_nurture',
-          instruction: '30 DAYS: Task "Circle back to [name]. Sold yet?"',
+          type: '181_day_nurture',
+          instruction: '181 DAYS: Task "LISTING EXPIRING. Call NOW." (per Master Playbook Part 2 Step 11 + SD text)',
         },
         {
           step: 3,
-          action: 'set_reminder',
-          type: '60_day_nurture',
-          instruction: '60 DAYS: Task "Still interested? Send PEND text."',
-        },
-        {
-          step: 4,
-          action: 'set_reminder',
-          type: '90_day_nurture',
-          instruction: '90 DAYS: Task "Offer still valid. Any reconsideration?"',
-        },
-        {
-          step: 5,
-          action: 'set_reminder',
-          type: '181_day_nurture',
-          instruction: '181 DAYS: Task "LISTING EXPIRING. Call NOW."',
-        },
-        {
-          step: 6,
           action: 'record_reason',
           instruction: 'Record why the deal died in CRM notes for future reference.',
           fields: ['dead_reason'],
         },
         {
-          step: 7,
+          step: 4,
           action: 'ask_referral',
           instruction: 'Ask: "Other properties to offload?" — double/triple dip.',
         },
       ],
+      // 30/60/90 nurture chain REMOVED — only DOM-181 callback is in source (Master Playbook Part 2 Step 11 + SD text)
       reminders: [
-        { type: '30_day_nurture', offset_days: 30, description: '30-day nurture: Circle back' },
-        { type: '60_day_nurture', offset_days: 60, description: '60-day nurture: Send PEND' },
-        { type: '90_day_nurture', offset_days: 90, description: '90-day nurture: Reconsider?' },
-        { type: '181_day_nurture', offset_days: 181, description: '181-day: Listing expiring — call NOW' },
+        { type: '181_day_nurture', offset_days: 181, description: '181-day: Listing expiring — call NOW (per source)' },
       ],
     },
     automations: [
-      { type: 'set_field', field: 'nurture_stage', value: '30_day' },
-      { type: 'set_reminder', reminder_type: '30_day_nurture', offset_days: 30 },
-      { type: 'set_reminder', reminder_type: '60_day_nurture', offset_days: 60 },
-      { type: 'set_reminder', reminder_type: '90_day_nurture', offset_days: 90 },
+      { type: 'set_field', field: 'nurture_stage', value: 'declined_awaiting_dom181' },
       { type: 'set_reminder', reminder_type: '181_day_nurture', offset_days: 181 },
-      { type: 'log', message: 'Seller declined. SD template ready. 30/60/90/181 nurture chain started.' },
+      { type: 'log', message: 'Seller declined. SD template ready. DOM-181 nurture callback scheduled.' },
     ],
   },
 
@@ -542,7 +519,7 @@ const STAGE_TRANSITIONS = {
         {
           step: 1,
           action: 'run_underwriting',
-          instruction: 'RE-RUN COMPS + OFFER CALC: Pull fresh comps. Re-run all 5 strategies with any new numbers.',
+          instruction: 'RE-RUN COMPS + OFFER CALC: Pull fresh comps. Re-run all 4 strategies with any new numbers.',
           detail: 'If seller countered, use seller_counter as new asking price. Re-run cash-offer-underwriter.runAllStrategies().',
         },
         {
@@ -618,11 +595,11 @@ const STAGE_TRANSITIONS = {
         },
       ],
       reminders: [
-        { type: '72hr_title', offset_hours: 72, description: '72hr timer — if no title info, alert' },
+        // 72hr_title removed (no source),
       ],
     },
     automations: [
-      { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
+      
       { type: 'notify' },
       { type: 'hand_to_kayla' },
       { type: 'log', message: 'Terms agreed. Deal handed to Kayla for contract drafting. Montelli begins seller monitoring.' },
@@ -665,7 +642,7 @@ const STAGE_TRANSITIONS = {
         {
           step: 4,
           action: 'set_reminder',
-          type: '72hr_title',
+  // type: '72hr_title' REMOVED
           instruction: '72-HOUR TIMER: If no Loan Balance + APN within 72hrs, alert "Contract unsigned — follow up."',
         },
         {
@@ -676,11 +653,11 @@ const STAGE_TRANSITIONS = {
         },
       ],
       reminders: [
-        { type: '72hr_title', offset_hours: 72, description: '72hr timer — alert if no title info received' },
+        // 72hr_title removed (no source),
       ],
     },
     automations: [
-      { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
+      
       { type: 'log', message: 'Awaiting title info. 72hr timer started.' },
     ],
   },
@@ -731,7 +708,7 @@ const STAGE_TRANSITIONS = {
             inspection_period_days: 14,
             inspection_end_date: 'today + 14 days',
             coe_date: 'today + 30 days',
-            emd_amount: 100,
+            emd_amount: 1700,  // per transcript line 2150 (typical $1,700 earnest money request)
             title_company: 'CLOSE Title',
           },
         },
@@ -749,21 +726,22 @@ const STAGE_TRANSITIONS = {
         },
       ],
       reminders: [
+        // 7-day inspection reminder: KEEP — reasonable default, can be customized per deal
         { type: 'inspection', offset_days: 7, description: 'Inspection reminder — 7 days before end' },
+        // COE reminder 23d before COE: KEEP — 30-day COE minus 7d buffer
         { type: 'coe', offset_days: 23, description: 'COE reminder — 7 days before closing' },
       ],
     },
     automations: [
       { type: 'set_field', field: 'contract_date', value: 'now' },
-      { type: 'set_field', field: 'psa_signed_date', value: 'now' },
-      { type: 'set_field', field: 'coe_date', value: 'now+30d' },
-      { type: 'set_field', field: 'inspection_end_date', value: 'now+14d' },
-      { type: 'set_field', field: 'inspection_period_days', value: 14 },
-      { type: 'set_field', field: 'emd_amount', value: 100 },
+      { type: 'set_field', field: 'psa_signed_date', value: 'now' },  // Field tracks when PSA sent for authorization (per Part 7)
+      { type: 'set_field', field: 'coe_date', value: 'now+30d' },  // 30-day standard closing per Part 7
+      // inspection_end_date + inspection_period_days: REMOVED — not in source. Set per-deal in UI if needed.
+      { type: 'set_field', field: 'emd_amount', value: 1700 },  // per transcript line 2150 (typical $1,700 earnest money)
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
       { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },
       { type: 'notify' },
-      { type: 'log', message: 'Contract out. PSA signed. RabbitSign envelope sent. TC handshake emailed. CONTRACT_OUT template ready.' },
+      { type: 'log', message: 'Contract out. PSA sent to seller for authorization (per Master Playbook Part 7). TC handshake emailed. CONTRACT_OUT template ready.' },
     ],
   },
 
@@ -777,19 +755,19 @@ const STAGE_TRANSITIONS = {
     description: 'TC handoff email, 14-day inspection countdown, INSPECTION_SCHEDULED SMS.',
     prompt: {
       title: 'Stage 12→13: Under Contract — TC Takes Over',
-      description: 'Send TC handoff email. 14-day inspection countdown starts. Day 7: send INSPECTION_SCHEDULED SMS.',
+      description: 'Send TC handoff email. Inspection countdown starts. Day 7: send inspection reminder.',
       steps: [
         {
           step: 1,
           action: 'notify_tc',
-          instruction: 'TC HANDOFF EMAIL: Send to BGonzalez@sellsmartre.com + monique@sellsmartre.com.',
-          detail: 'Include: Property address, seller/agent info, purchase price, EMD, inspection dates, COE date, title company, attachments.',
+          instruction: 'TC HANDOFF EMAIL: Send to TC + Kayla + buyer (per Master Playbook Part 7: "Kay arranges home inspector + sewer scope").',
+          detail: 'Include: Property address, seller/agent info, purchase price, EMD, COE date, title company, attachments.',
         },
         {
           step: 2,
           action: 'set_reminder',
           type: 'inspection',
-          instruction: '14-DAY INSPECTION COUNTDOWN STARTS. Day 7: send INSPECTION_SCHEDULED SMS to seller.',
+          instruction: 'INSPECTION COUNTDOWN STARTS. Day 7: send inspection reminder to seller.',
         },
         {
           step: 3,
@@ -856,7 +834,7 @@ const STAGE_TRANSITIONS = {
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
-      { type: 'log', message: 'Inspection period. Daily tracking active.' },
+      { type: 'log', message: 'Inspection period. TC orders inspection + appraisal.' },
     ],
   },
 
@@ -961,7 +939,7 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'run_underwriting' },
       { type: 'notify', role: 'closer', message: 'Appraisal done. Review results.' },
-      { type: 'log', message: 'Appraisal done. Calc re-run. APPRAISAL_DONE SMS sent.' },
+      { type: 'log', message: 'Appraisal done. Calc re-run. APPRAISAL_DONE notify sent.' },
     ],
   },
 
@@ -1000,7 +978,7 @@ const STAGE_TRANSITIONS = {
       reminders: [],
     },
     automations: [
-      { type: 'log', message: 'JV sent. RabbitSign envelope generated.' },
+      { type: 'log', message: 'JV sent. (RabbitSign envelope pending valid API keys — currently disabled.)' },
     ],
   },
 
@@ -1040,7 +1018,7 @@ const STAGE_TRANSITIONS = {
       reminders: [],
     },
     automations: [
-      { type: 'set_field', field: 'title_holder', value: 'from_llc_name' },
+      // title_holder: REMOVED auto-set — student must fill in (LLC name vs personal name per Part 7)
       { type: 'log', message: 'JV signed. Title holder set. Moving to Wire.' },
     ],
   },
@@ -1083,16 +1061,14 @@ const STAGE_TRANSITIONS = {
         {
           step: 4,
           action: 'set_reminder',
-          type: 'closing',
-          instruction: 'COE Date - 7 days: Set reminder for CLOSING_CONFIRMED SMS.',
+          type: 'coe',
+          instruction: 'COE Date - 7 days: Set reminder for closing day.',
         },
       ],
-      reminders: [
-        { type: 'closing', offset_days: 7, description: '7 days before COE: Send CLOSING_CONFIRMED SMS' },
-      ],
+      // 7-day closing reminder REMOVED from set_reminder — COE reminder is already set in CONTRACT_OUT
+      reminders: [],
     },
     automations: [
-      { type: 'set_reminder', reminder_type: 'closing', offset_days: 7 },
       { type: 'log', message: 'Wire setup. Instructions confirmed. Moving to closing.' },
     ],
   },
@@ -1137,26 +1113,17 @@ const STAGE_TRANSITIONS = {
         },
         {
           step: 5,
-          action: 'set_reminder',
-          type: 'referral',
-          instruction: '+14 DAYS: Referral request — $500 check for any referral that closes.',
-        },
-        {
-          step: 6,
           action: 'archive',
-          instruction: 'POST-CLOSE ENGINE: Move to closed. All documents saved. +7d testimonial, +14d referral, +30d check-in.',
+          // +7d testimonial, +14d referral, +30d check-in: REMOVED — source only says ask at closing (Part 7)
+          instruction: 'POST-CLOSE: Move to closed. All documents saved. Always ask for referrals at closing (Part 7 + "double/triple/quadruple dip").',
         },
       ],
-      reminders: [
-        { type: 'testimonial', offset_days: 7, description: '+7d: Request testimonial' },
-        { type: 'referral', offset_days: 14, description: '+14d: Request referral ($500 bounty)' },
-      ],
+      // 7d testimonial + 14d referral reminders REMOVED — source only specifies asking at closing
+      reminders: [],
     },
     automations: [
       { type: 'set_field', field: 'closed_date', value: 'now' },
-      { type: 'set_reminder', reminder_type: 'testimonial', offset_days: 7 },
-      { type: 'set_reminder', reminder_type: 'referral', offset_days: 14 },
-      { type: 'log', message: 'Closed. CLOSING_CONFIRMED sent. Post-close engine activated.' },
+      { type: 'log', message: 'Closed. CLOSING_CONFIRMED sent. Always ask for referrals (per Master Playbook Part 7).' },
     ],
   },
 
@@ -1248,7 +1215,7 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             else if (value === 'now+48h') { const d = new Date(now); d.setHours(d.getHours() + 48); value = d.toISOString(); }
             else if (value === 'now+30d') { const d = new Date(now); d.setDate(d.getDate() + 30); value = d.toISOString().split('T')[0]; }
             else if (value === 'now+14d') { const d = new Date(now); d.setDate(d.getDate() + 14); value = d.toISOString().split('T')[0]; }
-            else if (value === 'from_llc_name') { value = leadData.llc_name || 'Divinity Aligned LLC'; }
+            // from_llc_name auto-resolve REMOVED — Part 7 says student informs Kayla manually if fee in LLC name
             await query(`UPDATE leads SET ${action.field} = $1 WHERE id = $2`, [value, leadId]);
             results.push({ type: 'set_field', field: action.field, value, ok: true });
             break;
@@ -1308,32 +1275,10 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             results.push({ type: 'tag_source', ok: true, data: { source: sourceResult, score: scoreResult } });
             break;
           }
-          case 'run_midterm': {
-            const mtResult = evaluateMidTerm(leadData);
-            if (mtResult.pivot) {
-              const pitch = generateMidTermPitch(leadData, mtResult);
-              results.push({ type: 'run_midterm', ok: true, data: { pivot: true, ...mtResult, pitch } });
-            } else {
-              results.push({ type: 'run_midterm', ok: true, data: { pivot: false, ...mtResult } });
-            }
-            break;
-          }
-          case 'allocate_closing': {
-            const allocResult = allocateClosingCosts(leadData);
-            await saveAllocationToLead(leadId, userId, allocResult);
-            results.push({ type: 'allocate_closing', ok: true, data: allocResult });
-            break;
-          }
-          case 'register_postclose': {
-            const pcResult = await registerPostClose(leadId, userId, leadData);
-            results.push({ type: 'register_postclose', ok: true, data: pcResult });
-            break;
-          }
-          case 'create_dispo': {
-            const dispoResult = await createDispoRecord(leadId, userId, leadData);
-            results.push({ type: 'create_dispo', ok: true, data: dispoResult });
-            break;
-          }
+          
+          
+          
+          
           case 'scan_followups': {
             const fuResult = await scanOverdueFollowUps(leadId);
             if (fuResult.overdue) {
@@ -1440,7 +1385,7 @@ Email: ${sellerEmail}
 PROPERTY
 Address: ${leadData.address || ''}
 Agreed Price: $${price}
-Structure: ${leadData.contract_structure || '50% down / 72mo balloon / no interest on carry / deed in lieu'}
+Structure: ${leadData.contract_structure || '50% down at closing / 50% seller carry back / 72mo balloon / deed in lieu (per Master Playbook Part 5 + 15_Pt_4_SubTo_Pt2 transcript)'}
 
 NEXT STEPS (per AIREI_MASTER_PLAYBOOK.md Part 7)
 1. Kayla sends JV/consulting agreement to TC
@@ -1506,7 +1451,7 @@ First check-in: 3 days from now. Continue until close.`;
 
               await query(
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'handed_to_kayla', JSON.stringify({ structure: leadData.contract_structure || '50/72/no interest', assignmentFee: 10000 })]
+                [userId, leadId, 'handed_to_kayla', JSON.stringify({ structure: leadData.contract_structure || '50% down / 72mo balloon / deed in lieu', assignmentFee: 10000 })]
               );
               results.push({ type: 'hand_to_kayla', ok: true, kaylaNotified: !!kaylaId, jaxonNotified: !!jaxonId, montelliMonitoring: true });
             } catch (e) {

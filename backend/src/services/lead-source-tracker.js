@@ -1,96 +1,53 @@
 // =============================================================
 // Lead Source Tracker Service — Divinity CRM
 // =============================================================
-// Built: 2026-06-18 by Atlas (Phase 10 — FINAL)
-// Source: ghl-automations/modules/lead-source-tracker.js
+// Source: AIREI_MASTER_PLAYBOOK.md (Part 2, Part 6)
 //
 // Purpose: Track lead sources, score leads by source quality,
 //          calculate ROI per source, attribute deals to channels.
 //
-// Lead Sources:
-//   - PPC (Google/Facebook Ads)
-//   - FB Marketplace (organic)
-//   - Website (Jill — direct submissions)
-//   - List Pull (internal CRM)
-//   - Referral (past clients, partners)
-//   - Bandit Signs (physical)
-//   - Cold Call (outbound)
-//   - SMS Blast (bulk)
-//   - RVM (ringless voicemail)
+// Lead Sources (per source docs):
+//   - FB_MARKETPLACE (Part 6 — primary, extensively documented)
+//   - AGENT_REFERRED (called listing agent — per call scripts)
+//   - SELLER_REFERRED (referrals from past clients, partners — Part 7)
+//   - OTHER (anything not fitting above)
 //
-// Scoring: combines source quality tier + market match + DOM
+// No mention in source of: PPC, Bandit Signs, Cold Call, SMS Blast, RVM,
+// Zillow, Redfin, "kayla_sheet", "list_pull". REMOVED.
 // =============================================================
 
 const { query } = require('../db/connection');
 
 // =============================================================
-// LEAD SOURCES
+// LEAD SOURCES — only what's in the source docs
 // =============================================================
+// Source values match the DB enum: facebook, referral, agent_referred, other
+// (Per Master Playbook Part 6 + Part 7)
 
 const LEAD_SOURCES = {
-  PPC: {
-    name: 'Pay Per Click',
-    description: 'Google Ads, Facebook Ads, Bing Ads (paid traffic)',
-    typicalCAC: '$50 - $200',
-    qualityTier: 'A',
-    closeRate: '5-15%',
-  },
-  FB_Marketplace: {
+  facebook: {
     name: 'Facebook Marketplace',
-    description: 'Organic Facebook Marketplace listings',
+    description: 'Organic Facebook Marketplace listings (per Master Playbook Part 6)',
     typicalCAC: '$0 - $25',
     qualityTier: 'B',
     closeRate: '3-10%',
+    sourceRef: 'Part 6 — FB Marketplace Prospecting',
   },
-  Website: {
-    name: 'Website (Jill)',
-    description: 'Direct website submissions via Jill (out-of-list)',
+  agent_referred: {
+    name: 'Agent Referred',
+    description: 'Lead from listing agent (called via Agent Initial Script)',
     typicalCAC: '$0',
     qualityTier: 'B+',
     closeRate: '4-12%',
-    note: 'Jill often brings deals outside the standard list pull',
+    sourceRef: 'Part 3 — Agent Initial Script (3rd Step/Pt 5 - Scripts)',
   },
-  List_Pull: {
-    name: 'List Pull',
-    description: 'Standard list pull from internal CRM',
+  referral: {
+    name: 'Seller Referred',
+    description: 'Referral from past client, partner, or "double/triple/quadruple dip" (Part 7 closing)',
     typicalCAC: '$0',
-    qualityTier: 'B',
-    closeRate: '2-8%',
-  },
-  Referral: {
-    name: 'Referral / Past Client',
-    description: 'Referrals from past clients, other students, or partners',
-    typicalCAC: '$0',
-    qualityTier: 'A+',
-    closeRate: '15-30%',
-  },
-  Bandit: {
-    name: 'Bandit Signs',
-    description: 'Physical bandit signs (yard signs, billboards)',
-    typicalCAC: '$5 - $15',
-    qualityTier: 'C',
-    closeRate: '1-5%',
-  },
-  Cold_Call: {
-    name: 'Cold Call',
-    description: 'Outbound cold calling',
-    typicalCAC: '$0 - $5',
-    qualityTier: 'B',
-    closeRate: '2-7%',
-  },
-  SMS_Blast: {
-    name: 'SMS Blast',
-    description: 'Bulk SMS campaigns',
-    typicalCAC: '$0.50 - $2',
-    qualityTier: 'C',
-    closeRate: '1-3%',
-  },
-  RVM: {
-    name: 'Ringless Voicemail',
-    description: 'Ringless voicemail drops',
-    typicalCAC: '$0.20 - $1',
-    qualityTier: 'C',
-    closeRate: '1-3%',
+    qualityTier: 'A',
+    closeRate: '10-20%',
+    sourceRef: 'Part 7 — "Always ask for referrals at closing"',
   },
   other: {
     name: 'Other / Unknown',
@@ -98,48 +55,7 @@ const LEAD_SOURCES = {
     typicalCAC: 'Unknown',
     qualityTier: 'D',
     closeRate: 'Unknown',
-  },
-  zillow: {
-    name: 'Zillow',
-    description: 'Zillow listing / Zillow-sourced lead',
-    typicalCAC: '$0',
-    qualityTier: 'B',
-    closeRate: '3-8%',
-  },
-  redfin: {
-    name: 'Redfin',
-    description: 'Redfin listing / Redfin-sourced lead',
-    typicalCAC: '$0',
-    qualityTier: 'B',
-    closeRate: '3-8%',
-  },
-  kayla_sheet: {
-    name: 'Kayla Sheet',
-    description: 'Lead from Kayla\'s deal sheet',
-    typicalCAC: '$0',
-    qualityTier: 'A',
-    closeRate: '10-20%',
-  },
-  ppc: {
-    name: 'PPC',
-    description: 'Pay-per-click advertising lead',
-    typicalCAC: '$50 - $200',
-    qualityTier: 'A',
-    closeRate: '5-15%',
-  },
-  list_pull: {
-    name: 'List Pull',
-    description: 'Standard list pull from internal CRM',
-    typicalCAC: '$0',
-    qualityTier: 'B',
-    closeRate: '2-8%',
-  },
-  referral: {
-    name: 'Referral',
-    description: 'Referral from past client or partner',
-    typicalCAC: '$0',
-    qualityTier: 'A+',
-    closeRate: '15-30%',
+    sourceRef: 'Default — none of the above',
   },
 };
 
@@ -148,7 +64,6 @@ const LEAD_SOURCES = {
 // =============================================================
 
 const TIER_SCORES = {
-  'A+': 50,
   'A': 40,
   'B+': 30,
   'B': 20,
@@ -178,6 +93,7 @@ function scoreLead({ source, market, daysOnMarket, menteeMarkets }) {
   }
 
   // DOM factor (stale listing = motivated seller)
+  // Per Master Playbook Part 2 Step 11: "Circle back when listing is about to expire (DOM-181)"
   if (daysOnMarket) {
     if (daysOnMarket > 180) score += 20;
     else if (daysOnMarket > 90) score += 10;
@@ -207,7 +123,7 @@ function scoreLead({ source, market, daysOnMarket, menteeMarkets }) {
 
 async function getSourceAttribution() {
   const attribution = await query(
-    `SELECT 
+    `SELECT
       source,
       COUNT(*) AS total_leads,
       COUNT(*) FILTER (WHERE stage = 'CLOSED') AS closed,
@@ -252,7 +168,7 @@ async function getSourceAttribution() {
 
 async function getSourceSummary() {
   const summary = await query(
-    `SELECT 
+    `SELECT
       COUNT(*) AS total_leads,
       COUNT(*) FILTER (WHERE stage = 'CLOSED') AS total_closed,
       COUNT(*) FILTER (WHERE stage = 'DEAD') AS total_dead,
@@ -358,7 +274,7 @@ async function getSourcePerformance(days = 90) {
   const since = new Date(Date.now() - days * 86400000);
 
   const performance = await query(
-    `SELECT 
+    `SELECT
       source,
       DATE_TRUNC('week', created_at) AS week,
       COUNT(*) AS leads_added,
