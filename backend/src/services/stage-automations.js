@@ -221,8 +221,9 @@ const STAGE_TRANSITIONS = {
       { type: 'run_doc_analysis' },
       { type: 'run_comps' },
       { type: 'run_underwriting' },
+      { type: 'loi_request' },  // Triggers Seth underwriting request (per AIREI_MASTER_PLAYBOOK.md Part 2 Step 6)
       { type: 'notify' },
-      { type: 'log', message: 'Deal evaluated. Doc analysis + comps + underwriting run. Seth emailed.' },
+      { type: 'log', message: 'Deal evaluated. Doc analysis + comps + underwriting run. LOI requested from Seth (claytoninvestmentsolutions@gmail.com).' },
     ],
   },
 
@@ -1354,49 +1355,143 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             }
             break;
           }
-          case 'hand_to_kayla': {
+          case 'loi_request': {
+            // Verbatim from AIREI_MASTER_PLAYBOOK.md Part 2 Step 6:
+            // "If turnkey + 1% rule pass → email Seth at claytoninvestmentsolutions@gmail.com,
+            //  subject 'FB LOI Request' or 'Renovation – LOI Request [address]'.
+            //  Seth sends approved LOI."
             try {
-              // Per KAYLA_CLOSING_PROCESS.md: Kayla drafts AND sends contract.
-              // CRM role: package everything Kayla needs + start Montelli's monitoring reminders.
+              const dealType = leadData.condition === 'turnkey' ? 'FB LOI Request' : 'Renovation – LOI Request';
+              const sellerRent = leadData.monthly_rent || 0;
+              const purchasePrice = Number(leadData.price || 0);
+              const onePercentTest = purchasePrice > 0 ? (sellerRent / purchasePrice) >= 0.01 : false;
+              const subject = `${dealType} – ${leadData.address || ''}`;
+              const body = `Property: ${leadData.address || ''}
+Asking: $${purchasePrice.toLocaleString()}
+Market Rent: $${sellerRent}/mo
+1% Rule Test: ${onePercentTest ? 'PASS' : 'FAIL'} (need rent ≥ 1% of price)
+Condition: ${leadData.condition || 'unknown'}
+Beds/Baths: ${leadData.beds || '?'}/${leadData.baths || '?'}
+Sqft: ${leadData.sqft || '?'}
+
+Source of truth: 17C-OH-3.12 transcript — "Seth is going to be underwriting all LOI potential requests so that if it doesn't cash flow at the 1% rule, after looking at..."`;
+
+              // Notify Seth (if he has an account) — and always log activity so student can copy the email content
+              const sethId = await getUserByEmail('claytoninvestmentsolutions@gmail.com');
+              if (sethId) {
+                await createNotification({
+                  recipientId: sethId,
+                  leadId: leadData.id,
+                  type: 'loi_request',
+                  title: subject,
+                  body: body,
+                  actionUrl: `/leads/${leadData.id}`,
+                  actionLabel: 'Open Lead',
+                });
+              }
+
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'loi_requested_seth', JSON.stringify({ subject, onePercentTest, condition: leadData.condition })]
+              );
+
+              // Set reminder for student to follow up with Seth if no LOI in 48hrs
+              await query(
+                `INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
+                 VALUES (gen_random_uuid(), $1, $2, 'custom', NOW() + INTERVAL '48 hours', $3)`,
+                [leadData.id, userId, `Follow up with Seth on LOI: ${subject}`]
+              );
+
+              results.push({ type: 'loi_request', ok: true, subject, onePercentTest, sethNotified: !!sethId });
+            } catch (e) {
+              results.push({ type: 'loi_request', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'hand_to_kayla': {
+            // Verbatim from 10-STEP3-Pt2-Jaxon-Closed-Student-Deal-Walkthrough.txt (lines 2353-2400):
+            // "Next steps for us would be was looping our transaction coordinator in who's on staff
+            //  they would get the agreement together and get that sent over for your review
+            //  and your authorization. Once that happened we would get it over to title —
+            //  it would be a standard 30 day closing and we would run our inspections
+            //  our appraisal and all of that."
+            //
+            // ALSO from AIREI_MASTER_PLAYBOOK.md Part 7:
+            // "Acceptance → Kay sends agreement to transaction coordinator → TC sends to client for authorization
+            //  Inform Kayla if you want fee in LLC name (instead of personal name)
+            //  Kayla sends JV/consulting agreement outlining profit split
+            //  Inspection + Appraisal → Kay arranges home inspector + sewer scope
+            //  Consulting Agreement → Sent after property passes inspection + appraisal
+            //  Close of Escrow → All funds distributed at title company → direct deposit"
+            //
+            // Assignment fee: $10,000 to Kayla Mouser (per Lead-to-CRM-AI-Offer-System transcript)
+            try {
               const sellerName = leadData.seller_name || 'Seller';
               const sellerPhone = leadData.seller_phone || '';
               const sellerEmail = leadData.seller_email || '';
               const price = Number(leadData.price || 0).toLocaleString();
-              const handoffBody = `TERMS AGREED — Draft & send contract.
+              const handoffBody = `TERMS AGREED — Kayla/Jaxon closing process.
 
+SELLER INFO
 Seller: ${sellerName}
 Phone: ${sellerPhone}
 Email: ${sellerEmail}
-Property: ${leadData.address || ''}
+
+PROPERTY
+Address: ${leadData.address || ''}
 Agreed Price: $${price}
-Structure: ${leadData.contract_structure || '50% down / 72mo balloon / no interest on carry'}
+Structure: ${leadData.contract_structure || '50% down / 72mo balloon / no interest on carry / deed in lieu'}
 
-Action: Kayla drafts PSA from template (Creative SubTo / Stack / JV / Cash as appropriate), sends to seller via RabbitSign.
+NEXT STEPS (per AIREI_MASTER_PLAYBOOK.md Part 7)
+1. Kayla sends JV/consulting agreement to TC
+2. TC sends agreement to seller for review + authorization
+3. Kayla arranges home inspector + sewer scope
+4. Appraisal ordered after inspection passes
+5. Montelli contacts title for wiring instructions
+6. Standard 30 day closing
+7. Student gets $10K assignment fee via direct deposit from title
+8. ALWAYS ask seller: "Do you have any other properties you're looking to offload?"
 
-After Kayla sends: Montelli's role switches to monitoring — text seller every 3-5 days: "Just checking in — contract came through OK?"`;
+MONTELLI'S ROLE FROM HERE
+Text seller every 3-5 days: "Hey [name] — just checking in — everything smooth on your end?"
+First check-in: 3 days from now. Continue until close.`;
 
-              // Notify Kayla
+              // Notify Kayla (primary closer)
               const kaylaId = await getUserByEmail('homewithkaylamauser@gmail.com');
               if (kaylaId) {
                 await createNotification({
                   recipientId: kaylaId,
                   leadId: leadData.id,
-                  type: 'contract_handoff',
-                  title: `Draft & Send Contract: ${leadData.address || ''}`,
+                  type: 'agreement_handoff',
+                  title: `Draft & Send Agreement: ${leadData.address || ''}`,
                   body: handoffBody,
                   actionUrl: `/leads/${leadData.id}`,
                   actionLabel: 'Open Lead',
                 });
               }
 
-              // Notify Montelli (lead owner) to begin monitoring cadence
+              // Notify Jaxon (closer on the call in many transcripts)
+              const jaxonId = await getUserByEmail('jaxondeasonhomes1@gmail.com');
+              if (jaxonId) {
+                await createNotification({
+                  recipientId: jaxonId,
+                  leadId: leadData.id,
+                  type: 'agreement_handoff',
+                  title: `Closing Handoff: ${leadData.address || ''}`,
+                  body: handoffBody,
+                  actionUrl: `/leads/${leadData.id}`,
+                  actionLabel: 'Open Lead',
+                });
+              }
+
+              // Notify Montelli (lead owner) to begin seller monitoring cadence
               if (leadData.user_id) {
                 await createNotification({
                   recipientId: leadData.user_id,
                   leadId: leadData.id,
                   type: 'monitor_seller',
                   title: `Begin Seller Monitoring: ${leadData.address || ''}`,
-                  body: `Kayla is drafting the contract. Your job now: text ${sellerName} every 3-5 days until closing. First check-in: "Hey ${sellerName} — just checking in — everything smooth on your end?"`,
+                  body: `Kayla is sending the agreement. Your only job from now until close: text ${sellerName} every 3-5 days. First check-in: "Hey ${sellerName} — just checking in — everything smooth on your end?"`,
                   actionUrl: `/leads/${leadData.id}`,
                   actionLabel: 'View Lead',
                 });
@@ -1406,14 +1501,14 @@ After Kayla sends: Montelli's role switches to monitoring — text seller every 
               await query(
                 `INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
                  VALUES (gen_random_uuid(), $1, $2, 'custom', NOW() + INTERVAL '3 days', $3)`,
-                [leadData.id, leadData.user_id, `Text seller ${sellerName}: "Hey — contract came through OK?"`]
+                [leadData.id, leadData.user_id, `Text seller ${sellerName}: "Hey — just checking in — everything smooth on your end?"`]
               );
 
               await query(
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'handed_to_kayla', JSON.stringify({ structure: leadData.contract_structure || '50/72/no interest' })]
+                [userId, leadId, 'handed_to_kayla', JSON.stringify({ structure: leadData.contract_structure || '50/72/no interest', assignmentFee: 10000 })]
               );
-              results.push({ type: 'hand_to_kayla', ok: true, handoff: 'kayla_notified' });
+              results.push({ type: 'hand_to_kayla', ok: true, kaylaNotified: !!kaylaId, jaxonNotified: !!jaxonId, montelliMonitoring: true });
             } catch (e) {
               results.push({ type: 'hand_to_kayla', ok: false, error: e.message });
             }
