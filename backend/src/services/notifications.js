@@ -83,23 +83,24 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
   },
   'AWAITING_TITLE:CONTRACT_OUT': {
     recipients: [
-      { type: 'email', value: 'BGonzalez@sellsmartre.com' },
+      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
     ],
-    type: 'tc_handoff',
-    titleTemplate: (lead) => `TC Handoff: ${lead.address}`,
-    bodyTemplate: (lead) => `New TC handoff. Address: ${lead.address}. Please open title and prepare for closing.`,
+    type: 'contract_out',
+    titleTemplate: (lead) => `Contract Out — Awaiting Signature: ${lead.address}`,
+    bodyTemplate: (lead) => `PSA has been sent to seller. Monitor for signature within 72 hours. If no Loan Balance + APN within 72hrs, alert. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
   'CONTRACT_OUT:UNDER_CONTRACT': {
+    // Per KAYLA_CLOSING_PROCESS.md: TC takes over here — inspection, appraisal, title
     recipients: [
-      { type: 'email', value: 'BGonzalez@sellsmartre.com' },
+      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
     ],
-    type: 'under_contract',
-    titleTemplate: (lead) => `Under Contract: ${lead.address}`,
-    bodyTemplate: (lead) => `Lead is now under contract. Begin inspection and appraisal coordination. Address: ${lead.address}.`,
+    type: 'tc_takeover',
+    titleTemplate: (lead) => `TC Takeover: ${lead.address}`,
+    bodyTemplate: (lead) => `PSA signed. Contract is now fully executed. TC takes over next steps: (1) Order home inspection, (2) Order appraisal after inspection, (3) Set up title with seller's choice of company. Montelli's role: monitor seller every 3-5 days. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
-    actionLabel: 'Open Lead',
+    actionLabel: 'View Lead',
   },
 };
 

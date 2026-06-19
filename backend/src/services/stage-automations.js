@@ -19,7 +19,7 @@
 const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
 // System notifications via in-app inbox (replaces SMTP)
-const { fireStageNotifications } = require('./notifications');
+const { fireStageNotifications, getUserByEmail, createNotification } = require('./notifications');
 const { createFolderFromTemplate } = require('./rabbitsign');
 
 const CONTRACT_TEMPLATE_MAP = {
@@ -623,8 +623,8 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'set_reminder', reminder_type: '72hr_title', offset_hours: 72 },
       { type: 'notify' },
-      { type: 'rabbitsign_envelope', contract_type: 'psa_creative_subto' },
-      { type: 'log', message: 'Terms agreed. Contract drafted. RabbitSign envelope auto-created. Kayla emailed.' },
+      { type: 'hand_to_kayla' },
+      { type: 'log', message: 'Terms agreed. Deal handed to Kayla for contract drafting. Montelli begins seller monitoring.' },
     ],
   },
 
@@ -1351,6 +1351,71 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
               results.push({ type: 'notify', ok: true, fired: notifResult.fired });
             } catch (e) {
               results.push({ type: 'notify', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'hand_to_kayla': {
+            try {
+              // Per KAYLA_CLOSING_PROCESS.md: Kayla drafts AND sends contract.
+              // CRM role: package everything Kayla needs + start Montelli's monitoring reminders.
+              const sellerName = leadData.seller_name || 'Seller';
+              const sellerPhone = leadData.seller_phone || '';
+              const sellerEmail = leadData.seller_email || '';
+              const price = Number(leadData.price || 0).toLocaleString();
+              const handoffBody = `TERMS AGREED — Draft & send contract.
+
+Seller: ${sellerName}
+Phone: ${sellerPhone}
+Email: ${sellerEmail}
+Property: ${leadData.address || ''}
+Agreed Price: $${price}
+Structure: ${leadData.contract_structure || '50% down / 72mo balloon / no interest on carry'}
+
+Action: Kayla drafts PSA from template (Creative SubTo / Stack / JV / Cash as appropriate), sends to seller via RabbitSign.
+
+After Kayla sends: Montelli's role switches to monitoring — text seller every 3-5 days: "Just checking in — contract came through OK?"`;
+
+              // Notify Kayla
+              const kaylaId = await getUserByEmail('homewithkaylamauser@gmail.com');
+              if (kaylaId) {
+                await createNotification({
+                  recipientId: kaylaId,
+                  leadId: leadData.id,
+                  type: 'contract_handoff',
+                  title: `Draft & Send Contract: ${leadData.address || ''}`,
+                  body: handoffBody,
+                  actionUrl: `/leads/${leadData.id}`,
+                  actionLabel: 'Open Lead',
+                });
+              }
+
+              // Notify Montelli (lead owner) to begin monitoring cadence
+              if (leadData.user_id) {
+                await createNotification({
+                  recipientId: leadData.user_id,
+                  leadId: leadData.id,
+                  type: 'monitor_seller',
+                  title: `Begin Seller Monitoring: ${leadData.address || ''}`,
+                  body: `Kayla is drafting the contract. Your job now: text ${sellerName} every 3-5 days until closing. First check-in: "Hey ${sellerName} — just checking in — everything smooth on your end?"`,
+                  actionUrl: `/leads/${leadData.id}`,
+                  actionLabel: 'View Lead',
+                });
+              }
+
+              // Set seller monitoring reminder (3 days)
+              await query(
+                `INSERT INTO reminders (id, lead_id, user_id, type, due_date, notes)
+                 VALUES (gen_random_uuid(), $1, $2, 'custom', NOW() + INTERVAL '3 days', $3)`,
+                [leadData.id, leadData.user_id, `Text seller ${sellerName}: "Hey — contract came through OK?"`]
+              );
+
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'handed_to_kayla', JSON.stringify({ structure: leadData.contract_structure || '50/72/no interest' })]
+              );
+              results.push({ type: 'hand_to_kayla', ok: true, handoff: 'kayla_notified' });
+            } catch (e) {
+              results.push({ type: 'hand_to_kayla', ok: false, error: e.message });
             }
             break;
           }

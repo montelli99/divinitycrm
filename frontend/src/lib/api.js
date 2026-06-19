@@ -121,6 +121,11 @@ export const api = {
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
   markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
   archiveNotification: (id) => request(`/notifications/${id}/archive`, { method: 'POST' }),
+
+  // Training Docs (underwriting, handoff, stages)
+  getUnderwritingDocs: () => request('/training-docs/underwriting'),
+  getHandoffDocs: () => request('/training-docs/handoff'),
+  getStageDocs: () => request('/training-docs/stages'),
 };
 
 export { getToken, setToken, clearToken };
