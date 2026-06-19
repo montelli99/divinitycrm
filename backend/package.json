@@ -5,8 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js",
-    "db:migrate": "node src/db/migrate.js"
+    "start": "node src/scripts/env-validator.js && node src/index.js",
+    "start:skip-check": "node src/index.js",
+    "db:migrate": "node src/db/migrate.js",
+    "env:check": "node src/scripts/env-validator.js"
   },
   "dependencies": {
     "@clerk/express": "1.7.81",
