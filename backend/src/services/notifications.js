@@ -54,51 +54,32 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View LOI',
   },
-  'OFFER_SENT:OFFER_RECEIVED': {
+  'OFFER_SENT:GAIN_FEEDBACK': {
     recipients: [{ type: 'email', value: 'homewithkaylamauser@gmail.com' }],
-    type: 'offer_received',
-    titleTemplate: (lead) => `Offer Received: ${lead.address}`,
-    bodyTemplate: (lead) => `Seller has responded. Address: ${lead.address}. Check feedback and prepare negotiation.`,
-    actionUrl: (lead) => `/leads/${lead.id}`,
-    actionLabel: 'View Response',
-  },
-  'SELLER_DECLINED:ACTIVE_NEGOTIATION': {
-    recipients: [
-      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
-      { type: 'email', value: 'JaxonDeasonHomes1@gmail.com' },
-    ],
-    type: 'counter_received',
-    titleTemplate: (lead) => `Counter Received: ${lead.address}`,
-    bodyTemplate: (lead) => `Seller came back with a counter. Address: ${lead.address}. Original ask: $${Number(lead.price).toLocaleString()}.`,
-    actionUrl: (lead) => `/leads/${lead.id}`,
-    actionLabel: 'Review Counter',
-  },
-  'ACTIVE_NEGOTIATION:TERMS_AGREED': {
-    recipients: [{ type: 'email', value: 'homewithkaylamauser@gmail.com' }],
-    type: 'contract_draft',
-    titleTemplate: (lead) => `Contract Draft Ready: ${lead.address}`,
-    bodyTemplate: (lead) => `Terms agreed. Generate contract and send to seller for signature. Address: ${lead.address}.`,
-    actionUrl: (lead) => `/leads/${lead.id}`,
-    actionLabel: 'Generate Contract',
-  },
-  'AWAITING_TITLE:CONTRACT_OUT': {
-    recipients: [
-      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
-    ],
-    type: 'contract_out',
-    titleTemplate: (lead) => `Contract Out — Awaiting Signature: ${lead.address}`,
-    bodyTemplate: (lead) => `PSA has been sent to seller. Monitor for signature within 72 hours. If no Loan Balance + APN within 72hrs, alert. Address: ${lead.address}.`,
+    type: 'gain_feedback',
+    titleTemplate: (lead) => `Gain Feedback: ${lead.address}`,
+    bodyTemplate: (lead) => `48hr realignment call scheduled. Student will gain feedback. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
-  'CONTRACT_OUT:UNDER_CONTRACT': {
-    // Per KAYLA_CLOSING_PROCESS.md: TC takes over here — inspection, appraisal, title
+  'TERMS_AGREED:PSA_SENT': {
+    recipients: [
+      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
+    ],
+    type: 'psa_sent',
+    titleTemplate: (lead) => `PSA Sent: ${lead.address}`,
+    bodyTemplate: (lead) => `Kayla has sent the PSA to the seller for review and authorization. Address: ${lead.address}.`,
+    actionUrl: (lead) => `/leads/${lead.id}`,
+    actionLabel: 'View Lead',
+  },
+  'PSA_SENT:UNDER_CONTRACT': {
+    // Per Master Playbook Part 7: TC takes over here — inspection, appraisal, title
     recipients: [
       { type: 'email', value: 'homewithkaylamauser@gmail.com' },
     ],
     type: 'tc_takeover',
     titleTemplate: (lead) => `TC Takeover: ${lead.address}`,
-    bodyTemplate: (lead) => `PSA signed. Contract is now fully executed. TC takes over next steps: (1) Order home inspection, (2) Order appraisal after inspection, (3) Set up title with seller's choice of company. Montelli's role: monitor seller every 3-5 days. Address: ${lead.address}.`,
+    bodyTemplate: (lead) => `PSA authorized. Contract is now fully executed. TC takes over next steps per Master Playbook Part 7: (1) Kayla arranges home inspector + sewer scope, (2) After completed, appraisal ordered, (3) Montelli contacts title for wiring instructions. Standard 30 day closing. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },

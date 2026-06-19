@@ -4,13 +4,13 @@ import { api } from '../lib/api';
 
 const STAGE_LABELS = {
   LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', OFFER_RECEIVED: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
-  NO_ANSWER: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
+  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
+  SELLER_DECLINED: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
   TERMS_AGREED: 'Terms Agreed',
-  AWAITING_TITLE: 'Awaiting Title', CONTRACT_OUT: 'Contract Out',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_PERIOD: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
-  APPRAISAL_ORDERED: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
-  JV_SENT: 'JV Sent', JV_SIGNED: 'JV Signed',
+  PSA_SENT: 'Awaiting Title', PSA_SENT: 'Contract Out',
+  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
+  APPRAISAL_DONE: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
+  PSA_SENT: 'JV Sent', PSA_SENT: 'JV Signed',
   WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
 };
 

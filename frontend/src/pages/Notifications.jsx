@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 const TYPE_ICONS = {
   loi_request: '📋',
   loi_ready: '📨',
-  offer_received: '✉️',
+  gain_feedback: '📞',
   counter_received: '⚔️',
   contract_draft: '📝',
   tc_handoff: '🤝',
@@ -16,7 +16,7 @@ const TYPE_ICONS = {
 const TYPE_LABELS = {
   loi_request: 'LOI Request',
   loi_ready: 'LOI Ready',
-  offer_received: 'Offer Received',
+  gain_feedback: 'Gain Feedback',
   counter_received: 'Counter Received',
   contract_draft: 'Contract Draft',
   tc_handoff: 'TC Handoff',

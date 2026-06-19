@@ -4,23 +4,23 @@ import { api } from '../lib/api';
 
 const STAGE_LABELS = {
   LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', OFFER_RECEIVED: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
-  NO_ANSWER: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
+  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
+  SELLER_DECLINED: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
   TERMS_AGREED: 'Terms Agreed',
-  AWAITING_TITLE: 'Awaiting Title', CONTRACT_OUT: 'Contract Out',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_PERIOD: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
-  APPRAISAL_ORDERED: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
-  JV_SENT: 'JV Sent', JV_SIGNED: 'JV Signed',
+  PSA_SENT: 'Awaiting Title', PSA_SENT: 'Contract Out',
+  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
+  APPRAISAL_DONE: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
+  PSA_SENT: 'JV Sent', PSA_SENT: 'JV Signed',
   WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
   CLOSED: 'Closed', DEAD: 'Dead', ARCHIVED: 'Archived',
 };
 
 // AM Tasks by stage (from daily-sop.js)
 const AM_TASK_DEFS = {
-  'CONTRACT_OUT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
+  'PSA_SENT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
   'ACTIVE_NEGOTIATION': { label: 'Active Negotiation', action: 'Overcome objections. Record calls for educational purposes', icon: '🎙️' },
   'TERMS_AGREED': { label: 'Terms Agreed', action: 'Touch base on contract alignment. Verify stack or draft manual agreement', icon: '📋' },
-  'AWAITING_TITLE': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
+  'PSA_SENT': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
 };
 
 // PM Tasks by stage (PPC follow-ups)
@@ -142,8 +142,8 @@ export default function Dashboard() {
         ? Math.floor((Date.now() - new Date(l.last_stage_change_at).getTime()) / 86400000)
         : 0;
       return (l.stage === 'OFFER_SENT' && days > 2) ||
-             (l.stage === 'AWAITING_TITLE' && days > 3) ||
-             (l.stage === 'NO_ANSWER' && days > 14);
+             (l.stage === 'PSA_SENT' && days > 3) ||
+             (l.stage === 'SELLER_DECLINED' && days > 14);
     });
 
     return { offersToPresent, activeNegotiations, contractsToDraft, stalls };

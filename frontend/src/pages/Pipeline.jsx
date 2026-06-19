@@ -3,36 +3,30 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 
+// 16-stage pipeline, source-of-truth (per Master Playbook Part 2 + Part 7)
 const STAGE_ORDER = [
   'LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY',           // Montelli
-  'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK',          // Kayla
-  'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',     // Kayla
-  'TERMS_AGREED',                                           // Kayla
-  'AWAITING_TITLE', 'CONTRACT_OUT',                         // Contracts
-  'UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', // TC
-  'APPRAISAL_ORDERED', 'APPRAISAL_DONE',                    // TC
-  'JV_SENT', 'JV_SIGNED',                                   // JV
+  'OFFER_SENT', 'GAIN_FEEDBACK',                            // Montelli (post-AI-send)
+  'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',                  // Montelli
+  'TERMS_AGREED',                                           // Kayla (handed to Kayla for agreement)
+  'PSA_SENT',                                               // Kayla (PSA sent for authorization)
+  'UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE', // TC
   'WIRE_SETUP', 'CLOSING_DATE',                             // Closing
 ];
 
 const STAGE_LABELS = {
   LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', OFFER_RECEIVED: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
-  NO_ANSWER: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
-  TERMS_AGREED: 'Terms Agreed',
-  AWAITING_TITLE: 'Awaiting Title', CONTRACT_OUT: 'Contract Out',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_PERIOD: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
-  APPRAISAL_ORDERED: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
-  JV_SENT: 'JV Sent', JV_SIGNED: 'JV Signed',
+  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Gain Feedback',
+  SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
+  TERMS_AGREED: 'Terms Agreed', PSA_SENT: 'PSA Sent for Authorization',
+  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Complete', APPRAISAL_DONE: 'Appraisal Done',
   WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
 };
 
 const OWNER_SECTIONS = {
-  MONTELLI: { name: 'Montelli', stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY'], color: '#0066cc', bgColor: 'rgba(0,102,204,0.08)' },
-  KAYLA: { name: 'Kayla', stages: ['OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED'], color: '#cc6600', bgColor: 'rgba(204,102,0,0.08)' },
-  CONTRACTS: { name: 'Contracts', stages: ['AWAITING_TITLE', 'CONTRACT_OUT'], color: '#cc0000', bgColor: 'rgba(204,0,0,0.08)' },
-  TC: { name: 'TC', stages: ['UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', 'APPRAISAL_ORDERED', 'APPRAISAL_DONE'], color: '#00cc00', bgColor: 'rgba(0,204,0,0.08)' },
-  JV: { name: 'JV', stages: ['JV_SENT', 'JV_SIGNED'], color: '#6600cc', bgColor: 'rgba(102,0,204,0.08)' },
+  MONTELLI: { name: 'Montelli', stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'GAIN_FEEDBACK', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION'], color: '#0066cc', bgColor: 'rgba(0,102,204,0.08)' },
+  KAYLA: { name: 'Kayla', stages: ['TERMS_AGREED', 'PSA_SENT'], color: '#cc6600', bgColor: 'rgba(204,102,0,0.08)' },
+  TC: { name: 'TC', stages: ['UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE'], color: '#00cc00', bgColor: 'rgba(0,204,0,0.08)' },
   CLOSING: { name: 'Closing', stages: ['WIRE_SETUP', 'CLOSING_DATE'], color: '#cc0066', bgColor: 'rgba(204,0,102,0.08)' },
 };
 
@@ -45,12 +39,10 @@ function getOwnerForStage(stage) {
 
 const NEXT_STAGE = {
   LEAD_ENTERED: 'CONTACT_MADE', CONTACT_MADE: 'OFFER_READY', OFFER_READY: 'OFFER_SENT',
-  OFFER_SENT: 'OFFER_RECEIVED', OFFER_RECEIVED: 'GAIN_FEEDBACK', GAIN_FEEDBACK: 'NO_ANSWER',
-  NO_ANSWER: 'SELLER_DECLINED', SELLER_DECLINED: 'ACTIVE_NEGOTIATION', ACTIVE_NEGOTIATION: 'TERMS_AGREED',
-  TERMS_AGREED: 'AWAITING_TITLE', AWAITING_TITLE: 'CONTRACT_OUT', CONTRACT_OUT: 'UNDER_CONTRACT',
-  UNDER_CONTRACT: 'INSPECTION_PERIOD', INSPECTION_PERIOD: 'INSPECTION_COMPLETE', INSPECTION_COMPLETE: 'APPRAISAL_ORDERED',
-  APPRAISAL_ORDERED: 'APPRAISAL_DONE', APPRAISAL_DONE: 'JV_SENT',
-  JV_SENT: 'JV_SIGNED', JV_SIGNED: 'WIRE_SETUP',
+  OFFER_SENT: 'GAIN_FEEDBACK', GAIN_FEEDBACK: 'SELLER_DECLINED', SELLER_DECLINED: 'ACTIVE_NEGOTIATION',
+  ACTIVE_NEGOTIATION: 'TERMS_AGREED', TERMS_AGREED: 'PSA_SENT',
+  PSA_SENT: 'UNDER_CONTRACT', UNDER_CONTRACT: 'INSPECTION_COMPLETE',
+  INSPECTION_COMPLETE: 'APPRAISAL_DONE', APPRAISAL_DONE: 'WIRE_SETUP',
   WIRE_SETUP: 'CLOSING_DATE', CLOSING_DATE: 'ARCHIVED',
 };
 
@@ -334,7 +326,7 @@ export default function Pipeline() {
                         {lead.stalled && <div className="card-stalled">⚠ Stalled — {lead.days_in_stage} days</div>}
                         {lead.days_in_stage > 30 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>🔴 Abandoned — {lead.days_in_stage} days</div>}
                         {lead.stage === 'OFFER_SENT' && lead.days_in_stage > 2 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 48hr overdue — call now</div>}
-                        {lead.stage === 'AWAITING_TITLE' && lead.days_in_stage > 3 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 72hr overdue — follow up</div>}
+                        {lead.stage === 'PSA_SENT' && lead.days_in_stage > 3 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 72hr overdue — follow up</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
                           <button

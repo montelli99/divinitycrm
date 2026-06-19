@@ -266,170 +266,16 @@ const OUTREACH_SCRIPTS = {
 };
 
 // =============================================================
-// SELLER UPDATE TEMPLATES (post-contract)
+// SELLER UPDATE TEMPLATES — REMOVED
 // =============================================================
-
-const SELLER_UPDATE_TEMPLATES = {
-  CONTRACT_OUT: {
-    name: 'CONTRACT_OUT — Contract Signed',
-    recipientType: 'seller',
-    description: 'Sent to seller when their PSA is fully signed.',
-    body: `Hi {{Seller Name}}, your purchase agreement for {{Property Address}} has been fully signed! 🎉
-
-Here's your timeline:
-• Contract Effective Date: {{PSA Signed Date}}
-• Inspection Period: {{Inspection Period Days}} days (ends {{Inspection End Date}})
-• Close of Escrow: {{COE Date}}
-• Title Company: {{Title Company}} ({{Title Company Phone}})
-
-{{#if isSubTo}}Since this is a Subject-To transaction, the Subject To Addendum is attached. Key points:
-- Your existing mortgage stays in place — we take over payments via a 3rd-party processing company set up within 48hrs of close
-- A Deed in Lieu of Foreclosure will be held in escrow — if we ever miss a payment, the property returns to you without court or foreclosure proceedings
-- You'll remain liable on the existing loan, but all payments are automated by our bookkeeper
-{{/if}}
-
-Next: Our transaction coordinator {{TC Name}} ({{TC Email}}, {{TC Phone}}) will reach out about lockbox/utility access for inspection. They guarantee responses within 24 hours.
-
-Reply with any questions!
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'psa_signed_date', 'inspection_period_days', 'inspection_end_date', 'coe_date', 'title_company', 'title_company_phone', 'tc_name', 'tc_email', 'tc_phone'],
-    stage: 'CONTRACT_OUT',
-  },
-
-  INSPECTION_SCHEDULED: {
-    name: 'INSPECTION_SCHEDULED — Inspection Confirmed',
-    recipientType: 'seller',
-    description: 'Sent when inspection is scheduled.',
-    body: `Hi {{Seller Name}}, your inspection for {{Property Address}} is confirmed for {{Inspection Date}}. 🔍
-
-Important reminders from our transaction team:
-• A lockbox or remote lockbox code must be provided for inspector access, OR the agent must be present at the scheduled time. Delays = additional costs.
-• All utilities (gas, water, electricity) MUST be turned on prior to inspection — the inspection cannot be completed without them.
-• The inspection period runs {{Inspection Period Days}} days from the Effective Date (ending {{Inspection End Date}}).
-• If any issues come up, we'll address them promptly — our team guarantees same-day responses and replies within 24 hours.
-
-{{#if isSubTo}}This is an AS-IS sale — any inspection performed is for the buyer's awareness only.{{/if}}
-
-Your TC {{TC Name}} is managing the inspection coordination. Any questions, reply here or call {{TC Phone}}.
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'inspection_date', 'inspection_period_days', 'inspection_end_date', 'tc_name', 'tc_phone'],
-    stage: 'UNDER_CONTRACT',
-  },
-
-  APPRAISAL_DONE: {
-    name: 'APPRAISAL_DONE — Appraisal Complete',
-    recipientType: 'seller',
-    description: 'Sent when appraisal result is uploaded.',
-    body: `Hi {{Seller Name}}, the appraisal for {{Property Address}} is complete. Here's the update: 📊
-
-• Appraised Value: {{ARV}}
-• Contract Purchase Price: {{Purchase Price}}
-{{#if appraisalAbovePP}}✅ Appraisal came in at or above purchase price — we're moving forward to closing.{{else}}⚠️ The appraisal came in below the contract price. This requires a quick conversation — let's schedule a call to discuss adjusted terms that work for both of us.{{/if}}
-
-Key numbers reconfirmed:
-• Cash Flow: {{Cash Flow}}/mo
-• DSCR: {{DSCR}} (threshold: 1.25)
-• Close of Escrow target: {{COE Date}}
-
-Next step: Once we align on the appraisal, a closing date will be arranged and wire instructions will follow.
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'arv', 'price', 'cash_flow', 'dscr', 'coe_date'],
-    stage: 'APPRAISAL_DONE',
-  },
-
-  JV_SIGNED: {
-    name: 'JV_SIGNED — JV Agreement Signed',
-    recipientType: 'jv_party',
-    description: 'Sent when all JV parties have signed.',
-    body: `Hi {{Seller Name}}, the Joint Venture Agreement for {{Property Address}} is fully signed by all parties. 🤝
-
-Here's your confirmed position:
-• Your ownership share: {{Your Percentage}}%
-• Managing Party: {{Managing Party}}
-• Voting rules: Majority in Interest = 51% of voting percentage; Super Majority = 66% (required for lien/sale decisions)
-
-What happens next:
-• Monthly Cash Flow Report will be sent by the {{Managing Party}} on or before the last day of each month, showing all income, expenses, and reserves
-• Initial reserve: $5,000 held for property expenses
-• Any non-paying party is charged 25% annual interest on their unpaid share
-• Disputes: mediation in the state/county of the property, 10-business-day window
-
-Title to the Property is held in the name of: {{Title Holder}}
-
-Welcome to the JV. Let's make this property perform.
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'llc_name'],
-    stage: 'JV_SIGNED',
-  },
-
-  CLOSING_CONFIRMED: {
-    name: 'CLOSING_CONFIRMED — One Week to Close',
-    recipientType: 'seller',
-    description: 'Sent 7 days before COE.',
-    body: `Hi {{Seller Name}}, we're ONE WEEK from closing on {{Property Address}}! 🏁
-
-Closing Details:
-• Close of Escrow Date: {{COE Date}}
-• Title Company: {{Title Company}} ({{Title Company Phone}})
-• Your net proceeds: {{Net to Seller}}
-
-{{#if isSubTo}}Subject-To Specific:
-• A 3rd-party processing company will be set up within 48 hours of closing to automate your mortgage payments
-• {{#if hasSellerCarryback}}Your seller carryback: {{Carryback Principal}} at {{Carryback Rate}}% — {{Carryback Monthly Payment}}/mo for {{Carryback Term}} months, starting {{Carryback Start Date}}{{/if}}
-• The Deed in Lieu of Foreclosure is held in escrow — if we ever miss a payment, property returns to you without court proceedings
-• Your existing loan stays in your name but payments are fully automated{{/if}}
-
-What {{Title Company}} needs from you:
-• Wire instructions for your proceeds
-• Any final documents they've requested
-
-Post-close support: Monique Pasciak (monique@sellsmartre.com, 262-304-0602) will be your primary point of contact after closing.
-
-Excited to get this across the finish line! 🎉
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'coe_date', 'title_company', 'title_company_phone', 'net_to_seller'],
-    stage: 'CLOSING_DATE',
-  },
-
-  // --- NEGOTIATION TEMPLATES ---
-  EVERYBODY_WINS_PITCH: {
-    name: '"Everybody Wins" Pitch',
-    recipientType: 'seller',
-    description: 'Sent during active negotiation when seller is hesitating.',
-    body: 'Hi {{Seller Name}} — quick check-in on {{Property Address}}.\n\nThe numbers work for everyone involved:\n• Cash flow on this deal: ${{Cash Flow}}/mo (well above the $200/mo minimum)\n• DSCR: {{DSCR}} (above the 1.25 lender threshold)\n• 1% rule: {{1% Rule Status}}\n• Lender value: ${{Lender Value}} (70% of purchase)\n\nWhat this means for you, the buyer, and the listing agent:\n• You walk away with ${{Net to Seller}} — no repairs, no showings, no waiting\n• The buyer gets a cash-flowing property from day one\n• The listing agent finally gets paid after being on market {{Days on Market}} days\n\nEverybody wins in real estate. Let me know if you have any questions or if there\'s anything that would help you say yes.\n— {{Sender Name}}',
-    required: ['seller_name', 'address', 'cash_flow', 'dscr', 'one_percent_rule', 'arv', 'net_to_seller'],
-    stage: 'ACTIVE_NEGOTIATION',
-  },
-
-  PSA_CALL_OPENER_SMS: {
-    name: 'PSA Call Opener SMS',
-    recipientType: 'seller',
-    description: 'Pre-call text for the PSA signing call.',
-    body: `Hi {{Seller Name}}! It's {{Sender Name}} from earlier. Got everything pulled up on my end for the contract on {{Property Address}} — should take us 10-15 min together. Mind if I give you a call now?
-
-(Quick tip: it really helps to have the property address handy + your LLC name if you have one. We'll be using a tool called RabbitSign for the e-signature — totally painless, just needs your email.)`,
-    required: ['seller_name', 'address'],
-    stage: 'CONTRACT_OUT',
-  },
-
-  SUBTO_PROCESSOR_CONFIRMED: {
-    name: 'SubTo Processor Confirmed',
-    recipientType: 'seller',
-    description: 'Sent within 48hrs of COE for SubTo deals.',
-    body: `Hi {{Seller Name}}, quick update on {{Property Address}} — we're officially past closing! 🎉
-
-Per the SubTo Addendum, here's what happens next:
-• A 3rd-party processing company ({{Processor Name}}, {{Processor Contact}}) is now set up to automatically pay your existing mortgage on time every month
-• Your name stays on the loan — but you never have to think about the payment again
-• You'll get a monthly statement showing the payment was made
-• Deed in Lieu of Foreclosure is held in escrow with {{Title Company}} — your ultimate safety net
-
-If anything ever feels off, you can reach me directly at {{Sender Phone}}. Otherwise, you're all set.
-— {{Sender Name}}`,
-    required: ['seller_name', 'address', 'title_company', 'seller_phone'],
-    stage: 'WIRE_SETUP',
-  },
-};
+// Per user's instructions: students copy pre-filled text/email templates from
+// the 12 text shortcuts (INT, NOA, DNCT, CCC, GCJ, LOI, LOI2DAYS, INLOI, F50,
+// F10, PEND, SD) and paste them into their own phones. There are NO automated
+// seller update templates in the source. The 7 SELLER_UPDATE_TEMPLATES below
+// (CONTRACT_OUT, INSPECTION_SCHEDULED, APPRAISAL_DONE, JV_SIGNED,
+// CLOSING_CONFIRMED, EVERYBODY_WINS_PITCH, PSA_CALL_OPENER_SMS,
+// SUBTO_PROCESSOR_CONFIRMED) were entirely fabricated. Removed.
+const SELLER_UPDATE_TEMPLATES = {};
 
 // =============================================================
 // CALL SCRIPTS (from TRACK_MONTELLI.md + TRACK_STUDENT.md)
@@ -845,26 +691,29 @@ function getScriptsForStage(stage, lead) {
  */
 function getTransitionScripts(fromStage, toStage, lead) {
   const transitionMap = {
+    // Source: AIREI_MASTER_PLAYBOOK.md Part 2 (12-Step Mentee Process)
     'LEAD_ENTERED→CONTACT_MADE': ['INT', 'CCC'],
     'CONTACT_MADE→OFFER_READY': ['F50', 'F10'],
     'OFFER_READY→OFFER_SENT': ['GCJ'],
-    'OFFER_SENT→OFFER_RECEIVED': ['LOI_RECIEVED_YES'],
-    'OFFER_RECEIVED→GAIN_FEEDBACK': ['LOI', 'EVERYBODY_WINS_PITCH'],
-    'GAIN_FEEDBACK→NO_ANSWER': ['LOI2DAYS', 'SD'],
-    'NO_ANSWER→SELLER_DECLINED': ['SD'],
-    'SELLER_DECLINED→ACTIVE_NEGOTIATION': ['GOOD_STANDING'],
+    // OFFER_SENT → GAIN_FEEDBACK combined: 48hr realignment call
+    'OFFER_SENT→GAIN_FEEDBACK': ['LOI', 'POST_OFFER_48HR'],
+    // GAIN_FEEDBACK → SELLER_DECLINED: SD text + DOM-181
+    'GAIN_FEEDBACK→SELLER_DECLINED': ['SD'],
+    // GAIN_FEEDBACK → ACTIVE_NEGOTIATION: counter received
+    'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': ['GOOD_STANDING'],
     'ACTIVE_NEGOTIATION→TERMS_AGREED': [],
-    'TERMS_AGREED→AWAITING_TITLE': ['CCC'],
-    'AWAITING_TITLE→CONTRACT_OUT': ['PSA_CALL_OPENER_SMS', 'CONTRACT_OUT'],
-    'CONTRACT_OUT→UNDER_CONTRACT': ['INSPECTION_SCHEDULED'],
-    'UNDER_CONTRACT→INSPECTION_PERIOD': [],
-    'INSPECTION_PERIOD→INSPECTION_COMPLETE': [],
-    'INSPECTION_COMPLETE→APPRAISAL_ORDERED': [],
-    'APPRAISAL_ORDERED→APPRAISAL_DONE': ['APPRAISAL_DONE'],
-    'APPRAISAL_DONE→JV_SENT': [],
-    'JV_SENT→JV_SIGNED': ['JV_SIGNED'],
-    'JV_SIGNED→WIRE_SETUP': ['SUBTO_PROCESSOR_CONFIRMED'],
-    'WIRE_SETUP→CLOSING_DATE': ['CLOSING_CONFIRMED'],
+    // TERMS_AGREED → PSA_SENT: Kayla drafts + TC sends
+    'TERMS_AGREED→PSA_SENT': ['CCC'],
+    // PSA_SENT → UNDER_CONTRACT: TC handoff
+    'PSA_SENT→UNDER_CONTRACT': [],
+    // UNDER_CONTRACT → INSPECTION_COMPLETE: inspection + appraisal
+    'UNDER_CONTRACT→INSPECTION_COMPLETE': [],
+    // INSPECTION_COMPLETE → APPRAISAL_DONE: appraisal result
+    'INSPECTION_COMPLETE→APPRAISAL_DONE': [],
+    // APPRAISAL_DONE → WIRE_SETUP: title wire instructions
+    'APPRAISAL_DONE→WIRE_SETUP': [],
+    // WIRE_SETUP → CLOSING_DATE: final wire + close
+    'WIRE_SETUP→CLOSING_DATE': [],
     '*→DEAD': ['SD'],
   };
 

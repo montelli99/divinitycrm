@@ -13,25 +13,3 @@ notifications route OK
 training-docs route OK
 Neon database connected: OK
 Divinity CRM API running on port 3001
-[0mPOST /api/auth/login [32m200[0m 322.718 ms - 417[0m
-[0mPOST /api/leads [32m201[0m 89.098 ms - 2717[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 372.859 ms - 9746[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 744.497 ms - 7816[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 773.706 ms - 7242[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 313.270 ms - 4788[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 239.432 ms - 9390[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 215.700 ms - 7205[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 226.879 ms - 6158[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 507.095 ms - 6084[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 589.126 ms - 4785[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 168.429 ms - 5537[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 589.324 ms - 9166[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 405.702 ms - 7299[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 236.469 ms - 4338[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 161.127 ms - 3869[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 166.025 ms - 3896[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 237.406 ms - 6487[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 132.744 ms - 4405[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 143.830 ms - 6237[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 139.646 ms - 6174[0m
-[0mPOST /api/leads/bb0693b6-269a-4064-8538-ac73965006ff/advance [32m200[0m 170.924 ms - 6700[0m

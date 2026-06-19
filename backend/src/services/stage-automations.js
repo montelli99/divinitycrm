@@ -42,16 +42,42 @@ const { runDocAnalysis, quickBuyBoxCheck } = require('./doc-analyzer');
 const { tagLeadSource, scoreLead } = require('./lead-source-tracker');
 
 // =============================================================
-// OWNER SECTIONS
+// OWNER SECTIONS — derived from AIREI_MASTER_PLAYBOOK.md Part 2 + Part 7
 // =============================================================
+// Per source:
+//   MONTELLI — student calls seller, imports lead, gets LOI, gains feedback,
+//     handles counter. (Steps 1-11 of Master Playbook Part 2.)
+//   KAYLA — drafts agreement, sends to TC, assigns TC. (Part 7: "Acceptance →
+//     Kay sends agreement to transaction coordinator.")
+//   TC — runs inspection, appraisal, title. (Part 7: "After completed, appraisal
+//     ordered. Montelli contacts title for wiring instructions.")
+//   CLOSING — wire + close of escrow. (Part 7: "Close of Escrow → All funds
+//     distributed at title company.")
+//
+// Removed stages: AWAITING_TITLE, JV_SENT, JV_SIGNED (not in source).
+// These were either conflated with adjacent stages or fabricated.
 
 const OWNERS = {
-  MONTELLI: { name: 'Montelli', stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY'], color: '#0066cc' },
-  KAYLA: { name: 'Kayla', stages: ['OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'NO_ANSWER', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED'], color: '#cc6600' },
-  CONTRACTS: { name: 'Contracts', stages: ['AWAITING_TITLE', 'CONTRACT_OUT'], color: '#cc0000' },
-  TC: { name: 'TC', stages: ['UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', 'APPRAISAL_ORDERED', 'APPRAISAL_DONE'], color: '#00cc00' },
-  JV: { name: 'JV', stages: ['JV_SENT', 'JV_SIGNED'], color: '#6600cc' },
-  CLOSING: { name: 'Closing', stages: ['WIRE_SETUP', 'CLOSING_DATE'], color: '#cc0066' },
+  MONTELLI: {
+    name: 'Montelli',
+    stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'GAIN_FEEDBACK', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION'],
+    color: '#0066cc',
+  },
+  KAYLA: {
+    name: 'Kayla',
+    stages: ['TERMS_AGREED', 'PSA_SENT'],
+    color: '#cc6600',
+  },
+  TC: {
+    name: 'TC',
+    stages: ['UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE'],
+    color: '#00cc00',
+  },
+  CLOSING: {
+    name: 'Closing',
+    stages: ['WIRE_SETUP', 'CLOSING_DATE'],
+    color: '#cc0066',
+  },
 };
 
 function getOwnerForStage(stage) {
@@ -62,157 +88,104 @@ function getOwnerForStage(stage) {
 }
 
 // =============================================================
-// COMPREHENSIVE 21-STAGE TRANSITION PROMPTS
+// COMPREHENSIVE STAGE TRANSITION PROMPTS — source of truth
 // =============================================================
 
 const STAGE_TRANSITIONS = {
   // ============================================
   // STAGE 1→2: LEAD_ENTERED → CONTACT_MADE
   // Owner: Montelli
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Steps 1-5
   // ============================================
   'LEAD_ENTERED→CONTACT_MADE': {
-    name: 'Contact Made — INT + Call + CCC',
+    name: 'Initial Contact — First Outreach',
     owner: 'Montelli',
-    description: 'First contact with the agent/seller — send INT text, call, send CCC, take notes.',
+    description: 'Send INT/DNCT text, call seller/agent, log notes.',
     prompt: {
-      title: 'Stage 1→2: Make Contact',
-      description: 'Before calling, send the INT text so your name shows as caller ID. Call twice. If no answer, send voice memo. After call, send CCC + contact card.',
+      title: 'Stage 1→2: Initial Contact',
+      description: 'First outreach to seller. Send text first, then call. Use the right script for the lead type.',
       steps: [
         {
           step: 1,
-          action: 'evaluate',
-          instruction: 'BUY BOX CHECK: Population ≥ 10,000? Zip code in buy box? Price $150K-$550K? 3+ beds? No HOA? No pools? No flood zones? If fail → mark DEAD.',
-          fields: ['population', 'population_ok', 'buy_box_match', 'buy_box_passed'],
-          detail: 'Google the city + "population". Must be ≥ 10K. If not, discard lead immediately.',
-        },
-        {
-          step: 2,
           action: 'send_text',
           template: 'INT',
           prefill: true,
-          to: 'agent_or_seller',
-          instruction: 'Send this BEFORE calling so your name shows as caller ID instead of "Unknown Caller"',
+          to: 'seller',
+          instruction: 'SEND INT TEXT FIRST (per Master Playbook Step 3): "Are you still accepting offers for [address]?"',
           templateKey: 'INT',
         },
         {
-          step: 3,
+          step: 2,
           action: 'call',
-          instruction: 'Call the client TWICE. If no answer both times, send voice memo.',
-          script: 'Happy [day] [their name] I had called intending to introduce myself regarding purchasing [property address] as a rental for my portfolio. I\'m going to give my lender a quick call, they only look at servicing the debt based on the rental income with a DSCR loan. To streamline the communication I will loop you in with my business partner Jaxon who will be purchasing with me regarding the finer details of our offer.',
+          instruction: 'CALL SELLER/AGENT. Use Agent Initial Script (if going through agent) or Seller Initial Script (if FSBO).',
           scriptVariants: {
-            agent: 'Smile. SLOW. "Happy [day], I\'m calling regarding [address] — interested in purchasing as a rental for my portfolio. Did I catch you at a good time?" → Photos look great, SHOCKED it hasn\'t sold → Feedback from other buyers? → Roof/HVAC age? → Occupied/Vacant? → If rented: rent amount, lease type, when signed → If vacant: why not rent it out? → Utilities on? → DSCR loan based on rent → call lender → Good email?',
-            seller: 'Same structure, addresses seller directly instead of agent.',
-            rehab: 'Distressed property variant — condition rating 1-10, what it needs to be a 10, why not put money in and make profit, no commission savings.',
+            agent: 'Smile. Happy [day], I\'m calling regarding the property at [address] — I\'m interested in potentially purchasing this as a rental for my portfolio. I just have a couple questions — did I catch you at a good time?',
+            seller: 'Happy [day], my name is [my_name] are you still accepting offers at [address]? Great — I\'m interested in potentially purchasing this as a rental for my portfolio.',
           },
+        },
+        {
+          step: 3,
+          action: 'take_notes',
+          instruction: 'LOG: agent name, agent phone, agent email, seller name, seller phone, roof age, HVAC age, occupancy, rent (if occupied), lease type, utilities. (Per Master Playbook Part 2 Step 7.)',
+          fields: ['agent_name', 'agent_phone', 'agent_email', 'seller_name', 'seller_phone', 'roof_age', 'hvac_age', 'occupancy', 'monthly_rent', 'lease_type', 'utilities_on'],
         },
         {
           step: 4,
           action: 'send_text',
           template: 'CCC',
           prefill: true,
-          to: 'agent_or_seller',
-          instruction: 'Send contact card AFTER every call — before hanging up',
+          to: 'seller_or_agent',
+          instruction: 'SEND CCC TEXT (per Step 5) after every call. Keep door open for follow-up.',
           templateKey: 'CCC',
-        },
-        {
-          step: 5,
-          action: 'send_text',
-          template: 'NOA',
-          prefill: true,
-          to: 'agent_or_seller',
-          instruction: 'Send if no answer after 2 calls',
-          templateKey: 'NOA',
-          condition: 'no_answer',
-        },
-        {
-          step: 6,
-          action: 'take_notes',
-          instruction: 'Record these details during/after the call',
-          fields: [
-            'agent_name', 'agent_phone', 'agent_email',
-            'seller_name', 'seller_phone', 'seller_email',
-            'roof_age', 'hvac_age',
-            'occupancy', 'current_rent', 'lease_type', 'lease_term',
-            'utilities_status',
-            'other_buyer_feedback',
-            'condition', 'condition_rating',
-          ],
-        },
-        {
-          step: 7,
-          action: 'save_contact',
-          instruction: 'Save client in phone: contact type (Agent/Seller) + property address in company line',
         },
       ],
       reminders: [
-        { type: '48hr_followup', offset_hours: 48, description: 'Follow up in 48 hours if no response' },
+        { type: '48hr_followup', offset_hours: 48, description: '48hr: Follow up if no response' },
       ],
     },
     automations: [
       { type: 'quick_buybox' },
       { type: 'tag_source' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
-      { type: 'log', message: 'Contact made. INT + CCC templates ready. Notes recorded.' },
+      { type: 'log', message: 'Lead contacted. INT sent. Notes logged. CCC template ready.' },
     ],
   },
 
   // ============================================
   // STAGE 2→3: CONTACT_MADE → OFFER_READY
   // Owner: Montelli
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Step 6
   // ============================================
   'CONTACT_MADE→OFFER_READY': {
-    name: 'Evaluate & Prepare Offer',
+    name: 'Offer Ready — Underwriting & LOI Request',
     owner: 'Montelli',
-    description: 'Evaluate the deal, run underwriting, prepare offer for Kayla.',
+    description: 'Evaluate deal type. Run 1% rule. Email Seth for approved LOI.',
     prompt: {
-      title: 'Stage 2→3: Evaluate Deal + Prepare Offer',
-      description: 'Check population, buy box, condition. Run underwriting. Prepare offer for Kayla.',
+      title: 'Stage 2→3: Evaluate Deal — Request LOI from Seth',
+      description: 'Decide: turnkey (F50) or renovation (F10). Run 1% rule. Email Seth for approved LOI.',
       steps: [
         {
           step: 1,
           action: 'evaluate',
-          instruction: 'EVALUATE: Turnkey or Renovation? F50 or F10?',
-          fields: ['condition', 'condition_rating'],
-          detail: 'TURNKEY (good condition) → F50 pitch: "Would you be opposed to taking half your price now and the rest in one lump sum in the near future?"\nRENOVATION → F10 pitch: "Would you be opposed to taking 10% of your price now and the rest in one lump sum in just 24 months?"',
+          instruction: 'EVALUATE DEAL TYPE (per Master Playbook Step 6): If turnkey/move-in ready → propose F50 (50% down at close, balance in lump sum) or F10 (10% down, payoff in 24 months). If needs renovation → use F10.',
+          fields: ['condition', 'rehab_estimate'],
         },
         {
           step: 2,
-          action: 'send_text',
-          template: 'F50',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send F50 if turnkey — 50% down seller finance pitch',
-          templateKey: 'F50',
-          condition: 'turnkey',
+          action: 'check_rental_comps',
+          instruction: 'CHECK RENTAL COMPS via Zillow Rent Estimate / Rentometer. 1% Rule: rent must be ≥ 1% of purchase price (e.g., $250K purchase → $2,500/mo rent minimum).',
+          fields: ['market_rent', 'one_percent_value'],
         },
         {
           step: 3,
-          action: 'send_text',
-          template: 'F10',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send F10 if renovation — 10% down 24-month balloon pitch',
-          templateKey: 'F10',
-          condition: 'reno',
+          action: 'send_email',
+          instruction: 'EMAIL SETH: claytoninvestmentsolutions@gmail.com. Subject: "FB LOI Request" (turnkey) or "Renovation – LOI Request [address]" (reno). Include: market rent, purchase price, rehab estimate. (Per Step 6 verbatim.)',
+          to: 'claytoninvestmentsolutions@gmail.com',
         },
         {
           step: 4,
-          action: 'check_rental_comps',
-          instruction: 'Check Zillow Rent Estimate / Rentometer. Rule: rent must be ~1% of purchase price (e.g., $250K → $2,500/mo min).',
-          detail: '1% RULE: monthly_rent / purchase_price ≥ 0.01. If fails, flag for review.',
-        },
-        {
-          step: 5,
-          action: 'run_underwriting',
-          instruction: 'Calculate: ARV × 0.70 − Repairs − Fee = Max Offer. Run all 4 strategies (Cash, Stack, 10% Down, Sub2 per Master Playbook Part 5).',
-          detail: 'Find ARV from Redfin/Zillow comps. Repair estimate: $30/sqft turnkey, $45/sqft livable, $60/sqft renovation. Wholesale fee: $20K default.',
-        },
-        {
-          step: 6,
-          action: 'notify',
-          role: 'closer',
-          instruction: 'Notify Kayla: "Offer ready for [address]. All details in CRM."',
-          contacts: ['homewithkaylamauser@gmail.com'],
+          action: 'wait_for_seth',
+          instruction: 'WAIT FOR SETH: If passes 1% rule, Seth sends approved LOI. Student imports LOI link into CRM.',
         },
       ],
       reminders: [],
@@ -221,278 +194,150 @@ const STAGE_TRANSITIONS = {
       { type: 'run_doc_analysis' },
       { type: 'run_comps' },
       { type: 'run_underwriting' },
-      { type: 'loi_request' },  // Triggers Seth underwriting request (per AIREI_MASTER_PLAYBOOK.md Part 2 Step 6)
+      { type: 'loi_request' },
       { type: 'notify' },
-      { type: 'log', message: 'Deal evaluated. Doc analysis + comps + underwriting run. LOI requested from Seth (claytoninvestmentsolutions@gmail.com).' },
+      { type: 'log', message: 'Deal evaluated. 1% rule tested. LOI requested from Seth (claytoninvestmentsolutions@gmail.com) per Master Playbook Step 6.' },
     ],
   },
 
   // ============================================
   // STAGE 3→4: OFFER_READY → OFFER_SENT
-  // Owner: Montelli → Kayla handoff
+  // Owner: Montelli
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Steps 7-10
   // ============================================
   'OFFER_READY→OFFER_SENT': {
-    name: 'Send Offer + Group Chat',
-    owner: 'Kayla',
-    description: 'Run comps, calculate offer, recommend strategy, auto-fill LOI, notify Kayla.',
+    name: 'Offer Sent — Import LOI, AI Sends, GCJ',
+    owner: 'Montelli',
+    description: 'Import Seth\'s approved LOI. Send GCJ group chat. AI sends the offer. 48hr timer starts.',
     prompt: {
-      title: 'Stage 3→4: Run Comps + Calculate Offer + Send LOI',
-      description: 'Run full comps analysis. Calculate offer across all strategies. Recommend best strategy. Auto-fill LOI template. Notify Kayla to send.',
+      title: 'Stage 3→4: Offer Sent',
+      description: 'Import the approved LOI link from Seth. Send GCJ to create group chat. AI sends the offer. 48hr timer starts.',
       steps: [
         {
           step: 1,
-          action: 'run_underwriting',
-          instruction: 'RUN COMPS: Pull Zillow/Redfin comps within 1 mile. Get ARV, median $/sqft, YoY trend.',
-          detail: 'Comps module: autoFetchExecutionPlan or manual entry. Finalize comp report with Jax 50% Down / 1% Rule + Kayla Creative Framework.',
+          action: 'import_loi',
+          instruction: 'IMPORT LOI LINK: From Seth\'s email, copy the approved LOI link. Import into CRM opportunity. (Per Step 7 + Step 10.)',
+          fields: ['loi_link'],
         },
         {
           step: 2,
-          action: 'run_underwriting',
-          instruction: 'CALCULATE OFFER: Run all 4 strategies — Cash, F50, F10, SubTo (per Master Playbook Part 5).',
-          detail: 'offer-calculator.runAllStrategies(). Returns side-by-side comparison with DSCR, cash flow, 1% rule for each.',
-        },
-        {
-          step: 3,
-          action: 'evaluate',
-          instruction: 'RECOMMEND STRATEGY: Based on equity, condition, motivation, existing loan rate.',
-          detail: 'Exit Strategy Cheatsheet routing:\n- High equity + turnkey → Stack 50%\n- Low equity + low rate → SubTo\n- Free & clear + capital gains → $0 Down\n- High motivation → Cash\n- MFH → MFH Stack or SubTo Hybrid Pivot',
-        },
-        {
-          step: 4,
-          action: 'send_offer',
-          instruction: 'AUTO-FILL LOI: Select correct LOI template based on recommended strategy. Fill all merge fields.',
-          detail: 'LOI Templates: Stack, Cash, $0 Down, SubTo, MFH, Interest Only, Stack w/ Principal, 10% DP 2yr balloon, Portfolio Stack, Stack & Cash, Stack 5yr BAL, AI V2 LOI.',
-        },
-        {
-          step: 5,
-          action: 'notify',
-          role: 'closer',
-          instruction: 'NOTIFY KAYLA: "LOI ready for [address]. Strategy: [strategy]. Offer: $[amount]."',
-          contacts: ['homewithkaylamauser@gmail.com'],
-        },
-        {
-          step: 6,
           action: 'send_text',
           template: 'GCJ',
           prefill: true,
           to: 'seller',
-          instruction: 'Send GCJ text — creates group chat with Kayla/Jaxon + client',
+          instruction: 'SEND GCJ TEXT (per Step 8): "Creating a group chat for the purchase on [address] with my business partner Kayla. She is currently in a meeting with our lender; The LOI will be coming from our partner at Homewithkaylamauser@gmail.com."',
           templateKey: 'GCJ',
         },
         {
-          step: 7,
-          action: 'set_reminder',
-          type: '48hr_followup',
-          instruction: '48-HOUR TIMER STARTS NOW. If no response by then, run realignment script.',
+          step: 3,
+          action: 'ai_sends_offer',
+          instruction: 'AI SENDS THE OFFER (per Part 11 Video 2): "AI sends the actual offer emails for you. Your job: populate the data, import into GHL, send to Kayla + Jaxon, AI handles the offer."',
+        },
+        {
+          step: 4,
+          action: 'move_stage',
+          instruction: 'MOVE LEAD to "Offer Sent" stage once offer is out. 48hr follow-up timer starts.',
         },
       ],
       reminders: [
-        { type: '48hr_followup', offset_hours: 48, description: '48hr timer — follow up if no response' },
+        { type: '48hr_followup', offset_hours: 48, description: '48hr: Call to gain feedback (per Step 11)' },
       ],
     },
     automations: [
-      { type: 'run_comps' },
-      { type: 'run_underwriting' },
       { type: 'set_field', field: 'offer_sent_date', value: 'now' },
-      { type: 'set_field', field: 'follow_up_48hr_due', value: 'now+48h' },
       { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 },
       { type: 'notify' },
-      { type: 'log', message: 'Offer sent. Comps run. LOI prepared. Kayla + Seth emailed. 48hr timer started.' },
+      { type: 'log', message: 'Offer sent. LOI imported. GCJ group chat created. AI sent the offer. 48hr timer started.' },
     ],
   },
 
   // ============================================
-  // STAGE 4→5: OFFER_SENT → OFFER_RECEIVED
-  // Owner: Kayla
+  // STAGE 4→5: OFFER_SENT → GAIN_FEEDBACK
+  // Owner: Montelli
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Step 11
+  // (combined OFFER_RECEIVED + GAIN_FEEDBACK — same student action)
   // ============================================
-  'OFFER_SENT→OFFER_RECEIVED': {
-    name: 'Offer Received — Awaiting Response',
-    owner: 'Kayla',
-    description: 'Seller has received the offer. Three possible paths: counter, accepted, declined.',
+  'OFFER_SENT→GAIN_FEEDBACK': {
+    name: 'Gain Feedback — 48hr Realignment Call',
+    owner: 'Montelli',
+    description: '48hr post-offer call. Use realignment language. Relay questions to Kayla. SD text after call.',
     prompt: {
-      title: 'Stage 4→5: Offer Received',
-      description: 'Seller confirmed receipt of offer. Monitor for response. Three paths ahead.',
-      steps: [
-        {
-          step: 1,
-          action: 'notify',
-          role: 'closer',
-          instruction: 'NOTIFY KAYLA: "Offer received on [address]. Awaiting seller response."',
-          contacts: ['homewithkaylamauser@gmail.com'],
-        },
-        {
-          step: 2,
-          action: 'evaluate',
-          instruction: 'THREE PATHS based on seller response:\n→ Counter-offer → Stage 9 (Active Negotiation)\n→ Accepted → Stage 10 (Terms Agreed)\n→ Declined → Stage 8 (Seller Declined)',
-          fields: ['seller_counter'],
-        },
-        {
-          step: 3,
-          action: 'take_notes',
-          instruction: 'Record seller\'s initial reaction, any verbal feedback, concerns raised.',
-          fields: ['notes'],
-        },
-      ],
-      reminders: [
-        { type: '48hr_followup', offset_hours: 48, description: '48hr timer continues — escalate if no response' },
-      ],
-    },
-    automations: [
-      { type: 'notify' },
-      { type: 'log', message: 'Offer received. Kayla notified. Monitoring for response.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 5→6: OFFER_RECEIVED → GAIN_FEEDBACK
-  // Owner: Kayla
-  // ============================================
-  'OFFER_RECEIVED→GAIN_FEEDBACK': {
-    name: 'Gain Feedback — Realignment Call',
-    owner: 'Kayla',
-    description: '48hr realignment call. Get seller feedback on the offer.',
-    prompt: {
-      title: 'Stage 5→6: Gain Feedback — Realign',
-      description: 'Call the seller. Get their feedback on the offer. Handle objections. Use realignment language.',
+      title: 'Stage 4→5: Gain Feedback — Realign at 48hr',
+      description: '48 hours after the offer was sent, call the client. Use the Post-Offer Script. If they have questions, relay to Kayla ("Noted — I\'ll relay this to my business partner"). After the call, send SD text and note DOM-181.',
       steps: [
         {
           step: 1,
           action: 'call',
-          instruction: 'REALIGNMENT CALL: Call seller. Use the post-offer 48hr script.',
-          script: 'Happy [Day] [Client Name] I am just now finding some time to realign with you, we spoke [Day you spoke] regarding the property at [property address]. We had sent an offer over to you. Is there any clarification I can align further regarding the details of our offer?',
+          instruction: 'REALIGNMENT CALL (per Step 11 + Post-Offer script). "Happy [day] [name] I am just now finding some time to realign with you, we spoke [day] regarding the property at [address]. We had sent an offer over to you. Is there any clarification I can align further regarding the details of our offer?"',
+          scriptKey: 'post_offer_48hr',
         },
         {
           step: 2,
           action: 'handle_objections',
-          instruction: 'LET THEM TALK. "Noted — I\'ll relay to my business partner." → TEXT JAXON/KAYLA immediately.',
+          instruction: 'HANDLE OBJECTIONS using realignment language. NEVER say "just checking in" or "just following up". For questions: "Noted — I\'ll relay this to my business partner." Email/text Kayla immediately with the question.',
           objectionScripts: {
-            wants_cash: 'That\'s exactly why I\'m calling — with the property still being listed for sale — your seller hasn\'t received sufficient offers from buyers who intend to live in the property; our lender has confirmed this will not be able to be a rental for anyone due to institutional interest rates — feel free to revisit this offer right before the listing agreement expires.',
-            ask_viewing: 'Our assistant drove past the property a few days back and referred it to us. The photos online look great. I\'m sure they don\'t even do the property justice! We will set up a home inspection like any real estate transaction – within 24 hours.',
+            wants_cash: 'That\'s exactly why I\'m calling [agent name] — with the property still being listed for sale — your seller hasn\'t received sufficient offers from buyers who intend to live in the property; our lender has confirmed this will not be able to be a rental for anyone due to institutional interest rates — feel free to revisit this offer right before the listing agreement expires.',
+            ask_viewing: 'Our assistant drove past the property a few days back and referred it to us. The photos online look great. We will set up a home inspection like any real estate transaction – within 24 hours.',
             general_questions: 'Noted - what I\'ll do is relay this over to my business partner and will get back with you. I look forward to aligning the finer details with you.',
           },
         },
         {
           step: 3,
           action: 'send_text',
-          template: 'LOI',
-          prefill: true,
-          to: 'agent',
-          instruction: 'Send LOI follow-up text if dealing with agent',
-          templateKey: 'LOI',
-        },
-        {
-          step: 4,
-          action: 'send_text',
-          template: 'EVERYBODY_WINS_PITCH',
-          prefill: true,
-          to: 'seller',
-          instruction: 'If seller is hesitating, send the "Everybody Wins" pitch',
-          templateKey: 'EVERYBODY_WINS_PITCH',
-        },
-      ],
-      reminders: [],
-    },
-    automations: [
-      { type: 'set_field', field: 'follow_up_48hr_done', value: true },
-      { type: 'log', message: 'Feedback gained. Realignment call completed. LOI template ready.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 6→7: GAIN_FEEDBACK → NO_ANSWER
-  // Owner: Kayla
-  // ============================================
-  'GAIN_FEEDBACK→NO_ANSWER': {
-    name: 'No Answer — Escalation',
-    owner: 'Kayla',
-    description: 'Seller not responding after feedback attempt. Escalate with voice memo + LOI2DAYS + SD text.',
-    prompt: {
-      title: 'Stage 6→7: No Answer — Escalate',
-      description: 'Seller has gone silent. Send voice memo, LOI2DAYS text, SD text. Track DOM.',
-      steps: [
-        {
-          step: 1,
-          action: 'call',
-          instruction: 'VOICE MEMO: Leave voice memo if no answer.',
-          script: 'Happy [day] [name], tried to call regarding [address]. I\'m going to call my DSCR lender. Going to loop you into a group chat with my business partner Jaxon. Have a blessed evening.',
-        },
-        {
-          step: 2,
-          action: 'send_text',
-          template: 'LOI2DAYS',
-          prefill: true,
-          to: 'agent',
-          instruction: 'Day 2: Send LOI2DAYS text — gentle nudge',
-          templateKey: 'LOI2DAYS',
-        },
-        {
-          step: 3,
-          action: 'send_text',
           template: 'SD',
           prefill: true,
           to: 'agent_or_seller',
-          instruction: 'Day 4: Send SD text — keeps door open',
+          instruction: 'SEND SD TEXT after the call (per Step 11): "Feel free to revisit this right before the listing expires if your seller has not been able to find their number with owner occupants." Keeps door open.',
           templateKey: 'SD',
         },
         {
           step: 4,
           action: 'calendar',
-          instruction: 'Note Days on Market (DOM). Set DOM-181 calendar reminder for listing expiry.',
+          instruction: 'NOTE DAYS ON MARKET. Subtract 181 days. Import into calendar. Call when listing expires. (Per Step 11 verbatim.)',
           fields: ['dom', 'dom_181_reminder_date'],
-          detail: 'DOM - 181 = date to circle back. Import into calendar.',
         },
       ],
       reminders: [
-        { type: 'dom_181', description: 'Circle back when listing expires (DOM - 181 days)' },
+        { type: 'dom_181', description: 'DOM-181: Circle back when listing expires (per Step 11)' },
       ],
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'dom_181' },
-      { type: 'log', message: 'No answer. Voice memo + LOI2DAYS + SD templates ready. DOM tracked.' },
+      { type: 'notify' },
+      { type: 'log', message: '48hr realignment call completed. SD text sent. DOM-181 reminder set.' },
     ],
   },
 
   // ============================================
-  // STAGE 7→8: NO_ANSWER → SELLER_DECLINED
-  // OR *→8: Any stage → SELLER_DECLINED
-  // Owner: Kayla
+  // STAGE 5→6: GAIN_FEEDBACK → SELLER_DECLINED
+  // Owner: Montelli
+  // Source: Step 11: send SD + DOM-181 callback
   // ============================================
-  'NO_ANSWER→SELLER_DECLINED': {
-    name: 'Seller Declined — Nurture Chain',
-    owner: 'Kayla',
-    description: 'Seller declined the offer. Start 30/60/90/181 day nurture chain.',
+  'GAIN_FEEDBACK→SELLER_DECLINED': {
+    name: 'Seller Declined — Nurture via DOM-181',
+    owner: 'Montelli',
+    description: 'Seller not interested. SD text sent. DOM-181 nurture callback scheduled.',
     prompt: {
-      title: 'Stage 7→8: Seller Declined — Start Nurture',
-      description: 'Send SD text. Set 30/60/90/181 day nurture reminders. Keep door open.',
+      title: 'Stage 5→6: Seller Declined — DOM-181 Nurture',
+      description: 'Seller is not interested now. SD text already sent. Schedule DOM-181 callback.',
       steps: [
         {
           step: 1,
-          action: 'send_text',
-          template: 'SD',
-          prefill: true,
-          to: 'agent_or_seller',
-          instruction: 'Send seller declined text — keeps door open for future',
-          templateKey: 'SD',
-        },
-        {
-          step: 2,
-          action: 'set_reminder',
-          type: '181_day_nurture',
-          instruction: '181 DAYS: Task "LISTING EXPIRING. Call NOW." (per Master Playbook Part 2 Step 11 + SD text)',
-        },
-        {
-          step: 3,
-          action: 'record_reason',
+          action: 'log',
           instruction: 'Record why the deal died in CRM notes for future reference.',
           fields: ['dead_reason'],
         },
         {
-          step: 4,
+          step: 2,
           action: 'ask_referral',
-          instruction: 'Ask: "Other properties to offload?" — double/triple dip.',
+          instruction: 'Ask: "Other properties to offload?" — double/triple/quadruple dip.',
+        },
+        {
+          step: 3,
+          action: 'calendar',
+          instruction: 'DOM-181 is already set from previous stage. Wait for that reminder to fire.',
         },
       ],
-      // 30/60/90 nurture chain REMOVED — only DOM-181 callback is in source (Master Playbook Part 2 Step 11 + SD text)
       reminders: [
         { type: '181_day_nurture', offset_days: 181, description: '181-day: Listing expiring — call NOW (per source)' },
       ],
@@ -500,50 +345,46 @@ const STAGE_TRANSITIONS = {
     automations: [
       { type: 'set_field', field: 'nurture_stage', value: 'declined_awaiting_dom181' },
       { type: 'set_reminder', reminder_type: '181_day_nurture', offset_days: 181 },
-      { type: 'log', message: 'Seller declined. SD template ready. DOM-181 nurture callback scheduled.' },
+      { type: 'log', message: 'Seller declined. SD template already sent. DOM-181 nurture callback scheduled.' },
     ],
   },
 
   // ============================================
-  // STAGE 8→9: SELLER_DECLINED → ACTIVE_NEGOTIATION
-  // Owner: Kayla
+  // STAGE 6→7: GAIN_FEEDBACK → ACTIVE_NEGOTIATION
+  // Owner: Montelli
+  // Source: Counter received from seller (implied in script objections)
   // ============================================
-  'SELLER_DECLINED→ACTIVE_NEGOTIATION': {
-    name: 'Re-engage — Active Negotiation',
-    owner: 'Kayla',
-    description: 'Seller came back! Re-run comps + offer calc. Handle counter.',
+  'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': {
+    name: 'Active Negotiation — Counter Received',
+    owner: 'Montelli',
+    description: 'Seller countered. Re-run comps + underwriting. Relay counter to Kayla.',
     prompt: {
-      title: 'Stage 8→9: Re-engage — Active Negotiation',
-      description: 'Seller is back at the table. Re-run comps with any new numbers. Handle counter-offer.',
+      title: 'Stage 6→7: Active Negotiation',
+      description: 'Seller sent a counter. Re-run the offer calc with the new price. Relay the counter to Kayla for response.',
       steps: [
         {
           step: 1,
-          action: 'run_underwriting',
-          instruction: 'RE-RUN COMPS + OFFER CALC: Pull fresh comps. Re-run all 4 strategies with any new numbers.',
-          detail: 'If seller countered, use seller_counter as new asking price. Re-run cash-offer-underwriter.runAllStrategies().',
+          action: 'document_counter',
+          instruction: 'DOCUMENT COUNTER: Record seller\'s counter terms in CRM. New asking price, any other changes (close date, EMD, etc.).',
+          fields: ['seller_counter', 'counter_price', 'counter_terms'],
         },
         {
           step: 2,
-          action: 'evaluate',
-          instruction: 'MID-TERM PIVOT CHECK: If long-term rent < 1% rule, run mid-term-pivot.js for Furnished Finder estimate.',
-          detail: 'Mid-term rents typically 30-50% higher than long-term. Can salvage deals that fail 1% rule.',
+          action: 'run_underwriting',
+          instruction: 'RE-RUN OFFER CALC with new price. Test all 4 strategies (Cash, Stack, 10% Down, Sub2 — per Master Playbook Part 5).',
+          detail: 'If new numbers break 1% rule, deal is dead. If they pass, move forward.',
         },
         {
           step: 3,
-          action: 'handle_objections',
-          instruction: 'RELAY ONLY. Never negotiate directly. "I\'ll relay that to my business partner and get right back with you."',
-          objectionScripts: {
-            price_too_high: 'Pivot to seller financing: "Would you be open to a structure where you get your number but over time instead of all at once?"',
-            wants_list: 'Novation pitch: "We can offer a higher price with a 60-90 day close — you list it, we buy it if it doesn\'t sell retail."',
-            zero_down_ask: '$0 pitch: "No money down, we take over your existing mortgage payments, you walk away clean."',
-          },
+          action: 'notify',
+          role: 'closer',
+          instruction: 'NOTIFY KAYLA: "Counter received on [address]. New price [X]. Numbers attached."',
+          contacts: ['homewithkaylamauser@gmail.com'],
         },
         {
           step: 4,
-          action: 'notify',
-          role: 'closer',
-          instruction: 'Notify Kayla + Jaxon: "Counter received on [address]. New numbers in CRM."',
-          contacts: ['homewithkaylamauser@gmail.com'],
+          action: 'await_kayla',
+          instruction: 'AWAIT KAYLA RESPONSE: Kayla generates a counter-response. Student delivers the counter to seller.',
         },
       ],
       reminders: [],
@@ -552,591 +393,374 @@ const STAGE_TRANSITIONS = {
       { type: 'run_comps' },
       { type: 'run_underwriting' },
       { type: 'notify' },
-      { type: 'log', message: 'Active negotiation. Comps re-run. Counter handled. Kayla+Jaxon emailed.' },
+      { type: 'log', message: 'Counter received. Comps + offer calc re-run. Kayla notified.' },
     ],
   },
 
   // ============================================
-  // STAGE 9→10: ACTIVE_NEGOTIATION → TERMS_AGREED
-  // Owner: Kayla
+  // STAGE 7→8: ACTIVE_NEGOTIATION → TERMS_AGREED
+  // Owner: Montelli
+  // Source: Seller accepts counter (or original) terms
   // ============================================
   'ACTIVE_NEGOTIATION→TERMS_AGREED': {
-    name: 'Terms Agreed — Draft Contract',
-    owner: 'Kayla',
-    description: 'Terms agreed! Draft contract, set Contract Type field.',
+    name: 'Terms Agreed — Hand to Kayla',
+    owner: 'Montelli',
+    description: 'Seller accepts. Hand the deal to Kayla for agreement drafting.',
     prompt: {
-      title: 'Stage 9→10: Terms Agreed — Draft Contract',
-      description: 'Both parties aligned on terms. Draft the contract. Set Contract Type.',
+      title: 'Stage 7→8: Terms Agreed — Hand to Kayla',
+      description: 'Both parties aligned on terms. Hand the deal to Kayla for the agreement drafting and sending. Student\'s job: monitor seller every 3-5 days until close.',
       steps: [
         {
           step: 1,
-          action: 'evaluate',
-          instruction: 'SET CONTRACT TYPE based on agreed strategy:\n- Cash → Cash Offer Template\n- SubTo → PSA Creative SubTo + Subject To Addendum\n- Stack → Stack PSA\n- Commercial → Real Estate Commercial PSA\n- JV → 4-party JV or 3-party JV',
-          fields: ['contract_type', 'contract'],
+          action: 'document_terms',
+          instruction: 'DOCUMENT FINAL TERMS: agreed price, structure (50% down / 50% carry / 72mo balloon / deed in lieu per Master Playbook Part 5), close date target, EMD, seller/agent contact info.',
+          fields: ['agreed_price', 'contract_structure', 'coe_target_date', 'emd_amount'],
         },
         {
           step: 2,
-          action: 'send_offer',
-          instruction: 'DRAFT CONTRACT: Generate document from template. Fill all merge fields (address, APN, purchase price, EMD, COE, inspection, title company, LLC, parties, percentages).',
-          detail: 'Contract templates: PSA Creative SubTo, PSA DC, PSA Commercial, Stack PSA, Subject To Addendum, 3-party JV, 4-party JV.',
+          action: 'log',
+          instruction: 'TERMS AGREED. Hand the deal to Kayla via the CRM. (See hand_to_kayla automation.)',
         },
         {
           step: 3,
-          action: 'notify',
-          role: 'closer',
-          instruction: 'Notify Kayla: "Contract draft ready for [address] — [Contract Type] — review and authorize."',
-          contacts: ['homewithkaylamauser@gmail.com'],
-        },
-        {
-          step: 4,
-          action: 'take_notes',
-          instruction: 'Confirm close timeline with seller. Stay warm every 3-5 days.',
-          fields: ['notes'],
+          action: 'monitor_seller',
+          instruction: 'BEGIN SELLER MONITORING CADENCE: text seller every 3-5 days: "Hey [name] — just checking in — everything smooth on your end?" Continue until close.',
         },
       ],
-      reminders: [
-        // 72hr_title removed (no source),
-      ],
+      reminders: [],
     },
     automations: [
-      
       { type: 'notify' },
       { type: 'hand_to_kayla' },
-      { type: 'log', message: 'Terms agreed. Deal handed to Kayla for contract drafting. Montelli begins seller monitoring.' },
+      { type: 'log', message: 'Terms agreed. Handed to Kayla for agreement drafting. Student begins seller monitoring.' },
     ],
   },
 
   // ============================================
-  // STAGE 10→11: TERMS_AGREED → AWAITING_TITLE
-  // Owner: Contracts
+  // STAGE 8→9: TERMS_AGREED → PSA_SENT
+  // Owner: Kayla
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 step 1
+  // RENAMED: "CONTRACT_OUT" → "PSA_SENT" (per source: PSA sent for authorization)
   // ============================================
-  'TERMS_AGREED→AWAITING_TITLE': {
-    name: 'Awaiting Title Info',
-    owner: 'Contracts',
-    description: 'Request mortgage statement, set Loan Balance, APN. 72hr timer.',
+  'TERMS_AGREED→PSA_SENT': {
+    name: 'PSA Sent — For Seller Authorization',
+    owner: 'Kayla',
+    description: 'Kayla drafts agreement, sends to TC. TC sends to seller for review + authorization.',
     prompt: {
-      title: 'Stage 10→11: Awaiting Seller Title Info',
-      description: 'Request mortgage statement from seller. Set exact Loan Balance. Get APN from BackLeads. 72hr timer starts.',
+      title: 'Stage 8→9: PSA Sent for Authorization',
+      description: 'Kayla drafts the agreement (PSA / JV / Consulting). Sends to TC. TC sends to seller for review and authorization. (Per Master Playbook Part 7 step 1.)',
       steps: [
         {
           step: 1,
-          action: 'send_text',
-          template: 'CCC',
-          prefill: true,
-          to: 'seller',
-          instruction: 'REQUEST MORTGAGE STATEMENT: "Please send your most recent mortgage statement to [email]"',
-          templateKey: 'CCC',
+          action: 'kayla_drafts',
+          instruction: 'KAYLA DRAFTS agreement from template (Creative SubTo / Stack / Cash / JV as appropriate).',
         },
         {
           step: 2,
-          action: 'take_notes',
-          instruction: 'SET LOAN BALANCE (EXACT, not approximate) from mortgage statement.',
-          fields: ['existing_loan_balance', 'loan_number', 'lender_servicer', 'monthly_pi'],
+          action: 'tc_sends',
+          instruction: 'KAYLA SENDS agreement to TC. TC sends to seller for review and authorization.',
+          detail: 'TC Handshake Package: Property address, seller/agent info, agreed terms, draft agreement PDF.',
         },
         {
           step: 3,
-          action: 'take_notes',
-          instruction: 'SET PROPERTY APN from BackLeads chat or county records.',
-          fields: ['apn'],
+          action: 'await_signature',
+          instruction: 'AWAIT SELLER AUTHORIZATION: Once seller signs/authorizes, lead moves to UNDER_CONTRACT.',
         },
         {
           step: 4,
-          action: 'set_reminder',
-  // type: '72hr_title' REMOVED
-          instruction: '72-HOUR TIMER: If no Loan Balance + APN within 72hrs, alert "Contract unsigned — follow up."',
-        },
-        {
-          step: 5,
-          action: 'run_underwriting',
-          instruction: 'RUN CLOSING COST ALLOCATOR with exact loan balance for refreshed cost breakdown.',
-          detail: 'closing-cost-allocator.js: transfer tax 50/50, title policy buyer pays, EMD $100 min, inspection 14 days, COE 30 days.',
+          action: 'student_monitors',
+          instruction: 'STUDENT: Continue monitoring seller every 3-5 days: "Hey [name] — just checking in — everything smooth on your end?"',
         },
       ],
-      reminders: [
-        // 72hr_title removed (no source),
-      ],
+      reminders: [],
     },
     automations: [
-      
-      { type: 'log', message: 'Awaiting title info. 72hr timer started.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 11→12: AWAITING_TITLE → CONTRACT_OUT
-  // Owner: Contracts
-  // ============================================
-  'AWAITING_TITLE→CONTRACT_OUT': {
-    name: 'Contract Out — RabbitSign + PSA',
-    owner: 'Contracts',
-    description: 'Route to template, RabbitSign envelope, PSA + Addendum, CONTRACT_OUT SMS, TC handshake.',
-    prompt: {
-      title: 'Stage 11→12: Contract Out — Sign & Send',
-      description: 'Generate RabbitSign envelope. Send PSA + Addendum. Set key dates. Send CONTRACT_OUT SMS. TC handshake.',
-      steps: [
-        {
-          step: 1,
-          action: 'send_text',
-          template: 'PSA_CALL_OPENER_SMS',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Pre-call text for PSA signing — sets expectations for 10-15 min call',
-          templateKey: 'PSA_CALL_OPENER_SMS',
-        },
-        {
-          step: 2,
-          action: 'call_and_sign',
-          instruction: 'Call seller. Walk through PSA. Use RabbitSign for e-signature. Need: property address, LLC name (if applicable), email.',
-          detail: 'RabbitSign envelope: PSA + (Subject To Addendum if SubTo) + (JV doc if applicable). Send to seller first, then buyer.',
-        },
-        {
-          step: 3,
-          action: 'send_text',
-          template: 'CONTRACT_OUT',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send after PSA is fully signed — confirms timeline',
-          templateKey: 'CONTRACT_OUT',
-        },
-        {
-          step: 4,
-          action: 'set_dates',
-          instruction: 'Record key dates in CRM',
-          fields: ['psa_signed_date', 'coe_date', 'inspection_end_date', 'inspection_period_days', 'emd_amount', 'has_subto_addendum', 'title_company'],
-          defaults: {
-            psa_signed_date: 'today',
-            inspection_period_days: 14,
-            inspection_end_date: 'today + 14 days',
-            coe_date: 'today + 30 days',
-            emd_amount: 1700,  // per transcript line 2150 (typical $1,700 earnest money request)
-            title_company: 'CLOSE Title',
-          },
-        },
-        {
-          step: 5,
-          action: 'notify_tc',
-          instruction: 'TC HANDSHAKE: Email BGonzalez@sellsmartre.com + monique@sellsmartre.com with full deal package.',
-          detail: 'TC Handshake Package: Property address, seller/agent info, timeline, attachments (contract PDF, JV draft, inspection report).',
-        },
-        {
-          step: 6,
-          action: 'run_underwriting',
-          instruction: 'RUN CLOSING COST ALLOCATOR for full breakdown. Set 3rd-party processor for SubTo (48hrs before COE).',
-          detail: 'Wrap-Around Financing disclosure required in SubTo Addendum. Closing cost split: 50/50 transfer tax by seller, standard title policy by buyer.',
-        },
-      ],
-      reminders: [
-        // 7-day inspection reminder: KEEP — reasonable default, can be customized per deal
-        { type: 'inspection', offset_days: 7, description: 'Inspection reminder — 7 days before end' },
-        // COE reminder 23d before COE: KEEP — 30-day COE minus 7d buffer
-        { type: 'coe', offset_days: 23, description: 'COE reminder — 7 days before closing' },
-      ],
-    },
-    automations: [
-      { type: 'set_field', field: 'contract_date', value: 'now' },
       { type: 'set_field', field: 'psa_signed_date', value: 'now' },  // Field tracks when PSA sent for authorization (per Part 7)
       { type: 'set_field', field: 'coe_date', value: 'now+30d' },  // 30-day standard closing per Part 7
-      // inspection_end_date + inspection_period_days: REMOVED — not in source. Set per-deal in UI if needed.
-      { type: 'set_field', field: 'emd_amount', value: 1700 },  // per transcript line 2150 (typical $1,700 earnest money)
-      { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
-      { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },
       { type: 'notify' },
-      { type: 'log', message: 'Contract out. PSA sent to seller for authorization (per Master Playbook Part 7). TC handshake emailed. CONTRACT_OUT template ready.' },
+      { type: 'log', message: 'PSA sent to seller for authorization (per Master Playbook Part 7 step 1). Awaiting signature.' },
     ],
   },
 
   // ============================================
-  // STAGE 12→13: CONTRACT_OUT → UNDER_CONTRACT
+  // STAGE 9→10: PSA_SENT → UNDER_CONTRACT
   // Owner: TC
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 step 2
   // ============================================
-  'CONTRACT_OUT→UNDER_CONTRACT': {
+  'PSA_SENT→UNDER_CONTRACT': {
     name: 'Under Contract — TC Handoff',
     owner: 'TC',
-    description: 'TC handoff email, 14-day inspection countdown, INSPECTION_SCHEDULED SMS.',
+    description: 'PSA signed. TC takes over. Inspection + appraisal + title work begins.',
     prompt: {
-      title: 'Stage 12→13: Under Contract — TC Takes Over',
-      description: 'Send TC handoff email. Inspection countdown starts. Day 7: send inspection reminder.',
+      title: 'Stage 9→10: Under Contract — TC Takes Over',
+      description: 'Seller has signed/authorized. Lead is now under contract. TC takes over next steps. (Per Part 7 step 2: "Kay arranges home inspector + sewer scope. After completed, appraisal ordered.")',
       steps: [
         {
           step: 1,
-          action: 'notify_tc',
-          instruction: 'TC HANDOFF EMAIL: Send to TC + Kayla + buyer (per Master Playbook Part 7: "Kay arranges home inspector + sewer scope").',
-          detail: 'Include: Property address, seller/agent info, purchase price, EMD, COE date, title company, attachments.',
+          action: 'tc_handoff',
+          instruction: 'TC HANDOFF: TC receives signed agreement. Begins inspection + appraisal + title work in parallel.',
         },
         {
           step: 2,
-          action: 'set_reminder',
-          type: 'inspection',
-          instruction: 'INSPECTION COUNTDOWN STARTS. Day 7: send inspection reminder to seller.',
+          action: 'schedule_inspection',
+          instruction: 'KAYLA ARRANGES home inspector + sewer scope. (Per Part 7 step 2 verbatim.)',
         },
         {
           step: 3,
-          action: 'send_text',
-          template: 'INSPECTION_SCHEDULED',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Day 7: Send INSPECTION_SCHEDULED SMS — confirms inspection date + requirements',
-          templateKey: 'INSPECTION_SCHEDULED',
-        },
-        {
-          step: 4,
-          action: 'take_notes',
-          instruction: 'TC CHECKLIST: [ ] Inspection scheduled, [ ] Appraisal ordered, [ ] Title search initiated, [ ] EMD confirmed, [ ] Consulting/JV agreement signed.',
-          fields: ['inspection_scheduled_date'],
+          action: 'student_continues_monitoring',
+          instruction: 'STUDENT: Continue monitoring seller every 3-5 days.',
         },
       ],
       reminders: [
-        { type: 'inspection', offset_days: 7, description: 'Day 7: Send INSPECTION_SCHEDULED SMS' },
-        { type: 'inspection', offset_days: 14, description: 'Day 14: Alert Kayla — inspection ending' },
+        { type: 'inspection', offset_days: 7, description: 'Inspection reminder — 7 days in' },
       ],
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'inspection', offset_days: 7 },
-      { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
+      { type: 'set_reminder', reminder_type: 'coe', offset_days: 23 },  // 30d COE minus 7d buffer
       { type: 'notify' },
-      { type: 'log', message: 'Under contract. TC handoff emailed. INSPECTION_SCHEDULED template ready. 14-day countdown started.' },
+      { type: 'log', message: 'Under contract. TC handoff complete. Inspection + appraisal + title work in progress.' },
     ],
   },
 
   // ============================================
-  // STAGE 13→14: UNDER_CONTRACT → INSPECTION_PERIOD
+  // STAGE 10→11: UNDER_CONTRACT → INSPECTION_COMPLETE
   // Owner: TC
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 step 2
+  // (combined UNDER_CONTRACT → INSPECTION_PERIOD → INSPECTION_COMPLETE)
   // ============================================
-  'UNDER_CONTRACT→INSPECTION_PERIOD': {
-    name: 'Inspection Period — Daily Track',
+  'UNDER_CONTRACT→INSPECTION_COMPLETE': {
+    name: 'Inspection Complete — Move to Appraisal',
     owner: 'TC',
-    description: 'Daily status tracking. Day 14 alert Kayla.',
+    description: 'Inspection done. Appraisal next. (Inspection period is variable; not 14 days in source.)',
     prompt: {
-      title: 'Stage 13→14: Inspection Period',
-      description: 'Inspection is underway. Track daily. Day 14: alert Kayla if not complete.',
-      steps: [
-        {
-          step: 1,
-          action: 'take_notes',
-          instruction: 'DAILY STATUS TRACK: Monitor inspection progress. Confirm utilities on, lockbox/access arranged.',
-          fields: ['notes'],
-        },
-        {
-          step: 2,
-          action: 'set_reminder',
-          type: 'inspection',
-          instruction: 'DAY 14 ALERT: If inspection not complete by day 14, alert Kayla "Inspection ending — proceed or terminate?"',
-        },
-        {
-          step: 3,
-          action: 'evaluate',
-          instruction: 'IF TERMINATED: Move back to Stage 8 (Seller Declined).',
-        },
-      ],
-      reminders: [
-        { type: 'inspection', offset_days: 14, description: 'Day 14: Alert Kayla — inspection ending' },
-      ],
-    },
-    automations: [
-      { type: 'set_reminder', reminder_type: 'inspection', offset_days: 14 },
-      { type: 'log', message: 'Inspection period. TC orders inspection + appraisal.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 14→15: INSPECTION_PERIOD → INSPECTION_COMPLETE
-  // Owner: TC
-  // ============================================
-  'INSPECTION_PERIOD→INSPECTION_COMPLETE': {
-    name: 'Inspection Complete — Auto-Advance',
-    owner: 'TC',
-    description: 'Inspection done. Auto-advance to Appraisal.',
-    prompt: {
-      title: 'Stage 14→15: Inspection Complete',
-      description: 'Inspection is complete. Auto-advancing to Appraisal Ordered.',
+      title: 'Stage 10→11: Inspection Complete',
+      description: 'Inspection done. Move to appraisal. (Per Part 7: "After completed, appraisal ordered.")',
       steps: [
         {
           step: 1,
           action: 'log',
-          instruction: 'Inspection complete. Moving to Appraisal Ordered.',
-        },
-        {
-          step: 2,
-          action: 'take_notes',
           instruction: 'Record inspection results, any issues found, repairs requested.',
-          fields: ['notes'],
-        },
-      ],
-      reminders: [],
-    },
-    automations: [
-      { type: 'log', message: 'Inspection complete. Auto-advancing to Appraisal.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 15→16: INSPECTION_COMPLETE → APPRAISAL_ORDERED
-  // Owner: TC
-  // ============================================
-  'INSPECTION_COMPLETE→APPRAISAL_ORDERED': {
-    name: 'Appraisal Ordered',
-    owner: 'TC',
-    description: 'Coordinate TC for appraiser access.',
-    prompt: {
-      title: 'Stage 15→16: Appraisal Ordered',
-      description: 'Appraisal has been ordered. Coordinate with TC for appraiser access.',
-      steps: [
-        {
-          step: 1,
-          action: 'notify_tc',
-          instruction: 'COORDINATE TC: Ensure appraiser has access to property. Confirm appointment with seller.',
+          fields: ['inspection_results', 'repairs_requested'],
         },
         {
           step: 2,
-          action: 'take_notes',
-          instruction: 'Track appraisal status. Record appraiser name, company, scheduled date.',
-          fields: ['notes'],
+          action: 'order_appraisal',
+          instruction: 'APPRAISAL ORDERED. (Per Part 7: "After completed, appraisal ordered.")',
+        },
+        {
+          step: 3,
+          action: 'student_continues_monitoring',
+          instruction: 'STUDENT: Continue monitoring seller every 3-5 days.',
         },
       ],
       reminders: [],
     },
     automations: [
-      { type: 'log', message: 'Appraisal ordered. Coordinating TC for access.' },
+      { type: 'log', message: 'Inspection complete. Appraisal ordered (per Master Playbook Part 7 step 2).' },
     ],
   },
 
   // ============================================
-  // STAGE 16→17: APPRAISAL_ORDERED → APPRAISAL_DONE
+  // STAGE 11→12: INSPECTION_COMPLETE → APPRAISAL_DONE
   // Owner: TC
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 step 2 + 10-STEP3-Pt2 transcript
+  // (combined INSPECTION_COMPLETE → APPRAISAL_ORDERED → APPRAISAL_DONE)
   // ============================================
-  'APPRAISAL_ORDERED→APPRAISAL_DONE': {
-    name: 'Appraisal Done — Re-run Calc',
+  'INSPECTION_COMPLETE→APPRAISAL_DONE': {
+    name: 'Appraisal Done — Move to Wire Setup',
     owner: 'TC',
-    description: 'Re-run offer calc with appraisal value. APPRAISAL_DONE SMS. Renegotiate if low.',
+    description: 'Appraisal complete. Re-run offer calc with appraisal value. If low, renegotiate.',
     prompt: {
-      title: 'Stage 16→17: Appraisal Done',
-      description: 'Appraisal result is in. Re-run calc with appraisal value. Send APPRAISAL_DONE SMS.',
+      title: 'Stage 11→12: Appraisal Done',
+      description: 'Appraisal result in. Re-run offer calc with appraisal value. If appraisal < purchase price, renegotiate or pull deal. (Per 10-STEP3-Pt2 transcript: "if appraisal comes in low, we can renegotiate.")',
       steps: [
         {
           step: 1,
           action: 'run_underwriting',
-          instruction: 'RE-RUN OFFER CALC with appraisal value (replaces askingPrice). Compare new DSCR/cash flow to pre-appraisal.',
+          instruction: 'RE-RUN OFFER CALC with appraisal value. Compare new DSCR/cash flow to pre-appraisal.',
           fields: ['appraisal_value'],
         },
         {
           step: 2,
           action: 'evaluate',
-          instruction: 'IF APPRAISAL < PURCHASE PRICE: Alert Kayla "Appraisal low — renegotiate?" Set renegotiate flag.',
-          detail: 'If appraisal ≥ PP: move forward. If appraisal < PP: alert Kayla, set seller_counter to appraisal value, consider renegotiation.',
+          instruction: 'IF APPRAISAL ≥ PP: move forward. IF APPRAISAL < PP: alert Kayla, consider renegotiating or pulling deal.',
         },
         {
           step: 3,
-          action: 'send_text',
-          template: 'APPRAISAL_DONE',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send APPRAISAL_DONE SMS — confirms appraisal result + next steps',
-          templateKey: 'APPRAISAL_DONE',
+          action: 'student_continues_monitoring',
+          instruction: 'STUDENT: Continue monitoring seller every 3-5 days.',
         },
       ],
       reminders: [],
     },
     automations: [
       { type: 'run_underwriting' },
-      { type: 'notify', role: 'closer', message: 'Appraisal done. Review results.' },
-      { type: 'log', message: 'Appraisal done. Calc re-run. APPRAISAL_DONE notify sent.' },
+      { type: 'notify' },
+      { type: 'log', message: 'Appraisal done. Offer calc re-run. Ready for wire setup.' },
     ],
   },
 
   // ============================================
-  // STAGE 17→18: APPRAISAL_DONE → JV_SENT
-  // Owner: JV
-  // ============================================
-  'APPRAISAL_DONE→JV_SENT': {
-    name: 'JV Sent — RabbitSign Envelope',
-    owner: 'JV',
-    description: 'Determine 3-party or 4-party, pre-fill parties/percentages, RabbitSign envelope.',
-    prompt: {
-      title: 'Stage 17→18: JV Sent',
-      description: 'Determine JV type. Pre-fill parties and percentages. Send RabbitSign envelope.',
-      steps: [
-        {
-          step: 1,
-          action: 'evaluate',
-          instruction: 'DETERMINE JV TYPE: 3-party or 4-party? Set jv_type field.',
-          fields: ['jv_type'],
-          detail: '3-party: Buyer, Seller, Closer.\n4-party: Buyer, Seller, Closer, Capital Partner (25% default each).',
-        },
-        {
-          step: 2,
-          action: 'send_offer',
-          instruction: 'PRE-FILL PARTIES + PERCENTAGES: Default 25% each for 4-party. 51% majority, 66% super-majority.',
-          fields: ['jv_parties', 'jv_percentages'],
-        },
-        {
-          step: 3,
-          action: 'call_and_sign',
-          instruction: 'GENERATE RABBITSIGN ENVELOPE: JV agreement. Send to all parties.',
-          detail: 'JV template: 3-party JV or 4-party JV. Include: party names, percentages, voting rules, initial reserve $5K, 25% non-payment interest, dispute mediation.',
-        },
-      ],
-      reminders: [],
-    },
-    automations: [
-      { type: 'log', message: 'JV sent. (RabbitSign envelope pending valid API keys — currently disabled.)' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 18→19: JV_SENT → JV_SIGNED
-  // Owner: JV
-  // ============================================
-  'JV_SENT→JV_SIGNED': {
-    name: 'JV Signed — Set Title Holder',
-    owner: 'JV',
-    description: 'JV_SIGNED SMS, set Title Holder, move to Wire.',
-    prompt: {
-      title: 'Stage 18→19: JV Signed',
-      description: 'All parties signed the JV. Send JV_SIGNED SMS. Set Title Holder.',
-      steps: [
-        {
-          step: 1,
-          action: 'send_text',
-          template: 'JV_SIGNED',
-          prefill: true,
-          to: 'jv_party',
-          instruction: 'Send JV_SIGNED SMS to all parties — confirms ownership share + terms',
-          templateKey: 'JV_SIGNED',
-        },
-        {
-          step: 2,
-          action: 'take_notes',
-          instruction: 'SET TITLE HOLDER: Entity name that holds title to the property.',
-          fields: ['title_holder', 'llc_name'],
-        },
-        {
-          step: 3,
-          action: 'log',
-          instruction: 'JV fully executed. Moving to Wire Setup.',
-        },
-      ],
-      reminders: [],
-    },
-    automations: [
-      // title_holder: REMOVED auto-set — student must fill in (LLC name vs personal name per Part 7)
-      { type: 'log', message: 'JV signed. Title holder set. Moving to Wire.' },
-    ],
-  },
-
-  // ============================================
-  // STAGE 19→20: JV_SIGNED → WIRE_SETUP
+  // STAGE 12→13: APPRAISAL_DONE → WIRE_SETUP
   // Owner: Closing
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 (Montelli contacts title for wiring)
+  // (combined APPRAISAL_DONE → JV_SENT → JV_SIGNED → WIRE_SETUP since JV is the consulting agreement, part of Kayla's flow)
   // ============================================
-  'JV_SIGNED→WIRE_SETUP': {
-    name: 'Wire Setup — Confirm Instructions',
+  'APPRAISAL_DONE→WIRE_SETUP': {
+    name: 'Wire Setup — Title Wire Instructions',
     owner: 'Closing',
-    description: 'Confirm wire instructions, confirm SubTo processor, move to closing.',
+    description: 'Montelli contacts title for wiring instructions. Kayla sends consulting agreement. (Per Part 7 step 3.)',
     prompt: {
-      title: 'Stage 19→20: Wire Setup',
-      description: 'Confirm wire instructions from title company. Confirm SubTo processor if applicable.',
+      title: 'Stage 12→13: Wire Setup',
+      description: 'Appraisal passed. Title work in progress. Montelli contacts title for wire instructions. Kayla sends consulting agreement (per Part 7 step 3).',
       steps: [
         {
           step: 1,
-          action: 'evaluate',
-          instruction: 'CONFIRM WIRE INSTRUCTIONS: Request from CLOSE Title (order@closedtitle.com, 1-800-405-7150) or Eastern Title.',
-          fields: ['wire_confirmed'],
+          action: 'kayla_sends_consulting',
+          instruction: 'KAYLA SENDS CONSULTING AGREEMENT. (Per Part 7 step 3: "Signed by Kayla + Mentee. Sent to title by TC.")',
         },
         {
           step: 2,
-          action: 'evaluate',
-          instruction: 'IF SUBTO: Confirm 3rd-party processing company set up within 48hrs of COE.',
-          fields: ['subto_processor_confirmed'],
-          condition: 'is_subto',
+          action: 'montelli_wire',
+          instruction: 'MONTELLI CONTACTS TITLE for wire instructions. (Per Part 7 step 2: "Montelli contacts title for wiring instructions.")',
+          fields: ['wire_instructions'],
         },
         {
           step: 3,
-          action: 'send_text',
-          template: 'SUBTO_PROCESSOR_CONFIRMED',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send SUBTO_PROCESSOR_CONFIRMED SMS within 48hrs of COE for SubTo deals',
-          templateKey: 'SUBTO_PROCESSOR_CONFIRMED',
-          condition: 'is_subto',
-        },
-        {
-          step: 4,
-          action: 'set_reminder',
-          type: 'coe',
-          instruction: 'COE Date - 7 days: Set reminder for closing day.',
+          action: 'student_final_ask',
+          instruction: 'FINAL CHECK-IN WITH SELLER: "Closing is [date]. Excited to close! Any last questions before we sign?"',
         },
       ],
-      // 7-day closing reminder REMOVED from set_reminder — COE reminder is already set in CONTRACT_OUT
       reminders: [],
     },
     automations: [
-      { type: 'log', message: 'Wire setup. Instructions confirmed. Moving to closing.' },
+      { type: 'log', message: 'Wire setup. Consulting agreement sent. Title wire instructions requested.' },
     ],
   },
 
   // ============================================
-  // STAGE 20→21: WIRE_SETUP → CLOSING_DATE
+  // STAGE 13→14: WIRE_SETUP → CLOSING_DATE
   // Owner: Closing
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 7 step 4
   // ============================================
   'WIRE_SETUP→CLOSING_DATE': {
     name: 'Closing Date — Final Steps',
     owner: 'Closing',
-    description: 'CLOSING_CONFIRMED SMS 7 days before, final wire, post-close engine.',
+    description: 'Wire funds. Close at title. Always ask for referrals.',
     prompt: {
-      title: 'Stage 20→21: Closing Date — Final Steps',
-      description: 'Deal is closing! Send CLOSING_CONFIRMED SMS. Final wire. Post-close engine.',
+      title: 'Stage 13→14: Closing Date — Final Steps',
+      description: 'Wire funds to title. Close at title company. Always ask for referrals (per Part 7 step 4 + Master Playbook Part 2 Step 12).',
       steps: [
         {
           step: 1,
-          action: 'send_text',
-          template: 'CLOSING_CONFIRMED',
-          prefill: true,
-          to: 'seller',
-          instruction: 'Send 7 days before COE — confirms closing details and post-close support',
-          templateKey: 'CLOSING_CONFIRMED',
+          action: 'wire_funds',
+          instruction: 'WIRE FUNDS to title company. Verify all documents signed.',
+          fields: ['wire_confirmed', 'wire_amount'],
         },
         {
           step: 2,
-          action: 'evaluate',
-          instruction: 'FINAL WIRE: Confirm wire instructions. Verify all documents signed.',
-          fields: ['wire_confirmed'],
+          action: 'close_at_title',
+          instruction: 'CLOSE AT TITLE. Funds distributed. (Per Part 7 step 4: "All funds distributed at title company.")',
         },
         {
           step: 3,
-          action: 'ask_referral',
-          instruction: 'WE PLAY POKÉMON: Always ask "Do you have any other properties you\'re looking to offload?" — double/triple/quadruple dip.',
-        },
-        {
-          step: 4,
-          action: 'set_reminder',
-          type: 'testimonial',
-          instruction: '+7 DAYS: Testimonial request — send review link.',
-        },
-        {
-          step: 5,
-          action: 'archive',
-          // +7d testimonial, +14d referral, +30d check-in: REMOVED — source only says ask at closing (Part 7)
-          instruction: 'POST-CLOSE: Move to closed. All documents saved. Always ask for referrals at closing (Part 7 + "double/triple/quadruple dip").',
+          action: 'ask_referrals',
+          instruction: 'ALWAYS ASK: "Do you have any other properties you\'re looking to offload? Anyone in your network who might be a fit? We pay referral fees." (Per Part 2 Step 12: "double/triple/quadruple dip".)',
         },
       ],
-      // 7d testimonial + 14d referral reminders REMOVED — source only specifies asking at closing
       reminders: [],
     },
     automations: [
       { type: 'set_field', field: 'closed_date', value: 'now' },
-      { type: 'log', message: 'Closed. CLOSING_CONFIRMED sent. Always ask for referrals (per Master Playbook Part 7).' },
+      { type: 'log', message: 'Closed. Funds distributed at title. Always ask for referrals (per Master Playbook Part 2 Step 12).' },
     ],
   },
 
   // ============================================
-  // * → DEAD ("Marked Dead")
+  // STAGE 14→15: CLOSING_DATE → ARCHIVED
+  // Owner: System
+  // Source: AIREI_MASTER_PLAYBOOK.md Part 2 Step 12
+  // ============================================
+  'CLOSING_DATE→ARCHIVED': {
+    name: 'Archived — Deal Closed',
+    owner: 'System',
+    description: 'Lead archived. All documents preserved.',
+    prompt: {
+      title: 'Lead Archived',
+      description: 'Deal closed and archived. All documents preserved.',
+      steps: [
+        {
+          step: 1,
+          action: 'log',
+          instruction: 'Lead archived. Data preserved.',
+        },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'log', message: 'Archived.' },
+    ],
+  },
+
+  // ============================================
+  // ============================================
+  // STAGE 6: SELLER_DECLINED → ACTIVE_NEGOTIATION
+  // (soft decline — seller re-engages, counter received)
+  // Owner: Montelli
+  // ============================================
+  'SELLER_DECLINED→ACTIVE_NEGOTIATION': {
+    name: 'Re-Engagement — Active Negotiation Resumed',
+    owner: 'Montelli',
+    description: 'Seller re-engaged from nurture. Counter received. Re-run offer calc.',
+    prompt: {
+      title: 'Stage 6: SELLER_DECLINED → ACTIVE_NEGOTIATION',
+      description: 'Seller re-engaged from the nurture pipeline. Counter received. Re-run offer calc with new price.',
+      steps: [
+        {
+          step: 1,
+          action: 'document_counter',
+          instruction: "DOCUMENT COUNTER: Record seller's new counter terms in CRM.",
+          fields: ['seller_counter', 'counter_price', 'counter_terms'],
+        },
+        {
+          step: 2,
+          action: 'run_underwriting',
+          instruction: 'RE-RUN OFFER CALC with new price. Test all 4 strategies (Cash, Stack, 10% Down, Sub2 — per Master Playbook Part 5).',
+        },
+        {
+          step: 3,
+          action: 'notify',
+          role: 'closer',
+          instruction: 'NOTIFY KAYLA: "Counter received on [address]. New price [X]. Numbers attached."',
+          contacts: ['homewithkaylamauser@gmail.com'],
+        },
+        {
+          step: 4,
+          action: 'await_kayla',
+          instruction: 'AWAIT KAYLA RESPONSE: Kayla generates counter-response. Student delivers to seller.',
+        },
+      ],
+      reminders: [],
+    },
+    automations: [
+      { type: 'run_comps' },
+      { type: 'run_underwriting' },
+      { type: 'notify' },
+      { type: 'log', message: 'Seller re-engaged from nurture. Comps + offer calc re-run. Kayla notified.' },
+    ],
+  },
+  // * → DEAD
+  // Owner: Montelli
+  // Source: Master Playbook Part 2 Step 11
   // ============================================
   '*→DEAD': {
-    name: 'Deal Dead — Circle Back Later',
+    name: 'Deal Dead — DOM-181 Nurture',
     owner: 'Montelli',
-    description: 'Deal is dead. Send seller declined text. Set calendar reminder for listing expiry.',
+    description: 'Deal marked dead. SD text + DOM-181 callback.',
     prompt: {
-      title: 'Deal Dead — Circle Back Later',
-      description: 'Send the seller declined text. Note DOM, subtract 181 days, set calendar reminder to call when listing expires.',
+      title: 'Deal Dead — DOM-181 Circle Back',
+      description: 'Deal is dead for now. SD text sent, DOM-181 reminder scheduled. Wait for listing to expire, then circle back.',
       steps: [
         {
           step: 1,
@@ -1144,14 +768,14 @@ const STAGE_TRANSITIONS = {
           template: 'SD',
           prefill: true,
           to: 'seller',
-          instruction: 'Send seller declined text — keeps door open for future',
+          instruction: 'SEND SD TEXT: keeps door open for the future.',
           templateKey: 'SD',
         },
         {
           step: 2,
           action: 'calendar',
-          instruction: 'Note Days on Market (DOM). Subtract 181 days. Set calendar reminder to call when listing expires.',
-          detail: 'DOM - 181 = date to circle back. Import into calendar. Call when listing agreement expires.',
+          instruction: 'Note Days on Market (DOM). Subtract 181 days. Set calendar reminder.',
+          fields: ['dom', 'dom_181_reminder_date'],
         },
         {
           step: 3,
@@ -1161,12 +785,12 @@ const STAGE_TRANSITIONS = {
         },
       ],
       reminders: [
-        { type: 'dom_181', description: 'Circle back when listing expires (DOM - 181 days)' },
+        { type: 'dom_181', description: 'DOM-181: Circle back when listing expires' },
       ],
     },
     automations: [
       { type: 'set_reminder', reminder_type: 'dom_181' },
-      { type: 'log', message: 'Deal marked dead. DOM-181 reminder set.' },
+      { type: 'log', message: 'Deal marked dead. SD template + DOM-181 reminder set.' },
     ],
   },
 
@@ -1618,32 +1242,33 @@ function getDayName() {
 }
 
 // =============================================================
-// TRANSITION MAP — 21 stages
-// =============================================================
-
+// TRANSITION MAP — matches the source-of-truth STAGE_TRANSITIONS above
+// 16 transitions total (down from 21 — collapsed fabricated granular stages)
 function getAvailableTransitions(currentStage) {
   const fwd = {
+    // Montelli stages
     LEAD_ENTERED: ['CONTACT_MADE', 'DEAD'],
     CONTACT_MADE: ['OFFER_READY', 'DEAD'],
     OFFER_READY: ['OFFER_SENT', 'DEAD'],
-    OFFER_SENT: ['OFFER_RECEIVED', 'DEAD'],
-    OFFER_RECEIVED: ['GAIN_FEEDBACK', 'ACTIVE_NEGOTIATION', 'SELLER_DECLINED', 'TERMS_AGREED', 'DEAD'],
-    GAIN_FEEDBACK: ['NO_ANSWER', 'ACTIVE_NEGOTIATION', 'SELLER_DECLINED', 'DEAD'],
-    NO_ANSWER: ['SELLER_DECLINED', 'GAIN_FEEDBACK', 'DEAD'],
+    OFFER_SENT: ['GAIN_FEEDBACK', 'SELLER_DECLINED', 'TERMS_AGREED', 'DEAD'],
+    GAIN_FEEDBACK: ['SELLER_DECLINED', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'DEAD'],
     SELLER_DECLINED: ['ACTIVE_NEGOTIATION', 'GAIN_FEEDBACK', 'DEAD'],
     ACTIVE_NEGOTIATION: ['TERMS_AGREED', 'SELLER_DECLINED', 'DEAD'],
-    TERMS_AGREED: ['AWAITING_TITLE', 'DEAD'],
-    AWAITING_TITLE: ['CONTRACT_OUT', 'DEAD'],
-    CONTRACT_OUT: ['UNDER_CONTRACT', 'DEAD'],
-    UNDER_CONTRACT: ['INSPECTION_PERIOD', 'DEAD'],
-    INSPECTION_PERIOD: ['INSPECTION_COMPLETE', 'SELLER_DECLINED', 'DEAD'],
-    INSPECTION_COMPLETE: ['APPRAISAL_ORDERED', 'DEAD'],
-    APPRAISAL_ORDERED: ['APPRAISAL_DONE', 'DEAD'],
-    APPRAISAL_DONE: ['JV_SENT', 'WIRE_SETUP', 'ACTIVE_NEGOTIATION', 'DEAD'],
-    JV_SENT: ['JV_SIGNED', 'DEAD'],
-    JV_SIGNED: ['WIRE_SETUP', 'DEAD'],
+
+    // Kayla stages
+    TERMS_AGREED: ['PSA_SENT', 'DEAD'],
+
+    // TC stages
+    PSA_SENT: ['UNDER_CONTRACT', 'DEAD'],
+    UNDER_CONTRACT: ['INSPECTION_COMPLETE', 'DEAD'],
+    INSPECTION_COMPLETE: ['APPRAISAL_DONE', 'DEAD'],
+
+    // Closing stages
+    APPRAISAL_DONE: ['WIRE_SETUP', 'ACTIVE_NEGOTIATION', 'DEAD'],
     WIRE_SETUP: ['CLOSING_DATE', 'DEAD'],
     CLOSING_DATE: ['ARCHIVED'],
+
+    // Wrap
     DEAD: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY'],
     ARCHIVED: ['LEAD_ENTERED'],
   };
@@ -1658,22 +1283,15 @@ function getStagePrompt(stage, leadData) {
     'CONTACT_MADE': 'LEAD_ENTERED→CONTACT_MADE',
     'OFFER_READY': 'CONTACT_MADE→OFFER_READY',
     'OFFER_SENT': 'OFFER_READY→OFFER_SENT',
-    'OFFER_RECEIVED': 'OFFER_SENT→OFFER_RECEIVED',
-    'GAIN_FEEDBACK': 'OFFER_RECEIVED→GAIN_FEEDBACK',
-    'NO_ANSWER': 'GAIN_FEEDBACK→NO_ANSWER',
-    'SELLER_DECLINED': 'NO_ANSWER→SELLER_DECLINED',
-    'ACTIVE_NEGOTIATION': 'SELLER_DECLINED→ACTIVE_NEGOTIATION',
+    'GAIN_FEEDBACK': 'OFFER_SENT→GAIN_FEEDBACK',
+    'SELLER_DECLINED': 'GAIN_FEEDBACK→SELLER_DECLINED',
+    'ACTIVE_NEGOTIATION': 'GAIN_FEEDBACK→ACTIVE_NEGOTIATION',
     'TERMS_AGREED': 'ACTIVE_NEGOTIATION→TERMS_AGREED',
-    'AWAITING_TITLE': 'TERMS_AGREED→AWAITING_TITLE',
-    'CONTRACT_OUT': 'AWAITING_TITLE→CONTRACT_OUT',
-    'UNDER_CONTRACT': 'CONTRACT_OUT→UNDER_CONTRACT',
-    'INSPECTION_PERIOD': 'UNDER_CONTRACT→INSPECTION_PERIOD',
-    'INSPECTION_COMPLETE': 'INSPECTION_PERIOD→INSPECTION_COMPLETE',
-    'APPRAISAL_ORDERED': 'INSPECTION_COMPLETE→APPRAISAL_ORDERED',
-    'APPRAISAL_DONE': 'APPRAISAL_ORDERED→APPRAISAL_DONE',
-    'JV_SENT': 'APPRAISAL_DONE→JV_SENT',
-    'JV_SIGNED': 'JV_SENT→JV_SIGNED',
-    'WIRE_SETUP': 'JV_SIGNED→WIRE_SETUP',
+    'PSA_SENT': 'TERMS_AGREED→PSA_SENT',
+    'UNDER_CONTRACT': 'PSA_SENT→UNDER_CONTRACT',
+    'INSPECTION_COMPLETE': 'UNDER_CONTRACT→INSPECTION_COMPLETE',
+    'APPRAISAL_DONE': 'INSPECTION_COMPLETE→APPRAISAL_DONE',
+    'WIRE_SETUP': 'APPRAISAL_DONE→WIRE_SETUP',
     'CLOSING_DATE': 'WIRE_SETUP→CLOSING_DATE',
     'DEAD': '*→DEAD',
   };
