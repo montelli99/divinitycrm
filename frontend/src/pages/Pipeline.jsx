@@ -2,49 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
-
-// 16-stage pipeline, source-of-truth (per Master Playbook Part 2 + Part 7)
-const STAGE_ORDER = [
-  'LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY',           // Montelli
-  'OFFER_SENT', 'GAIN_FEEDBACK',                            // Montelli (post-AI-send)
-  'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',                  // Montelli
-  'TERMS_AGREED',                                           // Kayla (handed to Kayla for agreement)
-  'PSA_SENT',                                               // Kayla (PSA sent for authorization)
-  'UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE', // TC
-  'WIRE_SETUP', 'CLOSING_DATE',                             // Closing
-];
-
-const STAGE_LABELS = {
-  LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Gain Feedback',
-  SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
-  TERMS_AGREED: 'Terms Agreed', PSA_SENT: 'PSA Sent for Authorization',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Complete', APPRAISAL_DONE: 'Appraisal Done',
-  WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
-};
-
-const OWNER_SECTIONS = {
-  MONTELLI: { name: 'Montelli', stages: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'GAIN_FEEDBACK', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION'], color: '#0066cc', bgColor: 'rgba(0,102,204,0.08)' },
-  KAYLA: { name: 'Kayla', stages: ['TERMS_AGREED', 'PSA_SENT'], color: '#cc6600', bgColor: 'rgba(204,102,0,0.08)' },
-  TC: { name: 'TC', stages: ['UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'APPRAISAL_DONE'], color: '#00cc00', bgColor: 'rgba(0,204,0,0.08)' },
-  CLOSING: { name: 'Closing', stages: ['WIRE_SETUP', 'CLOSING_DATE'], color: '#cc0066', bgColor: 'rgba(204,0,102,0.08)' },
-};
-
-function getOwnerForStage(stage) {
-  for (const [key, owner] of Object.entries(OWNER_SECTIONS)) {
-    if (owner.stages.includes(stage)) return owner;
-  }
-  return { name: 'Unknown', stages: [], color: '#999', bgColor: 'rgba(153,153,153,0.08)' };
-}
-
-const NEXT_STAGE = {
-  LEAD_ENTERED: 'CONTACT_MADE', CONTACT_MADE: 'OFFER_READY', OFFER_READY: 'OFFER_SENT',
-  OFFER_SENT: 'GAIN_FEEDBACK', GAIN_FEEDBACK: 'SELLER_DECLINED', SELLER_DECLINED: 'ACTIVE_NEGOTIATION',
-  ACTIVE_NEGOTIATION: 'TERMS_AGREED', TERMS_AGREED: 'PSA_SENT',
-  PSA_SENT: 'UNDER_CONTRACT', UNDER_CONTRACT: 'INSPECTION_COMPLETE',
-  INSPECTION_COMPLETE: 'APPRAISAL_DONE', APPRAISAL_DONE: 'WIRE_SETUP',
-  WIRE_SETUP: 'CLOSING_DATE', CLOSING_DATE: 'ARCHIVED',
-};
+import {
+  STAGES as STAGE_ORDER,
+  STAGE_LABELS,
+  STAGE_SHORT_LABELS,
+  OWNERS as OWNER_SECTIONS,
+  getOwnerForStage,
+  NEXT_STAGE,
+} from '../lib/pipeline-stages';
 
 export default function Pipeline() {
   const [pipeline, setPipeline] = useState(null);

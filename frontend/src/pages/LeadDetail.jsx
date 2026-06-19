@@ -2,19 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
+import { STAGES, STAGE_LABELS, getOwnerForStage } from '../lib/pipeline-stages';
 
-const STAGES = [
-  'LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY',
-  'OFFER_SENT', 'GAIN_FEEDBACK', 'GAIN_FEEDBACK',
-  'SELLER_DECLINED', 'SELLER_DECLINED', 'ACTIVE_NEGOTIATION',
-  'TERMS_AGREED',
-  'PSA_SENT', 'PSA_SENT',
-  'UNDER_CONTRACT', 'INSPECTION_COMPLETE', 'INSPECTION_COMPLETE',
-  'APPRAISAL_DONE', 'APPRAISAL_DONE',
-  'PSA_SENT', 'PSA_SENT',
-  'WIRE_SETUP', 'CLOSING_DATE',
-  'CLOSED', 'DEAD', 'ARCHIVED',
-];
 const CONTRACT_TYPES = ['subto', 'cash', 'seller_finance', 'stack50', 'stack10', 'jv', 'commercial', 'portfolio'];
 
 const TAB_NAMES = {

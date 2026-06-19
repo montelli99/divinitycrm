@@ -1,18 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-
-const STAGE_LABELS = {
-  LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
-  SELLER_DECLINED: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
-  TERMS_AGREED: 'Terms Agreed',
-  PSA_SENT: 'Awaiting Title', PSA_SENT: 'Contract Out',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
-  APPRAISAL_DONE: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
-  PSA_SENT: 'JV Sent', PSA_SENT: 'JV Signed',
-  WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
-};
+import { STAGE_LABELS, STAGES } from '../lib/pipeline-stages';
 
 export default function AdminDashboard() {
   const [data, setData] = useState(null);

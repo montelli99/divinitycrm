@@ -129,6 +129,78 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
     for (const action of config.automations) {
       try {
         switch (action.type) {
+          case 'webhook': {
+            // Webhook stubs per GHL_WORKFLOWS_SPEC.md — log the call so it's
+            // visible in activity_log + send notification. The actual webhook
+            // receiver runs in the GHL integration cron (when wired).
+            try {
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'webhook_fired', JSON.stringify({ endpoint: action.endpoint, from_stage: fromStage, to_stage: toStage })]
+              );
+              results.push({ type: 'webhook', ok: true, endpoint: action.endpoint });
+            } catch (e) {
+              results.push({ type: 'webhook', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'write_fields': {
+            // Bulk write multiple lead fields at once (per GHL_FIELD_MAPPING.md)
+            try {
+              const fieldMap = {};
+              for (const f of (action.fields || [])) {
+                let value;
+                if (f === 'psa_signed_date') value = now.toISOString().split('T')[0];
+                else if (f === 'coe_date') { const d = new Date(now); d.setDate(d.getDate() + 30); value = d.toISOString().split('T')[0]; }
+                else if (f === 'inspection_end_date') { const d = new Date(now); d.setDate(d.getDate() + 14); value = d.toISOString().split('T')[0]; }
+                else if (f === 'emd_amount') value = 100;
+                else if (f === 'title_company') value = 'CLOSED Title';
+                else if (f === 'has_subject_to_addendum') value = (leadData.contract === 'subto' || leadData.contract_type === 'subto');
+                else if (f === 'llc_name') value = 'Divinity Aligned LLC';
+                else if (f === 'property_apn') value = leadData.apn || null;
+                else if (f === 'contract_type') value = leadData.contract || leadData.contract_type || 'cash';
+                if (value !== undefined) fieldMap[f] = value;
+              }
+              const cols = Object.keys(fieldMap);
+              if (cols.length > 0) {
+                const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+                const values = cols.map(c => fieldMap[c]);
+                await query(`UPDATE leads SET ${setClause} WHERE id = $${cols.length + 1}`, [...values, leadId]);
+              }
+              results.push({ type: 'write_fields', ok: true, fields: cols });
+            } catch (e) {
+              results.push({ type: 'write_fields', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'generate_contract': {
+            // Stub: log contract generation. Real RabbitSign call happens in
+            // the dedicated CONTRACT_OUT handler below or via the webhook.
+            try {
+              const contractType = leadData.contract || leadData.contract_type || 'cash';
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'contract_generated', JSON.stringify({ contractType, from_stage: fromStage, to_stage: toStage })]
+              );
+              results.push({ type: 'generate_contract', ok: true, contractType });
+            } catch (e) {
+              results.push({ type: 'generate_contract', ok: false, error: e.message });
+            }
+            break;
+          }
+          case 'rabbitsign': {
+            try {
+              const contractType = leadData.contract || leadData.contract_type || 'psa_creative_subto';
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'rabbitsign_envelope_stub', JSON.stringify({ contractType, from_stage: fromStage, to_stage: toStage })]
+              );
+              results.push({ type: 'rabbitsign', ok: true, contractType, note: 'Stub — actual envelope created on GHL webhook' });
+            } catch (e) {
+              results.push({ type: 'rabbitsign', ok: false, error: e.message });
+            }
+            break;
+          }
           case 'set_field': {
             let value = action.value;
             if (value === 'now') value = now.toISOString();
@@ -539,34 +611,36 @@ function getDayName() {
 
 // =============================================================
 // TRANSITION MAP — matches the source-of-truth STAGE_TRANSITIONS above
-// 16 transitions total (down from 21 — collapsed fabricated granular stages)
+// 21 stages per GHL_WORKFLOWS_SPEC.md Section A
 function getAvailableTransitions(currentStage) {
   const fwd = {
-    // Montelli stages
+    // ===== Montelli (Stages 1-10) =====
     LEAD_ENTERED: ['CONTACT_MADE', 'DEAD'],
     CONTACT_MADE: ['OFFER_READY', 'DEAD'],
     OFFER_READY: ['OFFER_SENT', 'DEAD'],
-    OFFER_SENT: ['GAIN_FEEDBACK', 'SELLER_DECLINED', 'TERMS_AGREED', 'DEAD'],
-    GAIN_FEEDBACK: ['SELLER_DECLINED', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'DEAD'],
-    SELLER_DECLINED: ['ACTIVE_NEGOTIATION', 'GAIN_FEEDBACK', 'DEAD'],
-    ACTIVE_NEGOTIATION: ['TERMS_AGREED', 'SELLER_DECLINED', 'DEAD'],
+    OFFER_SENT: ['OFFER_RECEIVED', 'DEAD'],
+    OFFER_RECEIVED: ['GAIN_FEEDBACK', 'DEAD'],
+    GAIN_FEEDBACK: ['ACTIVE_NEGOTIATION', 'NO_ANSWER', 'SELLER_DECLINED', 'DEAD'],
+    NO_ANSWER: ['GAIN_FEEDBACK', 'SELLER_DECLINED', 'DEAD'],
+    SELLER_DECLINED: ['GAIN_FEEDBACK', 'DEAD'],
+    ACTIVE_NEGOTIATION: ['TERMS_AGREED', 'GAIN_FEEDBACK', 'DEAD'],
+    TERMS_AGREED: ['AWAITING_TITLE', 'DEAD'],
 
-    // Kayla stages
-    TERMS_AGREED: ['PSA_SENT', 'DEAD'],
+    // ===== TC (Stages 11-19) =====
+    AWAITING_TITLE: ['CONTRACT_OUT', 'DEAD'],
+    CONTRACT_OUT: ['UNDER_CONTRACT', 'DEAD'],
+    UNDER_CONTRACT: ['INSPECTION_PERIOD', 'DEAD'],
+    INSPECTION_PERIOD: ['INSPECTION_COMPLETE', 'SELLER_DECLINED', 'DEAD'],
+    INSPECTION_COMPLETE: ['APPRAISAL_ORDERED', 'DEAD'],
+    APPRAISAL_ORDERED: ['APPRAISAL_DONE', 'DEAD'],
+    APPRAISAL_DONE: ['JV_SENT', 'WIRE_SETUP', 'TERMS_AGREED', 'DEAD'],
+    JV_SENT: ['JV_SIGNED', 'DEAD'],
+    JV_SIGNED: ['WIRE_SETUP', 'DEAD'],
 
-    // TC stages
-    PSA_SENT: ['UNDER_CONTRACT', 'DEAD'],
-    UNDER_CONTRACT: ['INSPECTION_COMPLETE', 'DEAD'],
-    INSPECTION_COMPLETE: ['APPRAISAL_DONE', 'DEAD'],
-
-    // Closing stages
-    APPRAISAL_DONE: ['WIRE_SETUP', 'ACTIVE_NEGOTIATION', 'DEAD'],
+    // ===== Closing (Stages 20-21) =====
     WIRE_SETUP: ['CLOSING_DATE', 'DEAD'],
-    CLOSING_DATE: ['ARCHIVED'],
-
-    // Wrap
-    DEAD: ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY'],
-    ARCHIVED: ['LEAD_ENTERED'],
+    CLOSING_DATE: ['CLOSED', 'DEAD'],
+    CLOSED: [],
   };
   return fwd[currentStage] || [];
 }
@@ -576,20 +650,29 @@ function getAvailableTransitions(currentStage) {
  */
 function getStagePrompt(stage, leadData) {
   const transitionMap = {
+    // Montelli
     'CONTACT_MADE': 'LEAD_ENTERED→CONTACT_MADE',
     'OFFER_READY': 'CONTACT_MADE→OFFER_READY',
     'OFFER_SENT': 'OFFER_READY→OFFER_SENT',
-    'GAIN_FEEDBACK': 'OFFER_SENT→GAIN_FEEDBACK',
+    'OFFER_RECEIVED': 'OFFER_SENT→OFFER_RECEIVED',
+    'GAIN_FEEDBACK': 'OFFER_RECEIVED→GAIN_FEEDBACK',
+    'NO_ANSWER': 'GAIN_FEEDBACK→NO_ANSWER',
     'SELLER_DECLINED': 'GAIN_FEEDBACK→SELLER_DECLINED',
     'ACTIVE_NEGOTIATION': 'GAIN_FEEDBACK→ACTIVE_NEGOTIATION',
     'TERMS_AGREED': 'ACTIVE_NEGOTIATION→TERMS_AGREED',
-    'PSA_SENT': 'TERMS_AGREED→PSA_SENT',
-    'UNDER_CONTRACT': 'PSA_SENT→UNDER_CONTRACT',
-    'INSPECTION_COMPLETE': 'UNDER_CONTRACT→INSPECTION_COMPLETE',
-    'APPRAISAL_DONE': 'INSPECTION_COMPLETE→APPRAISAL_DONE',
-    'WIRE_SETUP': 'APPRAISAL_DONE→WIRE_SETUP',
+    // TC
+    'AWAITING_TITLE': 'TERMS_AGREED→AWAITING_TITLE',
+    'CONTRACT_OUT': 'AWAITING_TITLE→CONTRACT_OUT',
+    'UNDER_CONTRACT': 'CONTRACT_OUT→UNDER_CONTRACT',
+    'INSPECTION_PERIOD': 'UNDER_CONTRACT→INSPECTION_PERIOD',
+    'INSPECTION_COMPLETE': 'INSPECTION_PERIOD→INSPECTION_COMPLETE',
+    'APPRAISAL_ORDERED': 'INSPECTION_COMPLETE→APPRAISAL_ORDERED',
+    'APPRAISAL_DONE': 'APPRAISAL_ORDERED→APPRAISAL_DONE',
+    'JV_SENT': 'APPRAISAL_DONE→JV_SENT',
+    'JV_SIGNED': 'JV_SENT→JV_SIGNED',
+    // Closing
+    'WIRE_SETUP': 'JV_SIGNED→WIRE_SETUP',
     'CLOSING_DATE': 'WIRE_SETUP→CLOSING_DATE',
-    'DEAD': '*→DEAD',
   };
 
   const key = transitionMap[stage];

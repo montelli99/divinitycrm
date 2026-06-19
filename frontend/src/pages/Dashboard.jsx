@@ -1,26 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { STAGE_LABELS, STAGES, getOwnerForStage } from '../lib/pipeline-stages';
 
-const STAGE_LABELS = {
-  LEAD_ENTERED: 'Lead Entered', CONTACT_MADE: 'Contact Made', OFFER_READY: 'Offer Ready',
-  OFFER_SENT: 'Offer Sent', GAIN_FEEDBACK: 'Offer Received', GAIN_FEEDBACK: 'Gain Feedback',
-  SELLER_DECLINED: 'No Answer', SELLER_DECLINED: 'Seller Declined', ACTIVE_NEGOTIATION: 'Active Negotiation',
-  TERMS_AGREED: 'Terms Agreed',
-  PSA_SENT: 'Awaiting Title', PSA_SENT: 'Contract Out',
-  UNDER_CONTRACT: 'Under Contract', INSPECTION_COMPLETE: 'Inspection Period', INSPECTION_COMPLETE: 'Inspection Complete',
-  APPRAISAL_DONE: 'Appraisal Ordered', APPRAISAL_DONE: 'Appraisal Done',
-  PSA_SENT: 'JV Sent', PSA_SENT: 'JV Signed',
-  WIRE_SETUP: 'Wire Setup', CLOSING_DATE: 'Closing Date',
-  CLOSED: 'Closed', DEAD: 'Dead', ARCHIVED: 'Archived',
-};
-
-// AM Tasks by stage (from daily-sop.js)
+// AM Tasks by stage (per daily-sop.js, mapped to GHL 21-stage flow)
 const AM_TASK_DEFS = {
-  'PSA_SENT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
+  'CONTRACT_OUT': { label: 'Contract Out', action: 'Review details, authorize signatures', icon: '✍️' },
   'ACTIVE_NEGOTIATION': { label: 'Active Negotiation', action: 'Overcome objections. Record calls for educational purposes', icon: '🎙️' },
   'TERMS_AGREED': { label: 'Terms Agreed', action: 'Touch base on contract alignment. Verify stack or draft manual agreement', icon: '📋' },
-  'PSA_SENT': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
+  'AWAITING_TITLE': { label: 'Awaiting Seller Info', action: 'Confirm seller info, name on title, access method, ensure financials in place', icon: '📄' },
 };
 
 // PM Tasks by stage (PPC follow-ups)
@@ -136,13 +124,13 @@ export default function Dashboard() {
   function buildKaylaCommandCenter() {
     const offersToPresent = leads.filter(l => l.stage === 'OFFER_READY');
     const activeNegotiations = leads.filter(l => l.stage === 'ACTIVE_NEGOTIATION');
-    const contractsToDraft = leads.filter(l => l.stage === 'TERMS_AGREED');
+    const contractsToDraft = leads.filter(l => l.stage === 'TERMS_AGREED' || l.stage === 'AWAITING_TITLE');
     const stalls = leads.filter(l => {
       const days = l.last_stage_change_at
         ? Math.floor((Date.now() - new Date(l.last_stage_change_at).getTime()) / 86400000)
         : 0;
       return (l.stage === 'OFFER_SENT' && days > 2) ||
-             (l.stage === 'PSA_SENT' && days > 3) ||
+             (l.stage === 'CONTRACT_OUT' && days > 3) ||
              (l.stage === 'SELLER_DECLINED' && days > 14);
     });
 
