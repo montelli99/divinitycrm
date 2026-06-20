@@ -242,6 +242,33 @@ function buildTCUnderContractEmail(lead) {
 }
 
 /**
+ * Stage 5→6: Kayla — Offer Received, Gain Feedback
+ */
+function buildKaylaGainFeedbackEmail(lead) {
+  const addr = lead.address || 'Unknown';
+
+  return {
+    to: RECIPIENTS.KAYLA,
+    subject: `Gain Feedback — ${addr}`,
+    body: [
+      `Hi Kayla,`,
+      ``,
+      `The seller has responded and the deal is ready for your realignment call:`,
+      ``,
+      `Property: ${addr}`,
+      `Offer Amount: ${lead.price ? '$' + Number(lead.price).toLocaleString() : 'TBD'}`,
+      `Seller Response: ${lead.seller_response || lead.gain_feedback || 'TBD'}`,
+      ``,
+      `Please run the 48hr realignment call and log the outcome in CRM.`,
+      ``,
+      `CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      ``,
+      `— Atlas (auto-sent from Divinity CRM)`,
+    ].join('\n'),
+  };
+}
+
+/**
  * Stage 8→9: Kayla + Jaxon — Counter Received, Re-engaged
  */
 function buildKaylaJaxonCounterEmail(lead) {
@@ -306,6 +333,16 @@ async function sendEmail(opts) {
 // STAGE-TRIGGERED SENDERS
 // =============================================================
 
+const STAGE_EMAIL_KEYS = new Set([
+  'CONTACT_MADE→OFFER_READY',
+  'OFFER_READY→OFFER_SENT',
+  'OFFER_RECEIVED→GAIN_FEEDBACK',
+  'ACTIVE_NEGOTIATION→TERMS_AGREED',
+  'SELLER_DECLINED→ACTIVE_NEGOTIATION',
+  'AWAITING_TITLE→CONTRACT_OUT',
+  'CONTRACT_OUT→UNDER_CONTRACT',
+]);
+
 /**
  * Send the appropriate email(s) for a stage transition.
  * Called by stage-automations.js executeStageAutomations().
@@ -315,6 +352,7 @@ async function sendStageEmail(fromStage, toStage, lead) {
   const senders = {
     'CONTACT_MADE→OFFER_READY':       () => sendEmail(buildSethUnderwritingEmail(lead)),
     'OFFER_READY→OFFER_SENT':          () => sendEmail(buildKaylaOfferReadyEmail(lead)),
+    'OFFER_RECEIVED→GAIN_FEEDBACK':    () => sendEmail(buildKaylaGainFeedbackEmail(lead)),
     'ACTIVE_NEGOTIATION→TERMS_AGREED': () => sendEmail(buildKaylaContractDraftEmail(lead)),
     'SELLER_DECLINED→ACTIVE_NEGOTIATION': () => sendEmail(buildKaylaJaxonCounterEmail(lead)),
     'AWAITING_TITLE→CONTRACT_OUT':     () => sendEmail(buildTCHandshakeEmail(lead)),
@@ -322,7 +360,7 @@ async function sendStageEmail(fromStage, toStage, lead) {
   };
 
   const sender = senders[key];
-  if (!sender) return { sent: false, reason: `No email template for ${key}` };
+  if (!sender) return { sent: false, skipped: true, reason: `No email template for ${key}` };
 
   return sender();
 }
@@ -333,9 +371,11 @@ module.exports = {
   sendStageEmail,
   buildSethUnderwritingEmail,
   buildKaylaOfferReadyEmail,
+  buildKaylaGainFeedbackEmail,
   buildKaylaContractDraftEmail,
   buildTCHandshakeEmail,
   buildTCUnderContractEmail,
   buildKaylaJaxonCounterEmail,
+  STAGE_EMAIL_KEYS,
   RECIPIENTS,
 };

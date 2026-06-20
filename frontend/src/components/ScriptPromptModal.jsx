@@ -14,7 +14,7 @@ import { useState } from 'react';
  *   - Action checklist (call, email, take notes)
  *   - Follow-up reminders with dates
  */
-export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSent }) {
+export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSent, inline = false }) {
   const [copied, setCopied] = useState({});
   const [sent, setSent] = useState({});
   const [completedSteps, setCompletedSteps] = useState({});
@@ -35,37 +35,38 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
     }
   }
 
-  function handleMarkSent(id) {
+  function handleMarkSent(id, payload) {
     setSent(prev => ({ ...prev, [id]: true }));
-    onMarkSent?.(id);
+    onMarkSent?.(payload || id);
   }
 
   function toggleStepComplete(stepNum) {
     setCompletedSteps(prev => ({ ...prev, [stepNum]: !prev[stepNum] }));
   }
 
-  return (
-    <div className="script-modal-overlay" onClick={onDismiss}>
-      <div className="script-modal-enhanced" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="script-modal-header">
-          <div>
-            <h2>{prompt?.title || 'Stage Transition Scripts'}</h2>
-            {prompt?.description && (
-              <p className="script-modal-subtitle">{prompt.description}</p>
-            )}
-            {prompt?.leadName && (
-              <p className="script-modal-lead">
-                Lead: <strong>{prompt.leadName}</strong>
-                {prompt.leadAddress && ` — ${prompt.leadAddress}`}
-              </p>
-            )}
-          </div>
-          <button className="script-modal-close" onClick={onDismiss}>&times;</button>
+  const content = (
+    <div className="script-modal-enhanced">
+      {/* Header */}
+      <div className="script-modal-header">
+        <div>
+          <h2>{prompt?.title || 'Stage Transition Scripts'}</h2>
+          {prompt?.description && (
+            <p className="script-modal-subtitle">{prompt.description}</p>
+          )}
+          {prompt?.leadName && (
+            <p className="script-modal-lead">
+              Lead: <strong>{prompt.leadName}</strong>
+              {prompt.leadAddress && ` — ${prompt.leadAddress}`}
+            </p>
+          )}
         </div>
+        {!inline && onDismiss && (
+          <button className="script-modal-close" onClick={onDismiss}>&times;</button>
+        )}
+      </div>
 
         {/* Body */}
-        <div className="script-modal-body">
+      <div className="script-modal-body">
           {/* Rich Prompt Steps */}
           {hasRichPrompt && prompt.steps.map((step, idx) => (
             <div key={idx} className={`prompt-step ${completedSteps[step.step] ? 'step-completed' : ''}`}>
@@ -114,7 +115,14 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
                       </button>
                       <button
                         className={`btn btn-sm ${sent[`msg-${step.step}`] ? 'btn-success' : 'btn-secondary'}`}
-                        onClick={() => handleMarkSent(`msg-${step.step}`)}
+                        onClick={() => handleMarkSent(`msg-${step.step}`, {
+                          source: 'crm',
+                          key: step.template,
+                          body: step.filledMessage,
+                          recipient: step.recipient || step.to,
+                          templateName: step.template,
+                          recipientType: step.recipientType,
+                        })}
                         disabled={sent[`msg-${step.step}`]}
                       >
                         {sent[`msg-${step.step}`] ? '✓ Sent' : '✓ Mark Sent'}
@@ -246,7 +254,14 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
                 </button>
                 <button
                   className={`btn btn-sm ${sent[script.templateName] ? 'btn-success' : 'btn-secondary'}`}
-                  onClick={() => handleMarkSent(script.templateName)}
+                  onClick={() => handleMarkSent(script.templateName, {
+                    source: 'crm',
+                    key: script.templateName,
+                    body: script.filled,
+                    recipient: script.recipient,
+                    templateName: script.templateName,
+                    recipientType: script.recipientType,
+                  })}
                   disabled={sent[script.templateName]}
                 >
                   {sent[script.templateName] ? '✓ Sent' : '✓ Mark Sent'}
@@ -256,21 +271,22 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
           ))}
         </div>
 
-        {/* Reminders */}
-        {prompt?.reminders && prompt.reminders.length > 0 && (
-          <div className="script-modal-reminders">
-            <h4>⏰ Follow-up Reminders Set</h4>
-            {prompt.reminders.map((r, idx) => (
-              <div key={idx} className="reminder-item">
-                <span className="reminder-type-badge">{formatReminderType(r.type)}</span>
-                <span className="reminder-desc">{r.description}</span>
-                <span className="reminder-date">Due: {r.due_date_formatted || new Date(r.due_date).toLocaleDateString()}</span>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Reminders */}
+      {prompt?.reminders && prompt.reminders.length > 0 && (
+        <div className="script-modal-reminders">
+          <h4>⏰ Follow-up Reminders Set</h4>
+          {prompt.reminders.map((r, idx) => (
+            <div key={idx} className="reminder-item">
+              <span className="reminder-type-badge">{formatReminderType(r.type)}</span>
+              <span className="reminder-desc">{r.description}</span>
+              <span className="reminder-date">Due: {r.due_date_formatted || new Date(r.due_date).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Footer */}
+      {/* Footer */}
+      {!inline && (
         <div className="script-modal-footer">
           <div className="footer-stats">
             {hasRichPrompt && (
@@ -278,14 +294,34 @@ export default function ScriptPromptModal({ prompt, scripts, onDismiss, onMarkSe
             )}
           </div>
           <div className="footer-actions">
-            <button className="btn btn-secondary" onClick={onDismiss}>
-              Dismiss
-            </button>
-            <button className="btn btn-primary" onClick={onDismiss}>
-              Got It — I'll Execute
-            </button>
+            {onDismiss && (
+              <button className="btn btn-secondary" onClick={onDismiss}>
+                Dismiss
+              </button>
+            )}
+            {onDismiss && (
+              <button className="btn btn-primary" onClick={onDismiss}>
+                Got It — I'll Execute
+              </button>
+            )}
           </div>
         </div>
+      )}
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <section className="script-modal-inline">
+        {content}
+      </section>
+    );
+  }
+
+  return (
+    <div className="script-modal-overlay" onClick={onDismiss}>
+      <div onClick={e => e.stopPropagation()}>
+        {content}
       </div>
     </div>
   );

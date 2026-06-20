@@ -6,7 +6,6 @@ import Pipeline from './pages/Pipeline';
 import Contracts from './pages/Contracts';
 import Calculator from './pages/Calculator';
 import Training from './pages/Training';
-import Teleprompter from './pages/Teleprompter';
 import StudentRoster from './pages/StudentRoster';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
@@ -211,7 +210,6 @@ export default function App() {
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/training" element={<Training />} />
-        <Route path="/teleprompter" element={<Teleprompter />} />
         <Route path="/students" element={<StudentRoster />} />
         <Route path="/profile" element={<Profile />} />
       </Route>

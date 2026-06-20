@@ -8,7 +8,8 @@
     "start": "node src/scripts/env-validator.js && node src/index.js",
     "start:skip-check": "node src/index.js",
     "db:migrate": "node src/db/migrate.js",
-    "env:check": "node src/scripts/env-validator.js"
+    "env:check": "node src/scripts/env-validator.js",
+    "smoke:stage5": "node --test src/services/email-service.test.js"
   },
   "dependencies": {
     "@clerk/express": "1.7.81",

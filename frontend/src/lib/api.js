@@ -126,6 +126,9 @@ export const api = {
   getUnderwritingDocs: () => request('/training-docs/underwriting'),
   getHandoffDocs: () => request('/training-docs/handoff'),
   getStageDocs: () => request('/training-docs/stages'),
+
+  // Teleprompter
+  markTeleprompterSent: (data) => request('/teleprompter/mark-sent', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export { getToken, setToken, clearToken };

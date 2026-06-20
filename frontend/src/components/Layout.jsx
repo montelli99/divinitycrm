@@ -4,7 +4,6 @@ import { clearToken } from '../lib/api';
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/pipeline', label: 'Pipeline', icon: '📋' },
-  { path: '/teleprompter', label: 'Teleprompter', icon: '🎙️' },
   { path: '/calculator', label: 'Calculator', icon: '🧮' },
   { path: '/contracts', label: 'Contracts', icon: '📝' },
   { path: '/training', label: 'Training', icon: '📚' },
@@ -18,8 +17,13 @@ const ADMIN_NAV_ITEMS = [
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const userStr = localStorage.getItem('divinity_user');
-  const user = userStr ? JSON.parse(userStr) : null;
+  let user = null;
+  try {
+    const userStr = localStorage.getItem('divinity_user');
+    user = userStr ? JSON.parse(userStr) : null;
+  } catch {
+    user = null;
+  }
 
   function handleLogout() {
     clearToken();

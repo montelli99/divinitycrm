@@ -73,14 +73,14 @@ export default function Pipeline() {
   async function handleViewPrompts(leadId, stage) {
     try {
       const result = await api.getStagePrompt(leadId, stage);
-      if (result?.prompt) {
-        setViewingPrompts({
-          prompt: result.prompt,
-          scripts: result.scripts || [],
-          leadId,
-          stage,
-        });
-      }
+      if (!result?.prompt && (!result?.scripts || result.scripts.length === 0)) return;
+
+      setViewingPrompts({
+        prompt: result.prompt || null,
+        scripts: result.scripts || [],
+        leadId,
+        stage,
+      });
     } catch (err) {
       console.error('View prompts error:', err);
     }

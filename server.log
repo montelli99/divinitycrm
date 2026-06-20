@@ -11,5 +11,199 @@ training route OK
 admin route OK
 notifications route OK
 training-docs route OK
+teleprompter route OK
 Neon database connected: OK
 Divinity CRM API running on port 3001
+[0mPOST /api/auth/login [32m200[0m 238.128 ms - 417[0m
+[0mGET /api/teleprompter/shortcuts?stage=LEAD_ENTERED&lead_id=58431ea2-af94-4dec-a858-203caffcb7a0 [32m200[0m 178.146 ms - 3928[0m
+[0mPOST /api/auth/login [32m200[0m 271.058 ms - 417[0m
+[0mGET /api/teleprompter/shortcuts?stage=UNDER_CONTRACT&lead_id=58431ea2-af94-4dec-a858-203caffcb7a0 [32m200[0m 53.159 ms - 200[0m
+[0mPOST /api/auth/login [32m200[0m 171.551 ms - 417[0m
+[0mGET /api/teleprompter/shortcuts?stage=UNDER_CONTRACT&lead_id=58431ea2-af94-4dec-a858-203caffcb7a0 [32m200[0m 84.557 ms - 200[0m
+[0mPOST /api/auth/login [32m200[0m 475.781 ms - 417[0m
+[0mGET /api/teleprompter/shortcuts?stage=INSPECTION_PERIOD&lead_id=58431ea2-af94-4dec-a858-203caffcb7a0 [32m200[0m 80.123 ms - 1375[0m
+[0mPOST /api/auth/login [32m200[0m 400.203 ms - 417[0m
+[0mGET /api/pipeline/stats [32m200[0m 180.953 ms - 565[0m
+[0mGET /api/pipeline/profit-radar [32m200[0m 204.253 ms - 154[0m
+[0mGET /api/pipeline/today [32m200[0m 282.002 ms - 6072[0m
+[0mGET /api/leads?limit=50 [32m200[0m 291.256 ms - 185880[0m
+[0mGET /api/pipeline/profit-radar [36m304[0m 89.125 ms - -[0m
+[0mGET /api/pipeline/stats [36m304[0m 152.417 ms - -[0m
+[0mGET /api/pipeline/today [36m304[0m 100.581 ms - -[0m
+[0mGET /api/leads?limit=50 [36m304[0m 129.099 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 795.059 ms - 2797[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 192.984 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/LEAD_ENTERED [32m200[0m 416.686 ms - 4571[0m
+[0mGET /api/users/me [32m200[0m 48.806 ms - 612[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/LEAD_ENTERED [36m304[0m 92.154 ms - -[0m
+[0mGET /api/users/me [36m304[0m 45.153 ms - -[0m
+[0mPATCH /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 1057.448 ms - 4339[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [32m200[0m 172.467 ms - 4276[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 159.643 ms - 3050[0m
+[0mGET /api/pipeline/health [32m200[0m 636.860 ms - 8047[0m
+[0mGET /api/pipeline [32m200[0m 653.722 ms - 16749[0m
+[0mGET /api/pipeline/health [32m200[0m 431.142 ms - 8047[0m
+[0mGET /api/pipeline [36m304[0m 415.852 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [32m200[0m 153.985 ms - 97[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 329.577 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 199.673 ms - -[0m
+[0mGET /api/teleprompter/shortcuts?stage=LEAD_ENTERED [32m200[0m 11.019 ms - 3977[0m
+[0mGET /api/teleprompter/shortcuts?stage=LEAD_ENTERED [36m304[0m 0.865 ms - -[0m
+[0mGET /api/contracts [32m200[0m 458.552 ms - 16[0m
+[0mGET /api/contracts/clauses [32m200[0m 478.980 ms - 14047[0m
+[0mGET /api/contracts [36m304[0m 50.773 ms - -[0m
+[0mGET /api/contracts/clauses [36m304[0m 78.438 ms - -[0m
+[0mGET /api/contracts [36m304[0m 291.479 ms - -[0m
+[0mGET /api/contracts/clauses [36m304[0m 314.496 ms - -[0m
+[0mGET /api/contracts [32m200[0m 223.410 ms - 16[0m
+[0mGET /api/contracts [32m200[0m 229.879 ms - 16[0m
+[0mGET /api/contracts/clauses [32m200[0m 256.060 ms - 14047[0m
+[0mGET /api/contracts/clauses [32m200[0m 257.739 ms - 14047[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 198.927 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 125.108 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 221.188 ms - -[0m
+[0mGET /api/users/me [36m304[0m 48.574 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 92.882 ms - -[0m
+[0mGET /api/users/me [36m304[0m 60.553 ms - -[0m
+[TELEPROMPTER] shortcut sent: {
+  lead_id: '8ee6e42c-49fe-4152-b753-eb4d5aee7eb6',
+  source: 'crm',
+  key: 'CCC',
+  recipient: '[unknown]'
+}
+[0mPOST /api/teleprompter/mark-sent [32m200[0m 358.754 ms - 50[0m
+[0mPATCH /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 469.709 ms - 4152[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/OFFER_READY [32m200[0m 103.709 ms - 99[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 177.257 ms - 3597[0m
+[0mPATCH /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 399.323 ms - 2786[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/OFFER_READY [36m304[0m 199.551 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 300.169 ms - 3597[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 323.091 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/OFFER_READY [36m304[0m 100.512 ms - -[0m
+[0mGET /api/users/me [36m304[0m 116.406 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 154.680 ms - 3597[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/OFFER_READY [36m304[0m 181.739 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 343.313 ms - 3597[0m
+[0mGET /api/users/me [36m304[0m 113.284 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/OFFER_READY [36m304[0m 223.655 ms - -[0m
+[0mGET /api/users/me [36m304[0m 95.039 ms - -[0m
+[0mPATCH /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 389.512 ms - 2938[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 75.258 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [32m200[0m 144.998 ms - 3851[0m
+[TELEPROMPTER] shortcut sent: {
+  lead_id: '8ee6e42c-49fe-4152-b753-eb4d5aee7eb6',
+  source: 'crm',
+  key: 'CCC',
+  recipient: '[unknown]'
+}
+[0mPOST /api/teleprompter/mark-sent [32m200[0m 222.560 ms - 50[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 656.308 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 345.623 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 547.002 ms - -[0m
+[0mGET /api/users/me [36m304[0m 168.862 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 184.273 ms - -[0m
+[0mGET /api/users/me [36m304[0m 39.453 ms - -[0m
+[0mGET /api/pipeline/today [36m304[0m 104.864 ms - -[0m
+[0mGET /api/pipeline/stats [32m200[0m 147.416 ms - 565[0m
+[0mGET /api/pipeline/profit-radar [36m304[0m 190.330 ms - -[0m
+[0mGET /api/pipeline/today [36m304[0m 94.952 ms - -[0m
+[0mGET /api/leads?limit=50 [32m200[0m 293.404 ms - 185880[0m
+[0mGET /api/pipeline/profit-radar [36m304[0m 98.445 ms - -[0m
+[0mGET /api/pipeline/stats [36m304[0m 156.128 ms - -[0m
+[0mGET /api/leads?limit=50 [36m304[0m 90.788 ms - -[0m
+[0mGET /api/pipeline/health [32m200[0m 241.756 ms - 8047[0m
+[0mGET /api/pipeline [36m304[0m 254.364 ms - -[0m
+[0mGET /api/pipeline/health [32m200[0m 142.545 ms - 8047[0m
+[0mGET /api/pipeline [36m304[0m 173.896 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 178.249 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 236.862 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 200.210 ms - -[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/undefined [36m304[0m 200.944 ms - -[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 318.031 ms - 2832[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 137.238 ms - 2822[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 276.456 ms - 2832[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/LEAD_ENTERED [32m200[0m 171.590 ms - 4327[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 455.425 ms - 4374[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 241.532 ms - 3085[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/CONTACT_MADE [32m200[0m 105.203 ms - 4068[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 684.641 ms - 4187[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 192.383 ms - 3632[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/OFFER_READY [32m200[0m 103.671 ms - 99[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 1267.095 ms - 5273[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 278.048 ms - 4473[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/OFFER_SENT [32m200[0m 112.789 ms - 1386[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 431.288 ms - 3617[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 666.216 ms - 5049[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/OFFER_RECEIVED [32m200[0m 304.618 ms - 489[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 565.041 ms - 3514[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 237.601 ms - 5305[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/GAIN_FEEDBACK [32m200[0m 199.680 ms - 2321[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 294.991 ms - 3551[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 165.923 ms - 5843[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/NO_ANSWER [32m200[0m 109.897 ms - 957[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 141.392 ms - 3244[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 135.812 ms - 6103[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/SELLER_DECLINED [32m200[0m 79.597 ms - 490[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 138.266 ms - 3256[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 116.788 ms - 6369[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/ACTIVE_NEGOTIATION [32m200[0m 95.920 ms - 2909[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 291.871 ms - 3644[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 130.466 ms - 6623[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/TERMS_AGREED [32m200[0m 87.654 ms - 100[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 323.395 ms - 4191[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 143.977 ms - 8813[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/AWAITING_TITLE [32m200[0m 108.864 ms - 102[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 494.378 ms - 5470[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 136.789 ms - 9356[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/CONTRACT_OUT [32m200[0m 117.951 ms - 100[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 976.730 ms - 5897[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 141.757 ms - 9636[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/UNDER_CONTRACT [32m200[0m 85.069 ms - 102[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 226.960 ms - 5488[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 164.877 ms - 9900[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/INSPECTION_PERIOD [32m200[0m 92.386 ms - 105[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 243.895 ms - 5454[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 176.327 ms - 10168[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/INSPECTION_COMPLETE [32m200[0m 81.161 ms - 107[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 284.478 ms - 5444[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 134.451 ms - 10432[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/APPRAISAL_ORDERED [32m200[0m 88.592 ms - 105[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 278.304 ms - 5442[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 154.102 ms - 10690[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/APPRAISAL_DONE [32m200[0m 85.336 ms - 102[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 337.624 ms - 5612[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 155.838 ms - 10934[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/JV_SENT [32m200[0m 98.047 ms - 95[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 632.983 ms - 5655[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 144.600 ms - 11182[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/JV_SIGNED [32m200[0m 79.714 ms - 97[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 238.828 ms - 5427[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 144.589 ms - 11432[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/WIRE_SETUP [32m200[0m 91.307 ms - 98[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 202.306 ms - 5460[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 147.901 ms - 11686[0m
+[0mGET /api/scripts/prompts/stage/506121b2-9ca8-4569-912c-18c33364a567/CLOSING_DATE [32m200[0m 242.213 ms - 100[0m
+[0mPATCH /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 217.448 ms - 5195[0m
+[0mGET /api/leads/506121b2-9ca8-4569-912c-18c33364a567 [32m200[0m 249.761 ms - 11940[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 328.880 ms - -[0m
+[0mGET /api/leads/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6 [36m304[0m 131.840 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 223.337 ms - -[0m
+[0mGET /api/users/me [36m304[0m 39.513 ms - -[0m
+[0mGET /api/scripts/prompts/stage/8ee6e42c-49fe-4152-b753-eb4d5aee7eb6/CONTACT_MADE [36m304[0m 85.537 ms - -[0m
+[0mGET /api/users/me [36m304[0m 38.370 ms - -[0m
+[TELEPROMPTER] shortcut sent: {
+  lead_id: '8ee6e42c-49fe-4152-b753-eb4d5aee7eb6',
+  source: 'crm',
+  key: 'CCC',
+  recipient: '[unknown]'
+}
+[0mPOST /api/teleprompter/mark-sent [32m200[0m 444.585 ms - 50[0m
+[0mPOST /api/scripts/fill [32m200[0m 521.585 ms - 443[0m
+[0mPOST /api/scripts/fill [32m200[0m 277.868 ms - 443[0m
+[0mGET /api/leads/a7a2565c-d9fa-4d99-b86b-0423c444f754 [32m200[0m 155.290 ms - 5540[0m
+[0mPOST /api/contracts/generate [31m500[0m 2.729 ms - 31[0m
+[0mGET /api/leads/a7a2565c-d9fa-4d99-b86b-0423c444f754 [36m304[0m 136.481 ms - -[0m
+[0mGET /api/leads/a7a2565c-d9fa-4d99-b86b-0423c444f754 [36m304[0m 360.510 ms - -[0m
+[0mPOST /api/contracts/generate [31m500[0m 1.150 ms - 31[0m
+[0mGET /api/leads/a7a2565c-d9fa-4d99-b86b-0423c444f754 [36m304[0m 166.816 ms - -[0m
+[0mPOST /api/contracts/generate [31m500[0m 1.503 ms - 31[0m

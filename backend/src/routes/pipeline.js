@@ -43,6 +43,7 @@ router.get('/', async (req, res, next) => {
         const owner = getOwnerForStage(stage);
         byStage[stage].push({
           id: lead.id,
+          stage: lead.stage,
           address: lead.address,
           price: lead.price,
           seller_name: lead.seller_name,

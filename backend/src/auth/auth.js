@@ -7,7 +7,14 @@ const bcrypt = require('bcryptjs');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'divinity-crm-local-jwt-secret-2026';
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === 'production' ? '' : 'divinity-crm-local-jwt-secret-2026');
+
+if (!JWT_SECRET) {
+  console.error('JWT_SECRET not set. Add it to backend/.env or the production environment.');
+  process.exit(1);
+}
 const JWT_EXPIRY = '7d';
 
 // Seed admin users if they don't exist
