@@ -6,6 +6,7 @@ const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { generateContract, formatForTelegram, generateRabbitSignPayload } = require('../services/contract-generator');
+const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
 
 const router = Router();
 
@@ -132,7 +133,7 @@ router.post('/generate-from-template', async (req, res, next) => {
     if (!tpl) return res.status(400).json({ error: 'Invalid template_id' });
 
     // Fetch lead
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, userId]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const l = lead[0];
@@ -192,8 +193,8 @@ router.post('/generate-from-template', async (req, res, next) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *`,
       [
-        uuid(), lead_id, user[0].id, tpl.type,
-        tpl.name, JSON.stringify(tpl.addenda || []), JSON.stringify(tpl.clauses || []),
+        uuid(), lead_id, userId, tpl.type,
+        tpl.name, tpl.addenda || [], tpl.clauses || [],
         JSON.stringify({ template_id, mergedFields, generatedAt: new Date().toISOString() })
       ]
     );
@@ -202,7 +203,7 @@ router.post('/generate-from-template', async (req, res, next) => {
     await query(
       `UPDATE leads SET 
         contract = $1,
-        stage = CASE WHEN stage = 'LOI_APPROVED' THEN 'UNDER_CONTRACT' ELSE stage END,
+        stage = stage,
         updated_at = NOW()
       WHERE id = $2`,
       [tpl.type, lead_id]
@@ -211,7 +212,7 @@ router.post('/generate-from-template', async (req, res, next) => {
     // Log activity
     await query(
       'INSERT INTO activity_log (id, user_id, lead_id, action, details) VALUES (gen_random_uuid(), $1, $2, $3, $4)',
-      [user[0].id, lead_id, 'contract_generated',
+      [userId, lead_id, 'contract_generated',
         JSON.stringify({ template_id, template_name: tpl.name, contract_type: tpl.type })
       ]
     );
@@ -259,7 +260,7 @@ router.post('/generate', async (req, res, next) => {
     }
 
     // Fetch lead
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, user[0].id]);
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, userId]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     // Map DB lead to contract-generator format
@@ -300,8 +301,8 @@ router.post('/generate', async (req, res, next) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *`,
       [
-        uuid(), lead_id, user[0].id, contract_type,
-        pkg.template, JSON.stringify(pkg.addenda), JSON.stringify(pkg.clauses.map(c => c.id)),
+        uuid(), lead_id, userId, contract_type,
+        pkg.template, pkg.addenda, pkg.clauses.map(c => c.id),
         JSON.stringify(pkg)
       ]
     );
@@ -330,16 +331,21 @@ router.post('/generate', async (req, res, next) => {
       ]
     );
 
+    const automation = getAvailableTransitions(lead[0].stage).includes('UNDER_CONTRACT')
+      ? await executeStageAutomations(lead_id, userId, lead[0].stage, 'UNDER_CONTRACT', lead[0])
+      : null;
+
     // Log activity
     await query(
       'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-      [user[0].id, lead_id, 'contract_generated', JSON.stringify({ contract_type, template: pkg.template })]
+      [userId, lead_id, 'contract_generated', JSON.stringify({ contract_type, template: pkg.template })]
     );
 
     res.json({
       contract: contract[0],
       package: pkg,
       formatted: formatForTelegram(pkg),
+      automation,
     });
   } catch (err) {
     next(err);
@@ -424,7 +430,7 @@ router.post('/send-rabbitsign', async (req, res, next) => {
 
     const userId = req.user.userId;
 
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, user[0].id]);
+    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const rs = require('../services/rabbitsign');

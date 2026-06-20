@@ -65,12 +65,12 @@ router.get('/students', async (req, res, next) => {
         u.id, u.email, u.first_name, u.last_name, u.role, u.created_at,
         COUNT(l.id) AS total_leads,
         COUNT(l.id) FILTER (WHERE l.stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active_leads,
-        COUNT(l.id) FILTER (WHERE l.stage = 'OFFER_SENT' OR l.stage = 'NEGOTIATING' OR l.stage = 'UNDER_CONTRACT') AS offers_sent,
+        COUNT(l.id) FILTER (WHERE l.stage = 'OFFER_SENT' OR l.stage = 'ACTIVE_NEGOTIATION' OR l.stage = 'TERMS_AGREED' OR l.stage = 'AWAITING_TITLE' OR l.stage = 'CONTRACT_OUT' OR l.stage = 'UNDER_CONTRACT') AS offers_sent,
         COUNT(l.id) FILTER (WHERE l.stage = 'CLOSED') AS deals_closed,
         COUNT(l.id) FILTER (WHERE l.stage = 'DEAD') AS deals_lost,
-        COUNT(l.id) FILTER (WHERE l.stage = 'NEW_LEAD') AS new_leads,
-        COUNT(l.id) FILTER (WHERE l.stage = 'QUALIFIED') AS qualified_leads,
-        COUNT(l.id) FILTER (WHERE l.stage = 'LOI_REQUESTED' OR l.stage = 'LOI_APPROVED') AS loi_leads,
+        COUNT(l.id) FILTER (WHERE l.stage = 'LEAD_ENTERED') AS new_leads,
+        COUNT(l.id) FILTER (WHERE l.stage = 'CONTACT_MADE') AS qualified_leads,
+        COUNT(l.id) FILTER (WHERE l.stage IN ('OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK')) AS loi_leads,
         COUNT(l.id) FILTER (WHERE l.stage = 'UNDER_CONTRACT') AS under_contract,
         MAX(l.updated_at) AS last_activity
       FROM users u
@@ -149,17 +149,17 @@ router.get('/students/:id/stats', async (req, res, next) => {
 
     // 12-step progress: count leads at each pipeline stage
     const pipelineProgress = {
-      step1_evaluate: stageStats.find(s => s.stage === 'NEW_LEAD')?.count || 0,
-      step2_enter_crm: stageStats.find(s => s.stage === 'NEW_LEAD')?.count || 0,
-      step3_contact: stageStats.find(s => s.stage === 'QUALIFIED')?.count || 0,
-      step4_notes: stageStats.find(s => s.stage === 'QUALIFIED')?.count || 0,
-      step5_ccc: stageStats.find(s => s.stage === 'QUALIFIED')?.count || 0,
-      step6_evaluate_deal: stageStats.find(s => s.stage === 'LOI_REQUESTED')?.count || 0,
-      step7_import_crm: stageStats.find(s => s.stage === 'LOI_REQUESTED')?.count || 0,
-      step8_group_chat: stageStats.find(s => s.stage === 'LOI_APPROVED')?.count || 0,
-      step9_eod_spreadsheet: stageStats.find(s => s.stage === 'LOI_APPROVED')?.count || 0,
+      step1_evaluate: stageStats.find(s => s.stage === 'LEAD_ENTERED')?.count || 0,
+      step2_enter_crm: stageStats.find(s => s.stage === 'LEAD_ENTERED')?.count || 0,
+      step3_contact: stageStats.find(s => s.stage === 'CONTACT_MADE')?.count || 0,
+      step4_notes: stageStats.find(s => s.stage === 'CONTACT_MADE')?.count || 0,
+      step5_ccc: stageStats.find(s => s.stage === 'CONTACT_MADE')?.count || 0,
+      step6_evaluate_deal: stageStats.find(s => s.stage === 'OFFER_READY')?.count || 0,
+      step7_import_crm: stageStats.find(s => s.stage === 'OFFER_READY')?.count || 0,
+      step8_group_chat: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
+      step9_eod_spreadsheet: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
       step10_offer_sent: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
-      step11_followup: stageStats.find(s => s.stage === 'NEGOTIATING')?.count || 0,
+      step11_followup: stageStats.find(s => s.stage === 'GAIN_FEEDBACK')?.count || 0,
       step12_closed: stageStats.find(s => s.stage === 'CLOSED')?.count || 0,
     };
 

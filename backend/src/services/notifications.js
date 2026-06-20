@@ -54,7 +54,7 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View LOI',
   },
-  'OFFER_SENT:GAIN_FEEDBACK': {
+  'OFFER_RECEIVED:GAIN_FEEDBACK': {
     recipients: [{ type: 'email', value: 'homewithkaylamauser@gmail.com' }],
     type: 'gain_feedback',
     titleTemplate: (lead) => `Gain Feedback: ${lead.address}`,
@@ -62,24 +62,46 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
-  'TERMS_AGREED:PSA_SENT': {
+  'ACTIVE_NEGOTIATION:TERMS_AGREED': {
     recipients: [
       { type: 'email', value: 'homewithkaylamauser@gmail.com' },
+      { type: 'email', value: 'JaxonDeasonHomes1@gmail.com' },
     ],
-    type: 'psa_sent',
-    titleTemplate: (lead) => `PSA Sent: ${lead.address}`,
-    bodyTemplate: (lead) => `Kayla has sent the PSA to the seller for review and authorization. Address: ${lead.address}.`,
+    type: 'contract_draft',
+    titleTemplate: (lead) => `Contract Draft Ready: ${lead.address}`,
+    bodyTemplate: (lead) => `Terms are agreed and the contract draft is ready for review. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
-  'PSA_SENT:UNDER_CONTRACT': {
-    // Per Master Playbook Part 7: TC takes over here — inspection, appraisal, title
+  'TERMS_AGREED:AWAITING_TITLE': {
     recipients: [
       { type: 'email', value: 'homewithkaylamauser@gmail.com' },
     ],
+    type: 'contract_drafted',
+    titleTemplate: (lead) => `Contract Drafted: ${lead.address}`,
+    bodyTemplate: (lead) => `Contract has been drafted and the TC handoff is next. Address: ${lead.address}.`,
+    actionUrl: (lead) => `/leads/${lead.id}`,
+    actionLabel: 'Open Lead',
+  },
+  'AWAITING_TITLE:CONTRACT_OUT': {
+    recipients: [
+      { type: 'email', value: 'BGonzalez@sellsmartre.com' },
+      { type: 'email', value: 'monique@sellsmartre.com' },
+    ],
     type: 'tc_takeover',
     titleTemplate: (lead) => `TC Takeover: ${lead.address}`,
-    bodyTemplate: (lead) => `PSA authorized. Contract is now fully executed. TC takes over next steps per Master Playbook Part 7: (1) Kayla arranges home inspector + sewer scope, (2) After completed, appraisal ordered, (3) Montelli contacts title for wiring instructions. Standard 30 day closing. Address: ${lead.address}.`,
+    bodyTemplate: (lead) => `Contract is out and TC owns the next steps: inspection, appraisal, and title coordination. Address: ${lead.address}.`,
+    actionUrl: (lead) => `/leads/${lead.id}`,
+    actionLabel: 'View Lead',
+  },
+  'CONTRACT_OUT:UNDER_CONTRACT': {
+    recipients: [
+      { type: 'email', value: 'BGonzalez@sellsmartre.com' },
+      { type: 'email', value: 'monique@sellsmartre.com' },
+    ],
+    type: 'under_contract',
+    titleTemplate: (lead) => `Under Contract: ${lead.address}`,
+    bodyTemplate: (lead) => `Contract is fully executed. Inspection and appraisal coordination starts now. Address: ${lead.address}.`,
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
@@ -202,4 +224,5 @@ module.exports = {
   getNotificationsForUser,
   getUserByEmail,
   getUsersByRole,
+  STAGE_NOTIFICATION_RECIPIENTS,
 };

@@ -192,7 +192,7 @@ async function getStudentRoster() {
       u.substitute_id, u.coverage_start, u.coverage_end, u.created_at,
       COUNT(l.id) AS total_leads,
       COUNT(l.id) FILTER (WHERE l.stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active_leads,
-      COUNT(l.id) FILTER (WHERE l.stage IN ('OFFER_SENT', 'NEGOTIATING', 'UNDER_CONTRACT')) AS offers_sent,
+      COUNT(l.id) FILTER (WHERE l.stage IN ('OFFER_SENT', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'AWAITING_TITLE', 'CONTRACT_OUT', 'UNDER_CONTRACT')) AS offers_sent,
       COUNT(l.id) FILTER (WHERE l.stage = 'CLOSED') AS deals_closed,
       COUNT(l.id) FILTER (WHERE l.stage = 'DEAD') AS deals_lost,
       COUNT(l.id) FILTER (WHERE l.stage = 'LEAD_ENTERED') AS new_leads,
@@ -283,7 +283,7 @@ async function getStudentDetails(studentId) {
     step8_group_chat: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
     step9_eod_spreadsheet: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
     step10_offer_sent: stageStats.find(s => s.stage === 'OFFER_SENT')?.count || 0,
-    step11_followup: stageStats.find(s => s.stage === 'NEGOTIATING')?.count || 0,
+    step11_followup: stageStats.find(s => s.stage === 'GAIN_FEEDBACK')?.count || 0,
     step12_closed: stageStats.find(s => s.stage === 'CLOSED')?.count || 0,
   };
 
