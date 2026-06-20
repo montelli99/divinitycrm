@@ -695,8 +695,8 @@ function getTransitionScripts(fromStage, toStage, lead) {
     'LEAD_ENTERED→CONTACT_MADE': ['INT', 'CCC'],
     'CONTACT_MADE→OFFER_READY': ['F50', 'F10'],
     'OFFER_READY→OFFER_SENT': ['GCJ'],
-    // OFFER_SENT → GAIN_FEEDBACK combined: 48hr realignment call
-    'OFFER_SENT→GAIN_FEEDBACK': ['LOI', 'POST_OFFER_48HR'],
+    // OFFER_RECEIVED → GAIN_FEEDBACK combined: 48hr realignment call
+    'OFFER_RECEIVED→GAIN_FEEDBACK': ['LOI', 'POST_OFFER_48HR'],
     // GAIN_FEEDBACK → SELLER_DECLINED: SD text + DOM-181
     'GAIN_FEEDBACK→SELLER_DECLINED': ['SD'],
     // GAIN_FEEDBACK → ACTIVE_NEGOTIATION: counter received
@@ -759,12 +759,57 @@ function listAllShortcuts() {
   }));
 }
 
+const STAGE_PRIMARY_SHORTCUTS = {
+  LEAD_ENTERED: { source: 'crm', key: 'INT' },
+  CONTACT_MADE: { source: 'crm', key: 'CCC' },
+  OFFER_READY: (lead = {}) => {
+    const strategy = String(lead.recommended_strategy || '').toLowerCase();
+    const condition = String(lead.condition || '').toLowerCase();
+    if (strategy === 'f10' || condition === 'reno' || condition === 'renovation') {
+      return { source: 'crm', key: 'F10' };
+    }
+    return { source: 'crm', key: 'F50' };
+  },
+  OFFER_SENT: { source: 'crm', key: 'LOI' },
+  OFFER_RECEIVED: { source: 'crm', key: 'GCJ' },
+  GAIN_FEEDBACK: { source: 'crm', key: 'LOI_FOLLOWUP' },
+  NO_ANSWER: { source: 'crm', key: 'LOI2DAYS' },
+  SELLER_DECLINED: { source: 'crm', key: 'SD' },
+  ACTIVE_NEGOTIATION: { source: 'crm', key: 'GOOD_STANDING' },
+  CONTRACT_OUT: { source: 'ghl', key: 'CONTRACT_OUT' },
+  UNDER_CONTRACT: { source: 'ghl', key: 'INSPECTION_SCHEDULED' },
+  APPRAISAL_DONE: { source: 'ghl', key: 'APPRAISAL_DONE' },
+  JV_SIGNED: { source: 'ghl', key: 'JV_SIGNED' },
+  WIRE_SETUP: { source: 'ghl', key: 'SUBTO_PROCESSOR_CONFIRMED' },
+  CLOSING_DATE: { source: 'ghl', key: 'CLOSING_CONFIRMED' },
+};
+
+function getPrimaryShortcutForStage(stage, lead = {}) {
+  const entry = STAGE_PRIMARY_SHORTCUTS[stage];
+  if (!entry) return null;
+  return typeof entry === 'function' ? entry(lead) : entry;
+}
+
+function fillShortcutBySource(source, key, lead) {
+  if (source === 'ghl') {
+    const def = SELLER_UPDATE_TEMPLATES[key];
+    if (!def) return { error: `Template "${key}" not found` };
+    const result = fillTemplate(key, def, lead);
+    return { ...result, source };
+  }
+
+  const result = getTemplateByShortcut(key, lead);
+  return result.error ? result : { ...result, source };
+}
+
 module.exports = {
   fillTemplate,
   getScriptsForStage,
   getTransitionScripts,
   getTemplateByShortcut,
   listAllShortcuts,
+  getPrimaryShortcutForStage,
+  fillShortcutBySource,
   OUTREACH_SCRIPTS,
   SELLER_UPDATE_TEMPLATES,
   CALL_SCRIPTS,

@@ -2,31 +2,47 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
-import { STAGES, STAGE_LABELS, getOwnerForStage } from '../lib/pipeline-stages';
+import { STAGES, STAGE_LABELS } from '../lib/pipeline-stages';
 
 const CONTRACT_TYPES = ['subto', 'cash', 'seller_finance', 'stack50', 'stack10', 'jv', 'commercial', 'portfolio'];
-
-const TAB_NAMES = {
-  details: 'Details',
-  scripts: 'Scripts',
-  history: 'History',
-  notes: 'Notes',
-};
 
 export default function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [lead, setLead] = useState(null);
   const [history, setHistory] = useState([]);
-  const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [generatingContract, setGeneratingContract] = useState(false);
   const [contractType, setContractType] = useState('subto');
   const [contractResult, setContractResult] = useState(null);
-  const [scriptResult, setScriptResult] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [stagePrompt, setStagePrompt] = useState(null);
+  const [stagePromptLoading, setStagePromptLoading] = useState(false);
+  const [stagePromptError, setStagePromptError] = useState('');
+
+  async function loadStagePrompt(stage) {
+    if (!stage) {
+      setStagePrompt(null);
+      setStagePromptError('');
+      setStagePromptLoading(false);
+      return;
+    }
+
+    setStagePromptLoading(true);
+    setStagePromptError('');
+    try {
+      const result = await api.getStagePrompt(id, stage);
+      setStagePrompt(result);
+    } catch (err) {
+      console.error('Stage prompt load error:', err);
+      setStagePrompt(null);
+      setStagePromptError(err.message || 'Failed to load stage scripts');
+    } finally {
+      setStagePromptLoading(false);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -34,8 +50,8 @@ export default function LeadDetail() {
         const data = await api.getLead(id);
         setLead(data.lead);
         setHistory(data.history);
-        setReminders(data.reminders);
         setEditData(data.lead);
+        await loadStagePrompt(data.lead?.stage);
         // Load user profile for scheduling link
         const profile = await api.getMe().catch(() => null);
         setUserProfile(profile?.user || profile);
@@ -52,6 +68,7 @@ export default function LeadDetail() {
     try {
       const result = await api.updateLead(id, { stage: newStage });
       setLead(result.lead);
+      await loadStagePrompt(newStage);
       // Refresh history
       const data = await api.getLead(id);
       setHistory(data.history);
@@ -79,6 +96,7 @@ export default function LeadDetail() {
       const data = await api.getLead(id);
       setLead(data.lead);
       setHistory(data.history);
+      await loadStagePrompt(data.lead?.stage);
     } catch (err) {
       alert('Contract generation failed: ' + err.message);
     } finally {
@@ -86,12 +104,24 @@ export default function LeadDetail() {
     }
   }
 
-  async function handleFillScript(scriptId) {
+  async function handleTeleprompterMarkSent(shortcut) {
+    if (!lead?.id) return;
+
+    const key = shortcut?.key || shortcut?.templateName || shortcut;
+    const body = shortcut?.filled || shortcut?.body || '';
+    const recipient = shortcut?.recipient || 'unknown';
+
     try {
-      const result = await api.fillScript({ script_id: scriptId, lead_id: id });
-      setScriptResult(result);
+      await api.markTeleprompterSent({
+        lead_id: lead.id,
+        source: shortcut?.source || 'crm',
+        key,
+        body,
+        recipient,
+        channel: 'sms',
+      });
     } catch (err) {
-      alert('Script fill failed: ' + err.message);
+      alert('Failed to mark teleprompter text as sent: ' + err.message);
     }
   }
 
@@ -113,25 +143,6 @@ export default function LeadDetail() {
       <div className="page-header">
         <h1>{lead.address}</h1>
         <div className="header-actions">
-          <button
-            onClick={() => navigate(`/teleprompter?lead_id=${id}&stage=${lead.stage}`)}
-            style={{
-              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-              color: '#000',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '6px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-            title="Open script for this lead's current stage"
-          >
-            🎙️ Open in Teleprompter
-          </button>
           <select 
             value={lead.stage} 
             onChange={e => handleStageChange(e.target.value)}
@@ -170,6 +181,66 @@ export default function LeadDetail() {
         </div>
       ) : (
         <>
+          <div style={{ marginBottom: '1rem' }}>
+            {stagePromptLoading ? (
+              <div style={{
+                padding: '1rem 1.25rem',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-xl)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-secondary)',
+              }}>
+                Loading stage scripts...
+              </div>
+            ) : stagePromptError ? (
+              <div style={{
+                padding: '1rem 1.25rem',
+                border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 'var(--radius-xl)',
+                background: 'rgba(127,29,29,0.18)',
+                color: 'var(--text-primary)',
+              }}>
+                <strong style={{ display: 'block', marginBottom: '0.35rem' }}>Stage Scripts Unavailable</strong>
+                <div style={{ color: 'var(--text-secondary)' }}>{stagePromptError}</div>
+                <button className="btn btn-sm btn-secondary" style={{ marginTop: '0.75rem' }} onClick={() => loadStagePrompt(lead.stage)}>
+                  Retry
+                </button>
+              </div>
+            ) : stagePrompt ? (
+              stagePrompt.scripts?.length > 0 ? (
+                <ScriptPromptModal
+                  inline
+                  prompt={stagePrompt.prompt}
+                  scripts={stagePrompt.scripts}
+                  onMarkSent={handleTeleprompterMarkSent}
+                />
+              ) : (
+                <div style={{
+                  padding: '1rem 1.25rem',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-xl)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
+                }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>Stage Scripts</strong>
+                  <div style={{ marginTop: '0.35rem' }}>
+                    No text shortcuts are configured for <strong>{STAGE_LABELS[lead.stage] || lead.stage}</strong> yet.
+                  </div>
+                </div>
+              )
+            ) : (
+              <div style={{
+                padding: '1rem 1.25rem',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-xl)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-secondary)',
+              }}>
+                Stage scripts are unavailable for this lead.
+              </div>
+            )}
+          </div>
+
           <div className="lead-sections">
             <div className="lead-section">
               <h3>Property</h3>
@@ -229,10 +300,6 @@ export default function LeadDetail() {
               <Link to={`/calculator?leadId=${id}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                 🧮 Run Underwriting
               </Link>
-              <button className="btn btn-sm" onClick={() => handleFillScript('int')}>Get INT Script</button>
-              <button className="btn btn-sm" onClick={() => handleFillScript('ccc')}>Get CCC Script</button>
-              <button className="btn btn-sm" onClick={() => handleFillScript('gcj')}>Get GCJ Script</button>
-              <button className="btn btn-sm" onClick={() => handleFillScript('contract_out')}>Get Contract SMS</button>
               {lead.scheduling_link && (
                 <a href={lead.scheduling_link} target="_blank" rel="noopener noreferrer"
                   className="btn btn-sm"
@@ -248,14 +315,6 @@ export default function LeadDetail() {
                 </a>
               )}
             </div>
-
-            {scriptResult && (
-              <div className="script-output">
-                <h4>{scriptResult.script_name}</h4>
-                <pre>{scriptResult.filled_template}</pre>
-                <button className="btn btn-sm" onClick={() => setScriptResult(null)}>Close</button>
-              </div>
-            )}
           </div>
 
           <div className="contract-generation">
@@ -327,4 +386,3 @@ export default function LeadDetail() {
     </div>
   );
 }
-

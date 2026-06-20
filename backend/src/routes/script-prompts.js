@@ -5,7 +5,14 @@
 
 const { Router } = require('express');
 const { query } = require('../db/connection');
-const { getTransitionScripts, getScriptsForStage, getTemplateByShortcut, listAllShortcuts } = require('../services/script-prompts');
+const {
+  getTransitionScripts,
+  getScriptsForStage,
+  getTemplateByShortcut,
+  listAllShortcuts,
+  getPrimaryShortcutForStage,
+  fillShortcutBySource,
+} = require('../services/script-prompts');
 const { getStagePrompt } = require('../services/stage-automations');
 
 const router = Router();
@@ -67,6 +74,33 @@ router.post('/transition', async (req, res, next) => {
   }
 });
 
+function buildPrimaryStageShortcut(stage, lead) {
+  const primary = getPrimaryShortcutForStage(stage, lead);
+  if (!primary) return null;
+
+  const filled = fillShortcutBySource(primary.source, primary.key, lead || {});
+  if (filled?.error) return null;
+
+  return {
+    ...filled,
+    primary: true,
+    stage,
+  };
+}
+
+function buildStageShortcutPayload(stage, lead) {
+  const primary = buildPrimaryStageShortcut(stage, lead);
+  const alternates = getScriptsForStage(stage, lead)
+    .filter(script => !primary || script.shortcut !== primary.shortcut)
+    .map(script => ({ ...script, primary: false }));
+
+  return {
+    primary,
+    alternates,
+    shortcuts: primary ? [primary] : [],
+  };
+}
+
 // GET /api/scripts/prompts/stage/:lead_id/:stage — Get rich prompt for a lead's current stage
 router.get('/stage/:lead_id/:stage', async (req, res, next) => {
   try {
@@ -78,13 +112,15 @@ router.get('/stage/:lead_id/:stage', async (req, res, next) => {
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
     const prompt = getStagePrompt(req.params.stage, lead[0]);
-    const scripts = getScriptsForStage(req.params.stage, lead[0]);
+    const { primary, alternates, shortcuts } = buildStageShortcutPayload(req.params.stage, lead[0]);
 
     res.json({
       lead_id: req.params.lead_id,
       stage: req.params.stage,
       prompt,
-      scripts,
+      primaryShortcut: primary || null,
+      alternates,
+      scripts: shortcuts,
     });
   } catch (err) {
     next(err);
@@ -102,8 +138,14 @@ router.get('/:lead_id', async (req, res, next) => {
     const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [req.params.lead_id, user[0].id]);
     if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
-    const scripts = getScriptsForStage(lead[0].stage, lead[0]);
-    res.json({ lead_id: req.params.lead_id, stage: lead[0].stage, scripts });
+    const { primary, alternates, shortcuts } = buildStageShortcutPayload(lead[0].stage, lead[0]);
+    res.json({
+      lead_id: req.params.lead_id,
+      stage: lead[0].stage,
+      primaryShortcut: primary || null,
+      alternates,
+      scripts: shortcuts,
+    });
   } catch (err) {
     next(err);
   }
