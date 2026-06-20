@@ -4,6 +4,7 @@ const path = require('node:path');
 const Module = require('node:module');
 
 const ROOT = path.resolve(__dirname, '..');
+const TELEPROMPTER_GHL_SMS = path.join(path.resolve(path.join(ROOT, 'src/routes'), '../../../../ghl-automations/modules'), 'sms-templates.js');
 
 function makeRes() {
   return {
@@ -255,4 +256,38 @@ test('pipeline stats and health routes respond with aggregated data', async () =
   });
   assert.equal(healthRes.body.success, true);
   assert.equal(healthRes.body.report, 'scanned:1');
+});
+
+test('teleprompter routes return filled shortcuts and log sends', async () => {
+  const router = loadRouter('src/routes/teleprompter.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('FROM leads WHERE id = $1')) return [{ address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', seller_name: 'Jane Seller', seller_phone: '555-111-2222', seller_email: 'jane@example.com', agent_name: 'Agent A', agent_phone: '555-333-4444', agent_email: 'agent@example.com', price: 250000, contract_type: 'subto', condition: 'turnkey', psa_signed_date: null, coe_date: null, inspection_end_date: null, inspection_period_days: 14, emd_amount: 100, title_company: 'Close Title', title_company_email: 'title@example.com', title_company_phone: '555-555-5555', tc_name: 'TC', tc_email: 'tc@example.com', tc_phone: '555-666-7777', llc_name: 'Divinity LLC' }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/script-prompts': {
+      ...require('./services/script-prompts.js'),
+    },
+    [TELEPROMPTER_GHL_SMS]: {
+      fillSellerUpdate: (key, data) => ({ name: key, body: `ghl:${key}:${data['Property Address'] || ''}`, unfilled: [], stage: key, recipient: 'seller' }),
+    },
+  });
+
+  const stagesRes = await callRoute(router, 'get', '/stages', {});
+  assert.ok(Array.isArray(stagesRes.body.stages));
+
+  const shortcutRes = await callRoute(router, 'get', '/shortcuts/:source/:key', {
+    params: { source: 'crm', key: 'INT' },
+    query: { lead_id: 'lead-1' },
+  });
+  assert.equal(shortcutRes.body.source, 'crm');
+  assert.equal(shortcutRes.body.key, 'INT');
+  assert.match(shortcutRes.body.body, /123 Main St/);
+
+  const markSentRes = await callRoute(router, 'post', '/mark-sent', {
+    body: { lead_id: 'lead-1', source: 'crm', key: 'INT', body: 'hello', recipient: 'Jane Seller', channel: 'sms' },
+  });
+  assert.equal(markSentRes.body.ok, true);
 });
