@@ -29,6 +29,8 @@
 // ALL OUTREACH SCRIPTS (text shortcuts from playbook)
 // =============================================================
 
+const { SMS_TEMPLATES, fillSMSTemplate } = require('./sms-service');
+
 const OUTREACH_SCRIPTS = {
   // --- CORE TEXT SHORTCUTS ---
   INT: {
@@ -760,28 +762,38 @@ function listAllShortcuts() {
 }
 
 const STAGE_PRIMARY_SHORTCUTS = {
-  LEAD_ENTERED: { source: 'crm', key: 'INT' },
-  CONTACT_MADE: { source: 'crm', key: 'CCC' },
+  LEAD_ENTERED: { source: 'sms', key: 'INT' },
+  CONTACT_MADE: { source: 'sms', key: 'CCC' },
   OFFER_READY: (lead = {}) => {
     const strategy = String(lead.recommended_strategy || '').toLowerCase();
     const condition = String(lead.condition || '').toLowerCase();
     if (strategy === 'f10' || condition === 'reno' || condition === 'renovation') {
-      return { source: 'crm', key: 'F10' };
+      return { source: 'sms', key: 'F10' };
     }
-    return { source: 'crm', key: 'F50' };
+    return { source: 'sms', key: 'F50' };
   },
-  OFFER_SENT: { source: 'crm', key: 'LOI' },
-  OFFER_RECEIVED: { source: 'crm', key: 'GCJ' },
-  GAIN_FEEDBACK: { source: 'crm', key: 'LOI_FOLLOWUP' },
-  NO_ANSWER: { source: 'crm', key: 'LOI2DAYS' },
-  SELLER_DECLINED: { source: 'crm', key: 'SD' },
-  ACTIVE_NEGOTIATION: { source: 'crm', key: 'GOOD_STANDING' },
-  CONTRACT_OUT: { source: 'ghl', key: 'CONTRACT_OUT' },
-  UNDER_CONTRACT: { source: 'ghl', key: 'INSPECTION_SCHEDULED' },
-  APPRAISAL_DONE: { source: 'ghl', key: 'APPRAISAL_DONE' },
-  JV_SIGNED: { source: 'ghl', key: 'JV_SIGNED' },
-  WIRE_SETUP: { source: 'ghl', key: 'SUBTO_PROCESSOR_CONFIRMED' },
-  CLOSING_DATE: { source: 'ghl', key: 'CLOSING_CONFIRMED' },
+  OFFER_SENT: { source: 'sms', key: 'GCJ' },
+  OFFER_RECEIVED: null,
+  GAIN_FEEDBACK: { source: 'sms', key: 'LOI' },
+  NO_ANSWER: { source: 'sms', key: 'LOI2DAYS' },
+  SELLER_DECLINED: { source: 'sms', key: 'SD' },
+  ACTIVE_NEGOTIATION: { source: 'sms', key: 'EVERYBODY_WINS' },
+  TERMS_AGREED: null,
+  AWAITING_TITLE: { source: 'sms', key: 'PSA_CALL_OPENER' },
+  CONTRACT_OUT: { source: 'sms', key: 'CONTRACT_OUT' },
+  UNDER_CONTRACT: { source: 'sms', key: 'INSPECTION_SCHEDULED' },
+  INSPECTION_PERIOD: null,
+  INSPECTION_COMPLETE: null,
+  APPRAISAL_ORDERED: null,
+  APPRAISAL_DONE: { source: 'sms', key: 'APPRAISAL_DONE' },
+  JV_SENT: null,
+  JV_SIGNED: { source: 'sms', key: 'JV_SIGNED' },
+  WIRE_SETUP: null,
+  CLOSING_DATE: (lead = {}) => {
+    const strategy = String(lead.recommended_strategy || lead.contract_type || lead.contract || '').toLowerCase();
+    if (strategy.includes('subto')) return { source: 'sms', key: 'SUBTO_PROCESSOR' };
+    return { source: 'sms', key: 'CLOSING_CONFIRMED' };
+  },
 };
 
 function getPrimaryShortcutForStage(stage, lead = {}) {
@@ -791,6 +803,24 @@ function getPrimaryShortcutForStage(stage, lead = {}) {
 }
 
 function fillShortcutBySource(source, key, lead) {
+  if (source === 'sms') {
+    const template = SMS_TEMPLATES[key];
+    if (!template) return { error: `Template "${key}" not found` };
+    return {
+      templateName: key,
+      name: key,
+      description: `SMS shortcut ${key}`,
+      recipientType: 'agent_or_seller',
+      stage: lead?.stage || null,
+      shortcut: key,
+      filled: fillSMSTemplate(template, lead),
+      unfilled: [],
+      recipient: lead?.seller_name || lead?.agent_name || lead?.seller_phone || lead?.agent_phone || '[unknown]',
+      actionRequired: 'Ready to send',
+      source,
+    };
+  }
+
   if (source === 'ghl') {
     const def = SELLER_UPDATE_TEMPLATES[key];
     if (!def) return { error: `Template "${key}" not found` };
