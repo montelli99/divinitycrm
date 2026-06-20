@@ -23,6 +23,8 @@ services:
         value: 3001
       - key: NODE_ENV
         value: production
+      - key: BACKEND_URL
+        value: https://divinitycrm-api.onrender.com
       - key: FRONTEND_URL
         value: https://divinitycrm.onrender.com
 

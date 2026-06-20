@@ -37,7 +37,11 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  },
+}));
 
 // Serve frontend static files from backend/public/
 const path = require('path');

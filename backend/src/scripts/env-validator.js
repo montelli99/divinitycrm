@@ -41,6 +41,10 @@ function main() {
   console.log('🔍 Env Validator — checking for cross-file mismatches\n');
   
   if (!fs.existsSync(SECRETS_FILE)) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(`⚠️  SECRETS.env not found at ${SECRETS_FILE} — skipping local file alignment check in production`);
+      process.exit(0);
+    }
     console.error(`❌ FATAL: SECRETS.env not found at ${SECRETS_FILE}`);
     console.error('   This is the source of truth. Create it first.');
     process.exit(1);
@@ -56,15 +60,16 @@ function main() {
   
   // Keys that should be in BOTH secrets + backend (server-side secrets)
   const sharedBackendKeys = [
-    'RABBITSIGN_KEY_ID', 'RABBITSIGN_API_KEY', 'RABBITSIGN_TEMPLATE_PSA',
-    'NEON_DATABASE_URL', 'CLERK_SECRET_KEY', 'CLERK_WEBHOOK_SECRET',
+    'DATABASE_URL', 'RABBITSIGN_KEY_ID', 'RABBITSIGN_API_KEY', 'RABBITSIGN_TEMPLATE_PSA',
+    'CLERK_SECRET_KEY', 'CLERK_WEBHOOK_SECRET',
+    'BACKEND_URL',
     'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET'
   ];
   
   // Keys that should be in BOTH secrets + frontend (public client-side)
   const sharedFrontendKeys = [
     'CLERK_PUBLISHABLE_KEY', 'VITE_CLERK_PUBLISHABLE_KEY',
-    'VITE_GOOGLE_CLIENT_ID', 'VITE_API_URL'
+    'VITE_API_BASE'
   ];
   
   let mismatches = 0;

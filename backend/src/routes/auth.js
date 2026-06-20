@@ -7,6 +7,12 @@ const { login, authMiddleware } = require('../auth/auth');
 const { getAuthUrl, handleCallback, saveGoogleTokens, getGoogleStatus, disconnectGoogle } = require('../services/google-oauth');
 
 const router = Router();
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+function getGoogleCallbackUrl() {
+  return `${BACKEND_URL}/api/auth/google/callback`;
+}
 
 // POST /api/auth/login — Local email/password login
 router.post('/login', async (req, res, next) => {
@@ -34,7 +40,7 @@ router.post('/login', async (req, res, next) => {
 // GET /api/auth/google/url — Get Google OAuth consent URL
 router.get('/google/url', authMiddleware, async (req, res, next) => {
   try {
-    const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/api/auth/google/callback`;
+    const redirectUri = getGoogleCallbackUrl();
     const state = Buffer.from(JSON.stringify({ userId: req.user.userId })).toString('base64');
     const url = getAuthUrl(redirectUri, state);
     res.json({ url });
@@ -58,17 +64,15 @@ router.get('/google/callback', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid state parameter' });
     }
 
-    const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/api/auth/google/callback`;
+    const redirectUri = getGoogleCallbackUrl();
     const { tokens, profile } = await handleCallback(redirectUri, code);
     await saveGoogleTokens(userId, tokens, profile);
 
     // Redirect back to frontend with success
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-    res.redirect(`${frontendUrl}/profile?google=connected`);
+    res.redirect(`${FRONTEND_URL}/profile?google=connected`);
   } catch (err) {
     console.error('Google callback error:', err);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-    res.redirect(`${frontendUrl}/profile?google=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect(`${FRONTEND_URL}/profile?google=error&message=${encodeURIComponent(err.message)}`);
   }
 });
 

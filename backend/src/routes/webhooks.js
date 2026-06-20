@@ -6,6 +6,7 @@
 const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
+const { verifyWebhook } = require('@clerk/backend/webhooks');
 
 const router = Router();
 
@@ -15,8 +16,17 @@ const router = Router();
 // Events to subscribe to: user.created, user.updated, user.deleted
 router.post('/clerk', async (req, res, next) => {
   try {
-    const { type, data } = req.body;
-    
+    const webhookRequest = new Request('http://localhost/api/webhooks/clerk', {
+      method: req.method,
+      headers: req.headers,
+      body: req.rawBody || JSON.stringify(req.body || {}),
+    });
+    const signingSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET || process.env.CLERK_WEBHOOK_SECRET;
+    const event = await verifyWebhook(webhookRequest, {
+      signingSecret,
+    });
+    const { type, data } = event;
+
     if (type === 'user.created' || type === 'user.updated') {
       const { id: clerkId, email_addresses, first_name, last_name, image_url } = data;
       const email = email_addresses?.[0]?.email_address;
@@ -50,7 +60,8 @@ router.post('/clerk', async (req, res, next) => {
     res.json({ received: true });
   } catch (err) {
     console.error('Clerk webhook error:', err);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    const status = /webhook|signature|secret/i.test(err.message) ? 400 : 500;
+    res.status(status).json({ error: 'Webhook processing failed' });
   }
 });
 
@@ -60,7 +71,7 @@ router.post('/clerk', async (req, res, next) => {
 router.post('/rabbitsign', async (req, res, next) => {
   try {
     const rs = require('../services/rabbitsign');
-    const result = await rs.handleWebhook(req.body);
+    const result = await rs.handleWebhook(req.headers, req.body);
     console.log(`RabbitSign webhook handled: ${JSON.stringify(result)}`);
     res.json({ received: true, ...result });
   } catch (err) {
@@ -70,4 +81,3 @@ router.post('/rabbitsign', async (req, res, next) => {
 });
 
 module.exports = router;
-

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const Module = require('node:module');
+const { Webhook } = require('standardwebhooks');
 
 const ROOT = path.resolve(__dirname, '..');
 const TELEPROMPTER_GHL_SMS = path.join(path.resolve(path.join(ROOT, 'src/routes'), '../../../../ghl-automations/modules'), 'sms-templates.js');
@@ -38,7 +39,7 @@ function findRoute(router, method, routePath) {
 }
 
 async function callRoute(router, method, routePath, { params = {}, query = {}, body = {}, user = { userId: 'user-1' }, headers = {}, runtimeMocks = {} } = {}) {
-  const req = { params, query, body, user, headers };
+  const req = { method: method.toUpperCase(), params, query, body, user, headers };
   const res = makeRes();
   const next = err => { if (err) throw err; };
   const handler = findRoute(router, method, routePath);
@@ -290,4 +291,205 @@ test('teleprompter routes return filled shortcuts and log sends', async () => {
     body: { lead_id: 'lead-1', source: 'crm', key: 'INT', body: 'hello', recipient: 'Jane Seller', channel: 'sms' },
   });
   assert.equal(markSentRes.body.ok, true);
+});
+
+test('auth routes handle login and google oauth flow', async () => {
+  const router = loadRouter('src/routes/auth.js', {
+    '../auth/auth': {
+      login: async (email, password) => (email === 'user@example.com' && password === 'secret' ? { token: 'tok-123', user: { id: 'user-1', email } } : null),
+      authMiddleware: (req, res, next) => { req.user = { userId: 'user-1' }; next(); },
+    },
+    '../services/google-oauth': {
+      getAuthUrl: (redirectUri, state) => `https://google.example/auth?redirect=${encodeURIComponent(redirectUri)}&state=${state}`,
+      handleCallback: async () => ({ tokens: { access_token: 'a', refresh_token: 'r' }, profile: { email: 'user@example.com', name: 'User', picture: 'pic' } }),
+      saveGoogleTokens: async () => undefined,
+      getGoogleStatus: async () => ({ connected: true, email: 'user@example.com' }),
+      disconnectGoogle: async () => undefined,
+    },
+  });
+
+  const badLogin = await callRoute(router, 'post', '/login', { body: { email: 'user@example.com' } });
+  assert.equal(badLogin.statusCode, 400);
+
+  const loginRes = await callRoute(router, 'post', '/login', { body: { email: 'user@example.com', password: 'secret' } });
+  assert.equal(loginRes.body.token, 'tok-123');
+
+  const googleUrlRes = await callRoute(router, 'get', '/google/url', {});
+  assert.match(googleUrlRes.body.url, /google\.example/);
+
+  const callbackRes = await callRoute(router, 'get', '/google/callback', { query: { code: 'code-123', state: Buffer.from(JSON.stringify({ userId: 'user-1' })).toString('base64') } });
+  assert.equal(callbackRes.redirectUrl, 'http://localhost:5173/profile?google=connected');
+
+  const statusRes = await callRoute(router, 'get', '/google/status', {});
+  assert.equal(statusRes.body.connected, true);
+
+  const disconnectRes = await callRoute(router, 'post', '/google/disconnect', {});
+  assert.equal(disconnectRes.body.success, true);
+});
+
+test('calculator routes return analysis and persisted lead data', async () => {
+  const router = loadRouter('src/routes/calculator.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('UPDATE leads')) return [{ id: 'lead-1' }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        if (sql.includes('FROM leads') && sql.includes('WHERE id = $1 AND user_id = $2')) {
+          return [{ id: 'lead-1', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, arv: 325000, beds: 3, baths: 2, sqft: 1800, condition: 'turnkey', repairs_estimate: 20000, cash_offer: 150000, f50_offer: 175000, subto_offer: 180000, recommended_strategy: 'stack50', one_percent_rule: true, dscr: 1.3, cash_flow: 450, existing_loan_balance: 180000, existing_loan_rate: 0.045, monthly_rent: 2500, has_hoa: false, has_pool: false, in_flood_zone: false, population: 12000, occupancy: 'occupied', source: 'referral', stage: 'OFFER_READY' }];
+        }
+        return [];
+      },
+    },
+    '../services/calculator': {
+      calculate: () => ({ structures: [{ offer: 111 }, { offer: 222 }, {}, {}, { offer: 333 }], metadata: { percRule: 1.1, dscr: 1.4, cashFlow: 250 } }),
+      checkBuyBox: () => ({ allPass: true, failures: [] }),
+      recommendStrategy: () => ({ strategy: 'Stack50' }),
+    },
+  });
+
+  const badAnalyze = await callRoute(router, 'post', '/analyze', { body: { askingPrice: 250000 } });
+  assert.equal(badAnalyze.statusCode, 400);
+
+  const analyzeRes = await callRoute(router, 'post', '/analyze', { body: { arv: 325000, askingPrice: 250000, monthlyRent: 2500, leadId: 'lead-1' } });
+  assert.equal(analyzeRes.body.success, true);
+  assert.equal(analyzeRes.body.leadUpdated, true);
+
+  const buyboxRes = await callRoute(router, 'post', '/buybox', { body: { state: 'TX', population: 12000, hasHOA: false, hasPool: false, inFloodZone: false } });
+  assert.equal(buyboxRes.body.success, true);
+  assert.equal(buyboxRes.body.buyBox.allPass, true);
+
+  const leadRes = await callRoute(router, 'get', '/lead/:id', { params: { id: 'lead-1' } });
+  assert.equal(leadRes.body.success, true);
+  assert.equal(leadRes.body.lead.stage, 'OFFER_READY');
+});
+
+test('notifications routes list, count, and update inbox items', async () => {
+  const actions = [];
+  const router = loadRouter('src/routes/notifications.js', {
+    '../auth/auth': { authMiddleware: (req, res, next) => next() },
+    '../services/notifications': {
+      getNotificationsForUser: async (userId, opts) => ({ notifications: [{ id: 'n-1', recipient_id: userId, title: `filter:${opts.filter}` }], unreadCount: 4 }),
+      markRead: async (id, userId) => actions.push(['read', id, userId]),
+      markAllRead: async userId => actions.push(['read-all', userId]),
+      archive: async (id, userId) => actions.push(['archive', id, userId]),
+    },
+  });
+
+  const listRes = await callRoute(router, 'get', '/', { query: { filter: 'unread', limit: 25 } });
+  assert.equal(listRes.body.unreadCount, 4);
+  assert.equal(listRes.body.notifications[0].title, 'filter:unread');
+
+  const unreadCountRes = await callRoute(router, 'get', '/unread-count', {
+    runtimeMocks: {
+      '../db/connection': {
+        query: async () => [{ count: '7' }],
+      },
+    },
+  });
+  assert.equal(unreadCountRes.body.count, 7);
+
+  const readRes = await callRoute(router, 'post', '/:id/read', { params: { id: 'n-1' } });
+  const readAllRes = await callRoute(router, 'post', '/read-all', {});
+  const archiveRes = await callRoute(router, 'post', '/:id/archive', { params: { id: 'n-1' } });
+
+  assert.equal(readRes.body.success, true);
+  assert.equal(readAllRes.body.success, true);
+  assert.equal(archiveRes.body.success, true);
+  assert.deepEqual(actions, [['read', 'n-1', 'user-1'], ['read-all', 'user-1'], ['archive', 'n-1', 'user-1']]);
+});
+
+test('webhooks routes handle clerk and rabbitsign events', async () => {
+  const queryCalls = [];
+  const router = loadRouter('src/routes/webhooks.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        queryCalls.push({ sql, params });
+        if (sql.includes('SELECT id, stage FROM leads WHERE rabbitsign_envelope_id = $1')) return [{ id: 'lead-1', stage: 'CONTRACT_OUT' }];
+        return [];
+      },
+    },
+    uuid: { v4: () => 'uuid-1' },
+  });
+
+  const clerkSecret = `whsec_${Buffer.from('clerk-test-secret').toString('base64')}`;
+  const clerkWebhook = new Webhook(clerkSecret);
+  const previousClerkSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
+  process.env.CLERK_WEBHOOK_SIGNING_SECRET = clerkSecret;
+
+  try {
+    const clerkCreateBody = { type: 'user.created', data: { id: 'clerk-1', email_addresses: [{ email_address: 'new@example.com' }], first_name: 'New', last_name: 'User', image_url: 'https://img.example/avatar.png' } };
+    const clerkCreateTimestamp = Math.floor(Date.now() / 1000);
+    const clerkCreateSignature = clerkWebhook.sign('msg-clerk-create', new Date(clerkCreateTimestamp * 1000), JSON.stringify(clerkCreateBody));
+
+    const clerkCreate = await callRoute(router, 'post', '/clerk', {
+      body: clerkCreateBody,
+      headers: {
+        'svix-id': 'msg-clerk-create',
+        'svix-timestamp': String(clerkCreateTimestamp),
+        'svix-signature': clerkCreateSignature,
+      },
+    });
+    assert.equal(clerkCreate.body.received, true);
+
+    const clerkDeleteBody = { type: 'user.deleted', data: { id: 'clerk-1' } };
+    const clerkDeleteTimestamp = Math.floor(Date.now() / 1000);
+    const clerkDeleteSignature = clerkWebhook.sign('msg-clerk-delete', new Date(clerkDeleteTimestamp * 1000), JSON.stringify(clerkDeleteBody));
+
+    const clerkDelete = await callRoute(router, 'post', '/clerk', {
+      body: clerkDeleteBody,
+      headers: {
+        'svix-id': 'msg-clerk-delete',
+        'svix-timestamp': String(clerkDeleteTimestamp),
+        'svix-signature': clerkDeleteSignature,
+      },
+    });
+    assert.equal(clerkDelete.body.received, true);
+
+    const rabbitsignRes = await callRoute(router, 'post', '/rabbitsign', {
+      body: { status: 'completed' },
+      runtimeMocks: {
+        '../services/rabbitsign': {
+          handleWebhook: async (_headers, body) => ({ verified: true, status: body.status }),
+        },
+      },
+    });
+    assert.equal(rabbitsignRes.body.received, true);
+    assert.equal(rabbitsignRes.body.verified, true);
+    assert.equal(rabbitsignRes.body.status, 'completed');
+  } finally {
+    if (previousClerkSecret === undefined) {
+      delete process.env.CLERK_WEBHOOK_SIGNING_SECRET;
+    } else {
+      process.env.CLERK_WEBHOOK_SIGNING_SECRET = previousClerkSecret;
+    }
+  }
+});
+
+test('admin dashboard returns aggregates for admins only', async () => {
+  const router = loadRouter('src/routes/admin.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role FROM users WHERE id = $1')) return [{ role: params?.[0] === 'admin-1' ? 'admin' : 'student' }];
+        if (sql.includes('COUNT(*) AS total_leads')) return [{ total_leads: 10, active: 6, closed: 3, dead: 1, added_today: 2, avg_days_to_close: 14 }];
+        if (sql.includes('SUM(price) AS total_value')) return [{ total_value: 1230000, total_profit: 210000, active_count: 6 }];
+        if (sql.includes('COUNT(l.id) AS total_leads')) return [{ id: 'student-1', email: 'student@example.com', first_name: 'Stu', last_name: 'Dent', role: 'student', total_leads: 4, active_leads: 2, deals_closed: 1, deals_lost: 1, offers_sent: 1, active_negotiations: 1, contracts_to_draft: 1, under_contract: 1, last_activity: new Date().toISOString() }];
+        if (sql.includes('FROM leads') && sql.includes('GROUP BY stage')) return [{ stage: 'OFFER_SENT', count: 2 }];
+        if (sql.includes('days_stalled')) return [{ id: 'lead-1', address: '123 Main St', stage: 'OFFER_SENT', price: 250000, student_email: 'student@example.com', first_name: 'Stu', days_stalled: 9 }];
+        if (sql.includes('follow_up_48hr_due')) return [{ id: 'lead-2', address: '456 Oak Ave', price: 300000, student_email: 'student@example.com', first_name: 'Stu', follow_up_48hr_due: new Date().toISOString(), offer_sent_date: new Date().toISOString() }];
+        if (sql.includes('FROM activity_log')) return [{ id: 'act-1', address: '123 Main St', student_email: 'student@example.com', first_name: 'Stu' }];
+        if (sql.includes('GROUP BY source')) return [{ source: 'referral', count: 5 }];
+        return [];
+      },
+    },
+  });
+
+  const forbiddenRes = await callRoute(router, 'get', '/dashboard', { user: { userId: 'student-1' } });
+  assert.equal(forbiddenRes.statusCode, 403);
+
+  const dashboardRes = await callRoute(router, 'get', '/dashboard', { user: { userId: 'admin-1' } });
+  assert.equal(dashboardRes.body.success, true);
+  assert.equal(dashboardRes.body.overall.total_leads, 10);
+  assert.equal(dashboardRes.body.overall.conversion_rate, 75);
+  assert.equal(dashboardRes.body.students[0].conversion_rate, 50);
+  assert.equal(dashboardRes.body.stageDistribution[0].stage, 'OFFER_SENT');
+  assert.equal(dashboardRes.body.sourceBreakdown[0].source, 'referral');
 });
