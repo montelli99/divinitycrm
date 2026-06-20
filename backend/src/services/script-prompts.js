@@ -704,16 +704,26 @@ function getTransitionScripts(fromStage, toStage, lead) {
     // GAIN_FEEDBACK → ACTIVE_NEGOTIATION: counter received
     'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': ['GOOD_STANDING'],
     'ACTIVE_NEGOTIATION→TERMS_AGREED': [],
-    // TERMS_AGREED → PSA_SENT: Kayla drafts + TC sends
-    'TERMS_AGREED→PSA_SENT': ['CCC'],
-    // PSA_SENT → UNDER_CONTRACT: TC handoff
-    'PSA_SENT→UNDER_CONTRACT': [],
-    // UNDER_CONTRACT → INSPECTION_COMPLETE: inspection + appraisal
-    'UNDER_CONTRACT→INSPECTION_COMPLETE': [],
-    // INSPECTION_COMPLETE → APPRAISAL_DONE: appraisal result
-    'INSPECTION_COMPLETE→APPRAISAL_DONE': [],
-    // APPRAISAL_DONE → WIRE_SETUP: title wire instructions
-    'APPRAISAL_DONE→WIRE_SETUP': [],
+    // TERMS_AGREED → AWAITING_TITLE: contract drafting handoff
+    'TERMS_AGREED→AWAITING_TITLE': ['CCC'],
+    // AWAITING_TITLE → CONTRACT_OUT: TC handoff
+    'AWAITING_TITLE→CONTRACT_OUT': [],
+    // CONTRACT_OUT → UNDER_CONTRACT: contract sent / signature flow
+    'CONTRACT_OUT→UNDER_CONTRACT': [],
+    // UNDER_CONTRACT → INSPECTION_PERIOD: inspection + appraisal prep
+    'UNDER_CONTRACT→INSPECTION_PERIOD': [],
+    // INSPECTION_PERIOD → INSPECTION_COMPLETE: inspection result
+    'INSPECTION_PERIOD→INSPECTION_COMPLETE': [],
+    // INSPECTION_COMPLETE → APPRAISAL_ORDERED: appraisal ordered
+    'INSPECTION_COMPLETE→APPRAISAL_ORDERED': [],
+    // APPRAISAL_ORDERED → APPRAISAL_DONE: appraisal result
+    'APPRAISAL_ORDERED→APPRAISAL_DONE': [],
+    // APPRAISAL_DONE → JV_SENT: JV path
+    'APPRAISAL_DONE→JV_SENT': [],
+    // JV_SENT → JV_SIGNED: JV signature flow
+    'JV_SENT→JV_SIGNED': [],
+    // JV_SIGNED → WIRE_SETUP: wire instructions
+    'JV_SIGNED→WIRE_SETUP': [],
     // WIRE_SETUP → CLOSING_DATE: final wire + close
     'WIRE_SETUP→CLOSING_DATE': [],
     '*→DEAD': ['SD'],

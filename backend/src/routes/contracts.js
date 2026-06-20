@@ -5,7 +5,7 @@
 const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
-const { generateContract, formatForTelegram, generateRabbitSignPayload } = require('../services/contract-generator');
+const { generateContract, formatForTelegram } = require('../services/contract-generator');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
 
 const router = Router();
@@ -203,7 +203,6 @@ router.post('/generate-from-template', async (req, res, next) => {
     await query(
       `UPDATE leads SET 
         contract = $1,
-        stage = stage,
         updated_at = NOW()
       WHERE id = $2`,
       [tpl.type, lead_id]
@@ -346,45 +345,6 @@ router.post('/generate', async (req, res, next) => {
       package: pkg,
       formatted: formatForTelegram(pkg),
       automation,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/contracts/send-rabbitsign — Send contract to RabbitSign
-router.post('/send-rabbitsign', async (req, res, next) => {
-  try {
-    const userId = req.user.userId;
-
-    const { contract_id } = req.body;
-    if (!contract_id) return res.status(400).json({ error: 'contract_id is required' });
-
-    // Fetch contract
-    const contract = await query('SELECT * FROM contracts WHERE id = $1', [contract_id]);
-    if (contract.length === 0) return res.status(404).json({ error: 'Contract not found' });
-
-    const pkg = contract[0].payload;
-    const apiKey = process.env.RABBITSIGN_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: 'RABBITSIGN_API_KEY not configured. Add it to .env' });
-    }
-
-    // Generate RabbitSign payload
-    const rsPayload = generateRabbitSignPayload(pkg, {
-      apiKey,
-      signerName: pkg.parties.seller,
-      signerEmail: pkg.parties.sellerEmail,
-    });
-
-    // TODO: Actually POST to RabbitSign API when PDF generation is ready
-    // For now, return the payload that would be sent
-    res.json({
-      status: 'payload_ready',
-      message: 'RabbitSign payload generated. PDF generation needed before live send.',
-      rabbitsign_payload: rsPayload,
-      note: 'POST this to the RabbitSign API endpoint when PDF is available.',
     });
   } catch (err) {
     next(err);

@@ -18,8 +18,10 @@
 
 const { query } = require('../db/connection');
 const { getTransitionScripts, fillTemplate, OUTREACH_SCRIPTS, SELLER_UPDATE_TEMPLATES } = require('./script-prompts');
+const { sendTemplate } = require('./sms-service');
 // System notifications via in-app inbox (replaces SMTP)
 const { fireStageNotifications, getUserByEmail, createNotification } = require('./notifications');
+const { STAGE_EMAIL_KEYS, sendStageEmail } = require('./email-service');
 const { createFolderFromTemplate } = require('./rabbitsign');
 
 const CONTRACT_TEMPLATE_MAP = {
@@ -28,8 +30,6 @@ const CONTRACT_TEMPLATE_MAP = {
   jv_4party: 'rPx7lrG27B1u2pxVzwl21e',
   subto_addendum: '3sIaAVDxaLO386eHCPXe2F',
 };
-// SMS: Students copy pre-filled templates from prompts and paste into their own phones.
-// No automated SMS sending in student CRM.
 const { generateCompsReport, saveCompsReport } = require('./comps-engine');
 const { createMenteeRecord, reassignLead, setVacationMode, endVacationMode } = require('./student-roster');
 const { createDispoRecord, transitionDispoStatus } = require('./dispo-tracker');
@@ -54,8 +54,7 @@ const { tagLeadSource, scoreLead } = require('./lead-source-tracker');
 //   CLOSING — wire + close of escrow. (Part 7: "Close of Escrow → All funds
 //     distributed at title company.")
 //
-// Removed stages: AWAITING_TITLE, JV_SENT, JV_SIGNED (not in source).
-// These were either conflated with adjacent stages or fabricated.
+// TC / Closing stages remain part of the current 21-stage pipeline.
 
 const OWNERS = {
   MONTELLI: {
@@ -91,25 +90,25 @@ const STAGE_TRANSITIONS = {
   // Each transition: stageNumber, workflow, owner, name, description, automations, ghl_actions.
   'LEAD_ENTERED→CONTACT_MADE': { stageNumber: 1, workflow: 'wf_lead_entered_buybox', owner: 'Montelli', name: 'Lead Entered → Contact Made', description: 'Buy-box check. Pre-screen Zillow. Daily AM lead queue.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/lead-entered' }, { type: 'quick_buybox' }, { type: 'log', message: 'Stage 1: Buy-box check passed.' }], ghl_actions: ['Wait', 'Add Note'] },
   'CONTACT_MADE→OFFER_READY': { stageNumber: 2, workflow: 'wf_contact_made_ccc', owner: 'Montelli', name: 'Contact Made → Offer Ready', description: 'Send CCC SMS. Set 48hr nurture timer. PPC AM workflow if PPC.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'log', message: 'Stage 2: CCC prepared. 48hr timer set.' }], ghl_actions: ['Send SMS (CCC)', 'Write Custom Field', 'Internal Notification'] },
-  'OFFER_READY→OFFER_SENT': { stageNumber: 3, workflow: 'wf_offer_ready_run_underwriter', owner: 'Montelli', name: 'Offer Ready → Offer Sent', description: 'Run 5-strategy underwriting. Pick recommended. Generate LOI doc. Email Seth.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_doc_analysis' }, { type: 'run_comps' }, { type: 'run_underwriting' }, { type: 'loi_request' }, { type: 'log', message: 'Stage 3: Underwriting complete. LOI generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Internal Notification', 'Wait', 'Write Custom Field'] },
+  'OFFER_READY→OFFER_SENT': { stageNumber: 3, workflow: 'wf_offer_ready_run_underwriter', owner: 'Montelli', name: 'Offer Ready → Offer Sent', description: 'Run 5-strategy underwriting. Pick recommended. Generate LOI doc. Email Seth.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_doc_analysis' }, { type: 'run_comps' }, { type: 'run_underwriting' }, { type: 'loi_request' }, { type: 'send_sms', template: 'GCJ' }, { type: 'log', message: 'Stage 3: Underwriting complete. LOI generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Internal Notification', 'Wait', 'Write Custom Field'] },
   'OFFER_SENT→OFFER_RECEIVED': { stageNumber: 4, workflow: 'wf_offer_sent_48hr_timer', owner: 'Montelli', name: 'Offer Sent → Offer Received', description: 'Log Offer Sent At. Schedule 48hr timer. Send GCJ SMS.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_field', field: 'offer_sent_date', value: 'now' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'log', message: 'Stage 4: Offer Sent. 48hr timer scheduled.' }], ghl_actions: ['Send SMS (GCJ)', 'Wait', 'Write Custom Field'] },
-  'OFFER_RECEIVED→GAIN_FEEDBACK': { stageNumber: 5, workflow: 'wf_offer_received_notify_kayla', owner: 'Montelli', name: 'Offer Received → Gain Feedback', description: 'Notify Kayla. Do NOT auto-advance — Kayla controls this stage.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'notify', recipient: 'Kayla', method: 'telegram+email' }, { type: 'log', message: 'Stage 5: Kayla notified.' }], ghl_actions: ['Internal Notification', 'Send Email'] },
-  'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': { stageNumber: 6, workflow: 'wf_gain_feedback_realign', owner: 'Montelli', name: 'Gain Feedback → Active Negotiation', description: 'Send LOI intent SMS. Schedule 48hr escalation. Branch on Seller Response.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'log', message: 'Stage 6: LOI follow-up sent.' }], ghl_actions: ['Send SMS (LOI)', 'Wait', 'If/Then'] },
-  'GAIN_FEEDBACK→NO_ANSWER': { stageNumber: 7, workflow: 'wf_no_answer_escalation', owner: 'Montelli', name: 'No Answer After GFB', description: 'Voice memo day 0. LOI2DAYS day 2. SD day 4. DOM-181 calendar.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'dom_181' }, { type: 'log', message: 'Stage 7: Voice memo + LOI2DAYS + SD scheduled. DOM-181 set.' }], ghl_actions: ['Wait', 'Send SMS', 'Create Task'] },
-  'GAIN_FEEDBACK→SELLER_DECLINED': { stageNumber: 8, workflow: 'wf_seller_declined_nurture', owner: 'Montelli', name: 'Seller Declined', description: 'SD SMS. 30-day revisit schedule. DOM-181 reminder.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'dom_181' }, { type: 'log', message: 'Stage 8: SD sent. 30-day revisit scheduled.' }], ghl_actions: ['Send SMS (SD)', 'Wait', 'Add Note'] },
+  'OFFER_RECEIVED→GAIN_FEEDBACK': { stageNumber: 5, workflow: 'wf_offer_received_notify_kayla', owner: 'Montelli', name: 'Offer Received → Gain Feedback', description: 'Notify Kayla. Do NOT auto-advance — Kayla controls this stage.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'notify', recipient: 'Kayla', method: 'telegram+email' }, { type: 'send_sms', template: 'LOI' }, { type: 'log', message: 'Stage 5: Kayla notified.' }], ghl_actions: ['Internal Notification', 'Send Email'] },
+  'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': { stageNumber: 6, workflow: 'wf_gain_feedback_realign', owner: 'Montelli', name: 'Gain Feedback → Active Negotiation', description: 'Send LOI intent SMS. Schedule 48hr escalation. Branch on Seller Response.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'send_sms', template: 'LOI' }, { type: 'log', message: 'Stage 6: LOI follow-up sent.' }], ghl_actions: ['Send SMS (LOI)', 'Wait', 'If/Then'] },
+  'GAIN_FEEDBACK→NO_ANSWER': { stageNumber: 7, workflow: 'wf_no_answer_escalation', owner: 'Montelli', name: 'No Answer After GFB', description: 'Voice memo day 0. LOI2DAYS day 2. SD day 4. DOM-181 calendar.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'dom_181' }, { type: 'send_sms', template: 'LOI2DAYS' }, { type: 'log', message: 'Stage 7: Voice memo + LOI2DAYS + SD scheduled. DOM-181 set.' }], ghl_actions: ['Wait', 'Send SMS', 'Create Task'] },
+  'GAIN_FEEDBACK→SELLER_DECLINED': { stageNumber: 8, workflow: 'wf_seller_declined_nurture', owner: 'Montelli', name: 'Seller Declined', description: 'SD SMS. 30-day revisit schedule. DOM-181 reminder.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'dom_181' }, { type: 'send_sms', template: 'SD' }, { type: 'log', message: 'Stage 8: SD sent. 30-day revisit scheduled.' }], ghl_actions: ['Send SMS (SD)', 'Wait', 'Add Note'] },
   'ACTIVE_NEGOTIATION→TERMS_AGREED': { stageNumber: 9, workflow: 'wf_active_negotiation_recalc', owner: 'Montelli', name: 'Active Negotiation → Terms Agreed', description: 'Re-run underwriting with counter offer. Notify Kayla + Jaxon.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_underwriting' }, { type: 'notify' }, { type: 'log', message: 'Stage 9: Recalc done. Kayla + Jaxon notified.' }], ghl_actions: ['Internal Notification', 'Write Custom Field'] },
   'TERMS_AGREED→AWAITING_TITLE': { stageNumber: 10, workflow: 'wf_terms_agreed_contract_draft', owner: 'Montelli', name: 'Terms Agreed → Awaiting Title', description: 'Generate contract doc. Set 12 GHL fields. 72hr wait.', automations: [{ type: 'generate_contract' }, { type: 'write_fields', fields: ['contract_type', 'coe_date', 'inspection_end_date', 'emd_amount', 'title_company', 'llc_name', 'property_apn'] }, { type: 'notify' }, { type: 'log', message: 'Stage 10: Contract drafted. 12 GHL fields set.' }], ghl_actions: ['Generate Document', 'Write Custom Field', 'Internal Notification', 'Wait'] },
-  'AWAITING_TITLE→CONTRACT_OUT': { stageNumber: 11, workflow: 'wf_awaiting_title_72hr', owner: 'TC', name: 'Awaiting Title → Contract Out', description: 'SMS seller for mortgage statement. 72hr alert if Loan Balance not set.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'custom', offset_hours: 72 }, { type: 'log', message: 'Stage 11: SMS sent to seller.' }], ghl_actions: ['Send SMS', 'Wait', 'If/Then'] },
-  'CONTRACT_OUT→UNDER_CONTRACT': { stageNumber: 12, workflow: 'wf_contract_out_rabbitsign', owner: 'TC', name: 'Contract Out → Under Contract (THE BIG ONE)', description: 'RabbitSign envelope. PSA + Addendum if SubTo. + JV if applicable. Set PSA Signed Date, COE Date (+30), Inspection End Date (+14), Title Company, EMD Amount ($100), Has Subject To Addendum.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/contract-sign' }, { type: 'rabbitsign' }, { type: 'write_fields', fields: ['psa_signed_date', 'coe_date', 'inspection_end_date', 'title_company', 'emd_amount', 'has_subject_to_addendum'] }, { type: 'log', message: 'Stage 12: RabbitSign envelope generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Write Custom Field', 'Wait'] },
+  'AWAITING_TITLE→CONTRACT_OUT': { stageNumber: 11, workflow: 'wf_awaiting_title_72hr', owner: 'TC', name: 'Awaiting Title → Contract Out', description: 'SMS seller for mortgage statement. 72hr alert if Loan Balance not set.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'custom', offset_hours: 72 }, { type: 'send_sms', template: 'PSA_CALL_OPENER' }, { type: 'send_sms', template: 'CONTRACT_OUT' }, { type: 'log', message: 'Stage 11: SMS sent to seller.' }], ghl_actions: ['Send SMS', 'Wait', 'If/Then'] },
+  'CONTRACT_OUT→UNDER_CONTRACT': { stageNumber: 12, workflow: 'wf_contract_out_rabbitsign', owner: 'TC', name: 'Contract Out → Under Contract (THE BIG ONE)', description: 'RabbitSign envelope. PSA + Addendum if SubTo. + JV if applicable. Set PSA Signed Date, COE Date (+30), Inspection End Date (+14), Title Company, EMD Amount ($100), Has Subject To Addendum.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/contract-sign' }, { type: 'rabbitsign' }, { type: 'write_fields', fields: ['psa_signed_date', 'coe_date', 'inspection_end_date', 'title_company', 'emd_amount', 'has_subject_to_addendum'] }, { type: 'send_sms', template: 'INSPECTION_SCHEDULED' }, { type: 'log', message: 'Stage 12: RabbitSign envelope generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Write Custom Field', 'Wait'] },
   'UNDER_CONTRACT→INSPECTION_PERIOD': { stageNumber: 13, workflow: 'wf_under_contract_tc_handoff', owner: 'TC', name: 'Under Contract → Inspection Period', description: 'TC handshake email (BGonzalez + monique). 14-day countdown. Day 7 SMS. Day 14 Kayla alert.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 13: TC handshake sent. 14-day countdown started.' }], ghl_actions: ['Send Email', 'Wait', 'Create Task'] },
   'INSPECTION_PERIOD→INSPECTION_COMPLETE': { stageNumber: 14, workflow: 'wf_inspection_period_daily_check', owner: 'TC', name: 'Inspection Period → Inspection Complete', description: 'Day 14 alert to Kayla. If Inspection Terminated → SELLER_DECLINED.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 14: Inspection period active.' }], ghl_actions: ['Internal Notification', 'If/Then'] },
   'INSPECTION_COMPLETE→APPRAISAL_ORDERED': { stageNumber: 15, workflow: 'wf_inspection_complete', owner: 'TC', name: 'Inspection Complete → Appraisal Ordered', description: 'Auto-advance. No human action required.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 15: Inspection complete. Auto-advance to Stage 16.' }], ghl_actions: ['Write Custom Field'] },
-  'APPRAISAL_ORDERED→APPRAISAL_DONE': { stageNumber: 16, workflow: 'wf_appraisal_ordered', owner: 'TC', name: 'Appraisal Ordered → Appraisal Done', description: 'Coordinate with TC for appraiser access. Wait for Appraisal Result field.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 16: Appraisal ordered.' }], ghl_actions: ['Create Task', 'Wait'] },
+  'APPRAISAL_ORDERED→APPRAISAL_DONE': { stageNumber: 16, workflow: 'wf_appraisal_ordered', owner: 'TC', name: 'Appraisal Ordered → Appraisal Done', description: 'Coordinate with TC for appraiser access. Wait for Appraisal Result field.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'send_sms', template: 'APPRAISAL_DONE' }, { type: 'log', message: 'Stage 16: Appraisal ordered.' }], ghl_actions: ['Create Task', 'Wait'] },
   'APPRAISAL_DONE→JV_SENT': { stageNumber: 17, workflow: 'wf_appraisal_done_recalc', owner: 'TC', name: 'Appraisal Done → JV Sent (JV path)', description: 'Re-run underwriting with appraisal value. Branch on appraisal < PP. Move to JV_SENT if JV deal.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_underwriting' }, { type: 'notify' }, { type: 'log', message: 'Stage 17: Appraisal done. (JV path)' }], ghl_actions: ['Internal Notification', 'Send SMS', 'Write Custom Field', 'If/Then'] },
   'APPRAISAL_DONE→WIRE_SETUP': { stageNumber: 17, workflow: 'wf_appraisal_done_recalc', owner: 'TC', name: 'Appraisal Done → Wire Setup (no JV)', description: 'Skip JV. Go directly to wire setup when no JV deal.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_underwriting' }, { type: 'log', message: 'Stage 17: Appraisal done. (No JV path)' }], ghl_actions: ['Send SMS', 'Write Custom Field'] },
-  'JV_SENT→JV_SIGNED': { stageNumber: 18, workflow: 'wf_jv_sent_rabbitsign', owner: 'TC', name: 'JV Sent → JV Signed', description: 'Determine JV type (3-party or 4-party). Pre-fill parties + percentages. Generate RabbitSign envelope.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/contract-sign' }, { type: 'rabbitsign' }, { type: 'log', message: 'Stage 18: JV RabbitSign envelope generated.' }], ghl_actions: ['Generate Document', 'Send SMS', 'Wait'] },
+  'JV_SENT→JV_SIGNED': { stageNumber: 18, workflow: 'wf_jv_sent_rabbitsign', owner: 'TC', name: 'JV Sent → JV Signed', description: 'Determine JV type (3-party or 4-party). Pre-fill parties + percentages. Generate RabbitSign envelope.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/contract-sign' }, { type: 'rabbitsign' }, { type: 'send_sms', template: 'JV_SIGNED' }, { type: 'log', message: 'Stage 18: JV RabbitSign envelope generated.' }], ghl_actions: ['Generate Document', 'Send SMS', 'Wait'] },
   'JV_SIGNED→WIRE_SETUP': { stageNumber: 19, workflow: 'wf_jv_signed_books_setup', owner: 'TC', name: 'JV Signed → Wire Setup', description: 'Set JV Title Holder. Send JV_SIGNED SMS. Move to Wire Setup.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 19: JV signed. Moving to wire setup.' }], ghl_actions: ['Write Custom Field', 'Send SMS'] },
-  'WIRE_SETUP→CLOSING_DATE': { stageNumber: 20, workflow: 'wf_wire_setup_final_prep', owner: 'Closing', name: 'Wire Setup → Closing Date', description: 'Confirm wire instructions received from title. 3rd-party processor for SubTo. Move to Closing.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 20: Wire setup confirmed.' }], ghl_actions: ['Create Task', 'Wait'] },
+  'WIRE_SETUP→CLOSING_DATE': { stageNumber: 20, workflow: 'wf_wire_setup_final_prep', owner: 'Closing', name: 'Wire Setup → Closing Date', description: 'Confirm wire instructions received from title. 3rd-party processor for SubTo. Move to Closing.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'send_sms', templateResolver: (lead = {}) => (String(lead.contract || lead.contract_type || '').toLowerCase().includes('subto') ? 'SUBTO_PROCESSOR' : 'CLOSING_CONFIRMED') }, { type: 'log', message: 'Stage 20: Wire setup confirmed.' }], ghl_actions: ['Create Task', 'Wait'] },
   'CLOSING_DATE→CLOSED': { stageNumber: 21, workflow: 'wf_closing_countdown', owner: 'Closing', name: 'Closing Date → Closed', description: 'COE -7 SMS to seller. Wire request from title. Post-close engine (+7d testimonial, +14d referral, +30d check-in).', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'coe', offset_days: 0 }, { type: 'log', message: 'Stage 21: Closing date assigned. COE countdown scheduled.' }], ghl_actions: ['Send SMS', 'Wait', 'Create Task', 'If/Then'] },
 };
 
@@ -277,6 +276,27 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             }
             break;
           }
+          case 'send_sms': {
+            try {
+              const templateKey = typeof action.templateResolver === 'function'
+                ? action.templateResolver(leadData, fromStage, toStage)
+                : action.template;
+              if (!templateKey) {
+                results.push({ type: 'send_sms', ok: false, error: 'Missing SMS template' });
+                break;
+              }
+
+              const smsResult = await sendTemplate(leadData, templateKey, action.contactId);
+              await query(
+                'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+                [userId, leadId, 'sms_sent', JSON.stringify({ template: templateKey, from_stage: fromStage, to_stage: toStage, sent: smsResult.sent === true, reason: smsResult.reason || null, error: smsResult.error || null })]
+              );
+              results.push({ type: 'send_sms', ok: !!smsResult?.sent, template: templateKey, ...smsResult });
+            } catch (e) {
+              results.push({ type: 'send_sms', ok: false, error: e.message });
+            }
+            break;
+          }
           case 'set_field': {
             let value = action.value;
             if (value === 'now') value = now.toISOString();
@@ -300,18 +320,25 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             break;
           }
           case 'run_underwriting': {
+            const toNum = value => Number(value || 0);
             const { price, monthly_rent: rent, sqft, arv, condition, existing_loan_balance, existing_loan_rate } = leadData;
-            const onePercentValue = price > 0 ? rent / price : 0;
+            const priceNum = toNum(price);
+            const rentNum = toNum(rent);
+            const sqftNum = toNum(sqft);
+            const arvNum = toNum(arv);
+            const loanBalanceNum = toNum(existing_loan_balance);
+            const loanRateNum = toNum(existing_loan_rate);
+            const onePercentValue = priceNum > 0 ? rentNum / priceNum : 0;
             const onePercentRule = onePercentValue >= 0.01;
             let rate = 30; if (condition === 'reno') rate = 60; else if (condition === 'livable') rate = 45;
-            const repairs = (sqft || 0) * rate;
-            const fee = leadData.wholesale_fee || 20000;
-            const inv = (arv || 0) * 0.70;
+            const repairs = sqftNum * rate;
+            const fee = toNum(leadData.wholesale_fee) || 20000;
+            const inv = arvNum * 0.70;
             const cash = inv - repairs - fee;
             const f50 = cash > 0 ? Math.round(cash * 1.27) : 0;
-            const subto = arv > 0 ? arv - repairs - (existing_loan_balance || 0) : 0;
+            const subto = arvNum > 0 ? arvNum - repairs - loanBalanceNum : 0;
             let rec = 'cash';
-            if ((existing_loan_balance || 0) > 0 && existing_loan_rate > 0 && existing_loan_rate < 0.05) rec = 'subto';
+            if (loanBalanceNum > 0 && loanRateNum > 0 && loanRateNum < 0.05) rec = 'subto';
             else if (condition === 'turnkey') rec = 'f50';
             else if (condition === 'reno') rec = 'f10';
             await query(
@@ -573,6 +600,17 @@ First check-in: 3 days from now. Continue until close.`;
       } catch (err) {
         results.push({ type: action.type, ok: false, error: err.message });
       }
+    }
+  }
+
+  // Only record email work when the transition has an actual template.
+  const emailKey = `${fromStage}→${toStage}`;
+  if (STAGE_EMAIL_KEYS.has(emailKey)) {
+    try {
+      const emailResult = await sendStageEmail(fromStage, toStage, leadData);
+      results.push({ type: 'email', ok: !!emailResult?.sent, ...emailResult });
+    } catch (e) {
+      results.push({ type: 'email', ok: false, error: e.message });
     }
   }
 
