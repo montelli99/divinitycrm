@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
@@ -21,6 +21,7 @@ export default function Pipeline() {
   const [automationResults, setAutomationResults] = useState(null);
   const [scriptPrompts, setScriptPrompts] = useState(null);
   const [viewingPrompts, setViewingPrompts] = useState(null);
+  const stageRefs = useRef({});
 
   const loadPipeline = useCallback(async () => {
     try {
@@ -110,6 +111,12 @@ export default function Pipeline() {
 
   function handleDragLeave() { setDragOver(null); }
 
+  function scrollToStage(stage) {
+    const el = stageRefs.current[stage];
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+
   async function handleDrop(e, toStage) {
     e.preventDefault();
     setDragOver(null);
@@ -142,6 +149,32 @@ export default function Pipeline() {
           <span>{pipeline.stats.closed} closed</span>
           <span>{pipeline.stats.conversion_rate}% conv.</span>
         </div>
+      </div>
+
+      <div className="pipeline-stage-rail" aria-label="Pipeline stage jump list">
+        {STAGE_ORDER.map((stage, index) => {
+          const owner = getOwnerForStage(stage);
+          return (
+            <button
+              key={stage}
+              type="button"
+              className="pipeline-stage-chip"
+              onClick={() => scrollToStage(stage)}
+              title={STAGE_LABELS[stage]}
+              style={{
+                borderColor: `${owner.color}33`,
+                boxShadow: `inset 0 0 0 1px ${owner.color}12`,
+              }}
+            >
+              <span>{index + 1}</span>
+              <span className="pipeline-stage-chip-text">{STAGE_SHORT_LABELS[stage]}</span>
+              <span className="pipeline-stage-chip-owner">{owner.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="pipeline-stage-note">
+        Use the stage rail to jump to any of the 21 columns. The board scrolls horizontally so no stage gets squeezed out.
       </div>
 
       {pipeline.alerts?.length > 0 && (
@@ -248,13 +281,17 @@ export default function Pipeline() {
         ))}
       </div>
 
-      <div className="pipeline-board" style={{ gridTemplateColumns: `repeat(${STAGE_ORDER.length}, minmax(160px, 1fr))` }}>
+      <div className="pipeline-board-shell">
+        <div className="pipeline-board">
         {STAGE_ORDER.map(stage => {
           const leads = pipeline.pipeline[stage] || [];
           const isDragOver = dragOver === stage;
           const owner = getOwnerForStage(stage);
           return (
-            <div key={stage} className={`pipeline-column ${isDragOver ? 'drag-over' : ''}`}
+            <div
+              key={stage}
+              ref={el => { if (el) stageRefs.current[stage] = el; }}
+              className={`pipeline-column ${isDragOver ? 'drag-over' : ''}`}
               style={{ borderTop: `3px solid ${owner.color}` }}
               onDragOver={e => handleDragOver(e, stage)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, stage)}>
               <div className="column-header">
@@ -325,6 +362,7 @@ export default function Pipeline() {
             </div>
           );
         })}
+        </div>
       </div>
 
       {pipeline.reminders_due?.length > 0 && (
