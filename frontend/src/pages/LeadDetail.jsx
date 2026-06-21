@@ -300,6 +300,12 @@ export default function LeadDetail() {
               <Link to={`/calculator?leadId=${id}`} className="btn btn-primary btn-sm" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                 🧮 Run Underwriting
               </Link>
+              <Link to={`/contracts?leadId=${id}&tab=templates`} className="btn btn-sm" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}>
+                📄 Open Contract Builder
+              </Link>
+              <Link to="/training?tab=underwriting" className="btn btn-sm" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}>
+                📚 Underwriting Notes
+              </Link>
               {lead.scheduling_link && (
                 <a href={lead.scheduling_link} target="_blank" rel="noopener noreferrer"
                   className="btn btn-sm"

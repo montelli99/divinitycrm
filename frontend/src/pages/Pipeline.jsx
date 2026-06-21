@@ -340,6 +340,24 @@ export default function Pipeline() {
                         {lead.stage === 'PSA_SENT' && lead.days_in_stage > 3 && <div className="card-stalled" style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}>⏰ 72hr overdue — follow up</div>}
                         <div className="card-action-row">
                           <span className="card-action">{lead.next_action}</span>
+                          <Link
+                            to={`/calculator?leadId=${lead.id}&tab=underwriting`}
+                            className="btn-view-prompts"
+                            onClick={e => e.stopPropagation()}
+                            title="Open underwriting for this lead"
+                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            🧮
+                          </Link>
+                          <Link
+                            to={`/contracts?leadId=${lead.id}&tab=templates`}
+                            className="btn-view-prompts"
+                            onClick={e => e.stopPropagation()}
+                            title="Open contract builder for this lead"
+                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            📄
+                          </Link>
                           <button
                             className="btn-view-prompts"
                             onClick={e => { e.preventDefault(); e.stopPropagation(); handleViewPrompts(lead.id, lead.stage); }}

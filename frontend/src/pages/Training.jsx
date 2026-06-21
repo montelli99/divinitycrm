@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 
 const TRAINING_TABS = [
@@ -9,7 +10,8 @@ const TRAINING_TABS = [
 ];
 
 export default function Training() {
-  const [activeTab, setActiveTab] = useState('modules');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'modules');
   const [modules, setModules] = useState([]);
   const [selectedModule, setSelectedModule] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
@@ -18,6 +20,10 @@ export default function Training() {
   const [stages, setStages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setActiveTab(searchParams.get('tab') || 'modules');
+  }, [searchParams]);
 
   useEffect(() => {
     Promise.all([
@@ -80,7 +86,12 @@ export default function Training() {
         {TRAINING_TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              const next = new URLSearchParams(searchParams);
+              next.set('tab', tab.id);
+              setSearchParams(next);
+            }}
             style={{
               background: activeTab === tab.id ? 'var(--brand-primary)' : 'transparent',
               color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',

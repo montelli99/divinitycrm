@@ -4,14 +4,31 @@ import { api } from '../lib/api';
 
 const RED_STATES = ['AL','AK','AR','AZ','FL','GA','ID','IN','IA','KS','KY','LA','MS','MO','MT','NE','NV','NC','ND','OK','SC','SD','TN','TX','UT','WV','WY'];
 
+const CALCULATOR_TABS = [
+  { id: 'underwriting', label: 'Underwriting' },
+  { id: 'buybox', label: 'Buy Box' },
+  { id: 'closing-costs', label: 'Closing Costs' },
+  { id: 'midterm', label: 'Mid-Term' },
+  { id: 'docs', label: 'Docs' },
+];
+
 export default function Calculator() {
   const [searchParams] = useSearchParams();
   const leadId = searchParams.get('leadId');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'underwriting');
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [leadLoaded, setLeadLoaded] = useState(false);
+  const [buyBoxLoading, setBuyBoxLoading] = useState(false);
+  const [buyBoxResult, setBuyBoxResult] = useState(null);
+  const [closingLoading, setClosingLoading] = useState(false);
+  const [closingResult, setClosingResult] = useState(null);
+  const [midTermLoading, setMidTermLoading] = useState(false);
+  const [midTermResult, setMidTermResult] = useState(null);
+  const [underwritingDocs, setUnderwritingDocs] = useState(null);
+  const [docsLoading, setDocsLoading] = useState(false);
 
   const [form, setForm] = useState({
     arv: '', askingPrice: '', monthlyRent: '', repairEstimate: '0',
@@ -24,6 +41,32 @@ export default function Calculator() {
     isRental: false, isOwnedFree: false,
     needsRenovation: false, moveInReady: true,
   });
+
+  const [buyBoxForm, setBuyBoxForm] = useState({
+    state: '',
+    population: '',
+    hasHOA: false,
+    hasPool: false,
+    inFloodZone: false,
+  });
+
+  const [closingForm, setClosingForm] = useState({
+    contractType: 'subto',
+    purchasePrice: '',
+    state: '',
+  });
+
+  const [midTermForm, setMidTermForm] = useState({
+    address: '',
+    longTermRent: '',
+    purchasePrice: '',
+    city: '',
+    threshold: '',
+  });
+
+  useEffect(() => {
+    setActiveTab(searchParams.get('tab') || 'underwriting');
+  }, [searchParams]);
 
   // Load lead data if leadId provided
   useEffect(() => {
@@ -64,6 +107,24 @@ export default function Calculator() {
     setForm(f => ({ ...f, [field]: value }));
   }
 
+  function updateBuyBox(field, value) {
+    setBuyBoxForm(f => ({ ...f, [field]: value }));
+  }
+
+  function updateClosing(field, value) {
+    setClosingForm(f => ({ ...f, [field]: value }));
+  }
+
+  function updateMidTerm(field, value) {
+    setMidTermForm(f => ({ ...f, [field]: value }));
+  }
+
+  function setTab(tab) {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next);
+  }
+
   async function runAnalysis(e) {
     e.preventDefault();
     setError('');
@@ -96,6 +157,76 @@ export default function Calculator() {
       setLoading(false);
     }
   }
+
+  async function runBuyBox(e) {
+    e.preventDefault();
+    setError('');
+    setBuyBoxLoading(true);
+    try {
+      const data = await api.checkBuyBox({
+        state: buyBoxForm.state,
+        population: buyBoxForm.population ? Number(buyBoxForm.population) : 0,
+        hasHOA: buyBoxForm.hasHOA,
+        hasPool: buyBoxForm.hasPool,
+        inFloodZone: buyBoxForm.inFloodZone,
+      });
+      setBuyBoxResult(data.buyBox);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBuyBoxLoading(false);
+    }
+  }
+
+  async function runClosingCosts(e) {
+    e.preventDefault();
+    setError('');
+    setClosingLoading(true);
+    try {
+      const data = await api.calculateClosingCosts({
+        contractType: closingForm.contractType,
+        purchasePrice: Number(closingForm.purchasePrice),
+        state: closingForm.state || undefined,
+        leadId: leadId || undefined,
+      });
+      setClosingResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setClosingLoading(false);
+    }
+  }
+
+  async function runMidTerm(e) {
+    e.preventDefault();
+    setError('');
+    setMidTermLoading(true);
+    try {
+      const data = await api.analyzeMidTerm({
+        address: midTermForm.address || 'Property',
+        longTermRent: Number(midTermForm.longTermRent),
+        purchasePrice: Number(midTermForm.purchasePrice),
+        city: midTermForm.city || undefined,
+        threshold: midTermForm.threshold ? Number(midTermForm.threshold) : undefined,
+      });
+      setMidTermResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMidTermLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== 'docs' || underwritingDocs) return;
+    let cancelled = false;
+    setDocsLoading(true);
+    api.getUnderwritingDocs()
+      .then(data => { if (!cancelled) setUnderwritingDocs(data); })
+      .catch(err => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setDocsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, underwritingDocs]);
 
   const inputStyle = {
     width: '100%',
@@ -137,6 +268,28 @@ export default function Calculator() {
           Underwrite deals with Cash, F50, F10, SubTo, DSCR, and Mid-Term strategies
         </p>
         {leadId && <p style={{ color: 'var(--brand-primary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>📋 Lead data pre-loaded</p>}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
+          {CALCULATOR_TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setTab(tab.id)}
+              style={{
+                background: activeTab === tab.id ? 'var(--brand-primary)' : 'var(--bg-secondary)',
+                color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',
+                border: '1px solid ' + (activeTab === tab.id ? 'var(--brand-primary)' : 'var(--border-subtle)'),
+                borderRadius: '999px',
+                padding: '0.45rem 0.85rem',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (

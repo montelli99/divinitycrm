@@ -177,6 +177,14 @@ export default function Dashboard() {
         </button>
       </div>
 
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <Link to="/pipeline" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>Open pipeline</Link>
+        <Link to="/calculator?tab=underwriting" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>Open calculator</Link>
+        <Link to="/contracts?tab=templates" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>Open contracts</Link>
+        <Link to="/training?tab=underwriting" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>Open training</Link>
+        <Link to="/notifications" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>Open inbox</Link>
+      </div>
+
       {showNewLead && (
         <form className="new-lead-form" onSubmit={handleCreateLead}>
           <h3>Add New Property Lead</h3>

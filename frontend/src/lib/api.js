@@ -70,6 +70,10 @@ export const api = {
   getClauses: () => request('/contracts/clauses'),
   getClause: (id) => request(`/contracts/clauses/${id}`),
   generateContract: (data) => request('/contracts/generate', { method: 'POST', body: JSON.stringify(data) }),
+  getContractTemplates: () => request('/contracts/templates'),
+  getContractTemplate: (id) => request(`/contracts/templates/${id}`),
+  generateContractFromTemplate: (data) => request('/contracts/generate-from-template', { method: 'POST', body: JSON.stringify(data) }),
+  getContract: (id) => request(`/contracts/${id}`),
   sendRabbitSign: (data) => request('/contracts/send-rabbitsign', { method: 'POST', body: JSON.stringify(data) }),
   getContracts: () => request('/contracts'),
 
@@ -88,6 +92,16 @@ export const api = {
   analyzeDeal: (data) => request('/calculator/analyze', { method: 'POST', body: JSON.stringify(data) }),
   checkBuyBox: (data) => request('/calculator/buybox', { method: 'POST', body: JSON.stringify(data) }),
   getLeadForCalc: (id) => request(`/calculator/lead/${id}`),
+  calculateClosingCosts: (data) => request('/calculator/closing-costs', { method: 'POST', body: JSON.stringify(data) }),
+  getStateFees: (state) => request(`/calculator/closing-costs/state-fees${state ? `?state=${encodeURIComponent(state)}` : ''}`),
+  analyzeMidTerm: (data) => request('/calculator/midterm', { method: 'POST', body: JSON.stringify(data) }),
+  analyzeMidTermForLead: (id) => request(`/calculator/midterm/lead/${id}`, { method: 'POST' }),
+  getMidTermMarkets: (city) => request(`/calculator/midterm/markets${city ? `?city=${encodeURIComponent(city)}` : ''}`),
+  analyzeDoc: (data) => request('/calculator/doc-analyze', { method: 'POST', body: JSON.stringify(data) }),
+  quickBuyBoxForLead: (id) => request(`/calculator/buybox-check/${id}`, { method: 'POST' }),
+  analyzeRentRoll: (data) => request('/calculator/rentroll-analyze', { method: 'POST', body: JSON.stringify(data) }),
+  analyzePL: (data) => request('/calculator/pl-analyze', { method: 'POST', body: JSON.stringify(data) }),
+  analyzeTax: (data) => request('/calculator/tax-analyze', { method: 'POST', body: JSON.stringify(data) }),
 
   // Training
   getTrainingModules: () => request('/training'),
