@@ -90,6 +90,7 @@ export const api = {
 
   // Calculator
   analyzeDeal: (data) => request('/calculator/analyze', { method: 'POST', body: JSON.stringify(data) }),
+  getUnderwritingHistory: (leadId) => request(`/calculator/history${leadId ? `?leadId=${encodeURIComponent(leadId)}` : ''}`),
   checkBuyBox: (data) => request('/calculator/buybox', { method: 'POST', body: JSON.stringify(data) }),
   getLeadForCalc: (id) => request(`/calculator/lead/${id}`),
   calculateClosingCosts: (data) => request('/calculator/closing-costs', { method: 'POST', body: JSON.stringify(data) }),

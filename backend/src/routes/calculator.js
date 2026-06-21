@@ -66,6 +66,15 @@ router.post('/analyze', async (req, res) => {
       moveInReady: moveInReady !== undefined ? Boolean(moveInReady) : (propertyType === 'turnkey'),
     });
 
+    const underwritingSummary = {
+      recommended: strategy.strategy,
+      percRule: calcResult.metadata.percRule,
+      dscr: calcResult.metadata.dscr,
+      cashFlow: calcResult.metadata.cashFlow,
+      buyBoxPass: buyBox.allPass,
+      standalone: !leadId,
+    };
+
     // If leadId provided, save results to lead record
     if (leadId) {
       await query(
@@ -102,15 +111,13 @@ router.post('/analyze', async (req, res) => {
       // Log activity
       await query(
         'INSERT INTO activity_log (id, user_id, lead_id, action, details) VALUES (gen_random_uuid(), $1, $2, $3, $4)',
-        [userId, leadId, 'underwriting_run',
-          JSON.stringify({
-            recommended: strategy.strategy,
-            percRule: calcResult.metadata.percRule,
-            dscr: calcResult.metadata.dscr,
-            cashFlow: calcResult.metadata.cashFlow,
-            buyBoxPass: buyBox.allPass,
-          })
-        ]
+        [userId, leadId, 'underwriting_run', JSON.stringify(underwritingSummary)]
+      );
+    }
+    else {
+      await query(
+        'INSERT INTO activity_log (id, user_id, lead_id, action, details) VALUES (gen_random_uuid(), $1, $2, $3, $4)',
+        [userId, null, 'underwriting_run', JSON.stringify(underwritingSummary)]
       );
     }
 
@@ -120,10 +127,60 @@ router.post('/analyze', async (req, res) => {
       buyBox,
       strategy,
       leadUpdated: !!leadId,
+      savedToHistory: true,
     });
   } catch (err) {
     console.error('Calculator analyze error:', err);
     res.status(500).json({ error: err.message || 'Calculation failed' });
+  }
+});
+
+// GET /api/calculator/history — Underwriting history for a lead or user
+router.get('/history', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { leadId, limit = 25 } = req.query;
+
+    const result = leadId
+      ? await query(
+        `SELECT a.id, a.user_id, a.lead_id, a.action, a.details, a.created_at, l.address
+         FROM activity_log a
+         LEFT JOIN leads l ON l.id = a.lead_id
+         WHERE a.user_id = $1 AND a.lead_id = $2 AND a.action = 'underwriting_run'
+         ORDER BY a.created_at DESC
+         LIMIT $3`,
+        [userId, leadId, Number(limit)]
+      )
+      : await query(
+        `SELECT a.id, a.user_id, a.lead_id, a.action, a.details, a.created_at, l.address
+         FROM activity_log a
+         LEFT JOIN leads l ON l.id = a.lead_id
+         WHERE a.user_id = $1 AND a.action = 'underwriting_run'
+         ORDER BY a.created_at DESC
+         LIMIT $2`,
+        [userId, Number(limit)]
+      );
+
+    res.json({
+      success: true,
+      history: result.map(row => {
+        let details = null;
+        try { details = row.details ? JSON.parse(row.details) : null; } catch {
+          details = row.details || null;
+        }
+        return {
+          id: row.id,
+          leadId: row.lead_id,
+          address: row.address || null,
+          action: row.action,
+          createdAt: row.created_at,
+          details,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('Calculator history error:', err);
+    res.status(500).json({ error: err.message || 'Failed to load underwriting history' });
   }
 });
 

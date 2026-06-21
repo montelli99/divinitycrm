@@ -386,6 +386,9 @@ test('calculator routes return analysis and persisted lead data', async () => {
       query: async (sql, params) => {
         if (sql.includes('UPDATE leads')) return [{ id: 'lead-1' }];
         if (sql.includes('INSERT INTO activity_log')) return [];
+        if (sql.includes('FROM activity_log a') && sql.includes("underwriting_run")) {
+          return [{ id: 'hist-1', user_id: 'user-1', lead_id: 'lead-1', action: 'underwriting_run', details: JSON.stringify({ recommended: 'Stack50', dscr: '1.40', cashFlow: 250 }), created_at: new Date().toISOString(), address: '123 Main St' }];
+        }
         if (sql.includes('FROM leads') && sql.includes('WHERE id = $1 AND user_id = $2')) {
           return [{ id: 'lead-1', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, arv: 325000, beds: 3, baths: 2, sqft: 1800, condition: 'turnkey', repairs_estimate: 20000, cash_offer: 150000, f50_offer: 175000, subto_offer: 180000, recommended_strategy: 'stack50', one_percent_rule: true, dscr: 1.3, cash_flow: 450, existing_loan_balance: 180000, existing_loan_rate: 0.045, monthly_rent: 2500, has_hoa: false, has_pool: false, in_flood_zone: false, population: 12000, occupancy: 'occupied', source: 'referral', stage: 'OFFER_READY' }];
         }
@@ -406,9 +409,17 @@ test('calculator routes return analysis and persisted lead data', async () => {
   assert.equal(analyzeRes.body.success, true);
   assert.equal(analyzeRes.body.leadUpdated, true);
 
+  const standaloneAnalyze = await callRoute(router, 'post', '/analyze', { body: { arv: 325000, askingPrice: 250000, monthlyRent: 2500 } });
+  assert.equal(standaloneAnalyze.body.leadUpdated, false);
+  assert.equal(standaloneAnalyze.body.savedToHistory, true);
+
   const buyboxRes = await callRoute(router, 'post', '/buybox', { body: { state: 'TX', population: 12000, hasHOA: false, hasPool: false, inFloodZone: false } });
   assert.equal(buyboxRes.body.success, true);
   assert.equal(buyboxRes.body.buyBox.allPass, true);
+
+  const historyRes = await callRoute(router, 'get', '/history', {});
+  assert.equal(historyRes.body.success, true);
+  assert.equal(historyRes.body.history[0].address, '123 Main St');
 
   const leadRes = await callRoute(router, 'get', '/lead/:id', { params: { id: 'lead-1' } });
   assert.equal(leadRes.body.success, true);

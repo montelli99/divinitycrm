@@ -10,17 +10,20 @@ const CALCULATOR_TABS = [
   { id: 'closing-costs', label: 'Closing Costs' },
   { id: 'midterm', label: 'Mid-Term' },
   { id: 'docs', label: 'Docs' },
+  { id: 'history', label: 'History' },
 ];
 
 export default function Calculator() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const leadId = searchParams.get('leadId');
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'underwriting');
+  const [selectedLeadId, setSelectedLeadId] = useState(searchParams.get('leadId') || '');
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [leadLoaded, setLeadLoaded] = useState(false);
+  const [loadedLeadId, setLoadedLeadId] = useState('');
+  const [leadOptions, setLeadOptions] = useState([]);
   const [buyBoxLoading, setBuyBoxLoading] = useState(false);
   const [buyBoxResult, setBuyBoxResult] = useState(null);
   const [closingLoading, setClosingLoading] = useState(false);
@@ -29,6 +32,8 @@ export default function Calculator() {
   const [midTermResult, setMidTermResult] = useState(null);
   const [underwritingDocs, setUnderwritingDocs] = useState(null);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState([]);
 
   const [form, setForm] = useState({
     arv: '', askingPrice: '', monthlyRent: '', repairEstimate: '0',
@@ -68,40 +73,70 @@ export default function Calculator() {
     setActiveTab(searchParams.get('tab') || 'underwriting');
   }, [searchParams]);
 
-  // Load lead data if leadId provided
   useEffect(() => {
-    if (leadId && !leadLoaded) {
-      setLoading(true);
-      api.getLeadForCalc(leadId)
-        .then(data => {
-          const l = data.lead;
-          setForm(f => ({
-            ...f,
-            arv: l.arv || l.price || '',
-            askingPrice: l.price || '',
-            monthlyRent: l.monthlyRent || '',
-            repairEstimate: l.repairsEstimate || '0',
-            sqft: l.sqft || '',
-            beds: l.beds || '',
-            baths: l.baths || '',
-            condition: l.condition || 'unknown',
-            state: l.state || '',
-            population: l.population || '',
-            hasHOA: l.hasHOA || false,
-            hasPool: l.hasPool || false,
-            inFloodZone: l.inFloodZone || false,
-            existingLoanBalance: l.existingLoanBalance || '',
-            existingLoanRate: l.existingLoanRate || '',
-            propertyType: l.condition === 'reno' ? 'reno' : 'turnkey',
-            moveInReady: l.condition !== 'reno',
-            needsRenovation: l.condition === 'reno',
-          }));
-          setLeadLoaded(true);
-        })
-        .catch(err => setError('Failed to load lead: ' + err.message))
-        .finally(() => setLoading(false));
+    if (searchParams.get('leadId')) {
+      setSelectedLeadId(searchParams.get('leadId'));
     }
-  }, [leadId, leadLoaded]);
+  }, [searchParams]);
+
+  useEffect(() => {
+    api.getLeads({ limit: 25 })
+      .then(data => setLeadOptions(data.leads || []))
+      .catch(() => setLeadOptions([]));
+  }, []);
+
+  useEffect(() => {
+    const attachedLeadId = selectedLeadId || leadId || '';
+    if (!attachedLeadId || attachedLeadId === loadedLeadId) return;
+
+    setLoading(true);
+    api.getLeadForCalc(attachedLeadId)
+      .then(data => {
+        const l = data.lead;
+        setForm(f => ({
+          ...f,
+          arv: l.arv || l.price || '',
+          askingPrice: l.price || '',
+          monthlyRent: l.monthlyRent || '',
+          repairEstimate: l.repairsEstimate || '0',
+          sqft: l.sqft || '',
+          beds: l.beds || '',
+          baths: l.baths || '',
+          condition: l.condition || 'unknown',
+          state: l.state || '',
+          population: l.population || '',
+          hasHOA: l.hasHOA || false,
+          hasPool: l.hasPool || false,
+          inFloodZone: l.inFloodZone || false,
+          existingLoanBalance: l.existingLoanBalance || '',
+          existingLoanRate: l.existingLoanRate || '',
+          propertyType: l.condition === 'reno' ? 'reno' : 'turnkey',
+          moveInReady: l.condition !== 'reno',
+          needsRenovation: l.condition === 'reno',
+        }));
+        setLoadedLeadId(attachedLeadId);
+      })
+      .catch(err => setError('Failed to load lead: ' + err.message))
+      .finally(() => setLoading(false));
+  }, [selectedLeadId, leadId, loadedLeadId]);
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    try {
+      const data = await api.getUnderwritingHistory(selectedLeadId || leadId || undefined);
+      setHistory(data.history || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load underwriting history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadHistory();
+    }
+  }, [activeTab, selectedLeadId, leadId]);
 
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
@@ -119,6 +154,14 @@ export default function Calculator() {
     setMidTermForm(f => ({ ...f, [field]: value }));
   }
 
+  function updateLeadAttachment(nextLeadId) {
+    setSelectedLeadId(nextLeadId);
+    const next = new URLSearchParams(searchParams);
+    if (nextLeadId) next.set('leadId', nextLeadId);
+    else next.delete('leadId');
+    setSearchParams(next);
+  }
+
   function setTab(tab) {
     const next = new URLSearchParams(searchParams);
     next.set('tab', tab);
@@ -131,6 +174,7 @@ export default function Calculator() {
     setResult(null);
     setLoading(true);
     try {
+      const attachedLeadId = selectedLeadId || leadId || undefined;
       const data = await api.analyzeDeal({
         ...form,
         arv: Number(form.arv),
@@ -148,9 +192,10 @@ export default function Calculator() {
         baths: form.baths ? Number(form.baths) : undefined,
         population: form.population ? Number(form.population) : undefined,
         equityPercent: form.equityPercent ? Number(form.equityPercent) : undefined,
-        leadId: leadId || undefined,
+        leadId: attachedLeadId,
       });
       setResult(data);
+      await loadHistory();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -256,6 +301,9 @@ export default function Calculator() {
     padding: '1.25rem',
   };
 
+  const attachedLeadId = selectedLeadId || leadId || '';
+  const attachedLead = leadOptions.find(item => item.id === attachedLeadId);
+
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
@@ -267,7 +315,46 @@ export default function Calculator() {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
           Underwrite deals with Cash, F50, F10, SubTo, DSCR, and Mid-Term strategies
         </p>
-        {leadId && <p style={{ color: 'var(--brand-primary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>📋 Lead data pre-loaded</p>}
+        {attachedLeadId ? (
+          <p style={{ color: 'var(--brand-primary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            📋 Attached to {attachedLead?.address || attachedLeadId}
+          </p>
+        ) : (
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Standalone history mode until you attach a lead</p>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.75rem', alignItems: 'end', marginTop: '0.75rem' }}>
+          <div>
+            <label style={labelStyle}>Attach to lead</label>
+            <select
+              value={attachedLeadId}
+              onChange={e => updateLeadAttachment(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Standalone history only</option>
+              {leadOptions.map(option => (
+                <option key={option.id} value={option.id}>
+                  {option.address} {option.stage ? `· ${option.stage.replace(/_/g, ' ')}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {attachedLeadId && (
+            <a href={`#/leads/${attachedLeadId}`} style={{
+              alignSelf: 'end',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              textDecoration: 'none',
+              background: 'var(--bg-secondary)',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+            }}>Open lead</a>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
           {CALCULATOR_TABS.map(tab => (
             <button
@@ -304,6 +391,48 @@ export default function Calculator() {
         }}>{error}</div>
       )}
 
+      {activeTab === 'history' ? (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <div style={cardStyle}>
+            <h3 style={{ marginTop: 0 }}>Underwriting History</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', marginTop: '0.25rem' }}>
+              Saved runs appear here whether or not a lead is attached.
+            </p>
+            {historyLoading ? (
+              <div className="loading">Loading history...</div>
+            ) : history.length === 0 ? (
+              <div className="empty-state" style={{ marginTop: '0.75rem' }}>No underwriting history yet.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.7rem', marginTop: '0.75rem' }}>
+                {history.map(item => (
+                  <div key={item.id} style={{
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0.85rem',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <strong>{item.address || 'Standalone underwriting'}</strong>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>{new Date(item.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.35rem' }}>
+                      {item.details?.recommended || 'Recommendation saved'} · DSCR {item.details?.dscr || '—'} · Cash flow ${item.details?.cashFlow ?? '—'}
+                    </div>
+                    {item.leadId && (
+                      <div style={{ marginTop: '0.45rem' }}>
+                        <a href={`#/leads/${item.leadId}`} style={{ color: 'var(--brand-primary)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600' }}>
+                          Open attached lead →
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+      <>
       <form onSubmit={runAnalysis}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
           {/* Property Data */}
@@ -573,6 +702,8 @@ export default function Calculator() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );
