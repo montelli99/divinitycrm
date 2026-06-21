@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { STAGE_LABELS, STAGES, getOwnerForStage } from '../lib/pipeline-stages';
+import { canAssignLeads, canViewTeam } from '../lib/access';
 
 // AM Tasks by stage (per daily-sop.js, mapped to GHL 21-stage flow)
 const AM_TASK_DEFS = {
@@ -20,29 +21,42 @@ const PM_TASK_DEFS = {
 };
 
 export default function Dashboard() {
+  const currentUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('divinity_user') || 'null');
+    } catch {
+      return null;
+    }
+  })();
+  const teamVisible = canViewTeam(currentUser);
+  const assignVisible = canAssignLeads(currentUser);
+
   const [stats, setStats] = useState(null);
   const [today, setToday] = useState(null);
   const [leads, setLeads] = useState([]);
   const [profitRadar, setProfitRadar] = useState(null);
+  const [teamData, setTeamData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewLead, setShowNewLead] = useState(false);
-  const [newLead, setNewLead] = useState({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '' });
+  const [newLead, setNewLead] = useState({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '', assignedUserId: '' });
   const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
     async function load() {
       try {
-        const [statsData, todayData, leadsData, radarData] = await Promise.all([
+        const [statsData, todayData, leadsData, radarData, teamDashboard] = await Promise.all([
           api.getStats(),
           api.getToday(),
           api.getLeads({ limit: 50 }),
           api.getProfitRadar().catch(() => null),
+          teamVisible ? api.getTeamDashboard().catch(() => null) : Promise.resolve(null),
         ]);
         setStats(statsData);
         setToday(todayData);
         setLeads(leadsData.leads);
         setProfitRadar(radarData);
+        setTeamData(teamDashboard);
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
@@ -57,24 +71,29 @@ export default function Dashboard() {
     if (!newLead.address.trim()) return;
     setCreating(true);
     try {
-      await api.createLead({
-        address: newLead.address,
-        city: newLead.city || null,
-        state: newLead.state || null,
-        price: newLead.price ? Number(newLead.price) : null,
-        source: newLead.source,
-        beds: newLead.beds ? Number(newLead.beds) : null,
-        baths: newLead.baths ? Number(newLead.baths) : null,
-        sqft: newLead.sqft ? Number(newLead.sqft) : null,
-      });
-      setShowNewLead(false);
-      setNewLead({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '' });
-      const [leadsData, statsData] = await Promise.all([api.getLeads({ limit: 50 }), api.getStats()]);
-      setLeads(leadsData.leads);
-      setStats(statsData);
-    } catch (err) {
-      alert('Failed to create lead: ' + err.message);
-    } finally {
+        await api.createLead({
+          address: newLead.address,
+          city: newLead.city || null,
+          state: newLead.state || null,
+          price: newLead.price ? Number(newLead.price) : null,
+          source: newLead.source,
+          beds: newLead.beds ? Number(newLead.beds) : null,
+          baths: newLead.baths ? Number(newLead.baths) : null,
+          sqft: newLead.sqft ? Number(newLead.sqft) : null,
+          assigned_user_id: assignVisible && newLead.assignedUserId ? newLead.assignedUserId : undefined,
+        });
+        setShowNewLead(false);
+        setNewLead({ address: '', city: '', state: '', price: '', source: 'other', beds: '', baths: '', sqft: '', assignedUserId: '' });
+        const [leadsData, statsData] = await Promise.all([api.getLeads({ limit: 50 }), api.getStats()]);
+        setLeads(leadsData.leads);
+        setStats(statsData);
+        if (teamVisible) {
+          const refreshedTeam = await api.getTeamDashboard().catch(() => null);
+          if (refreshedTeam) setTeamData(refreshedTeam);
+        }
+      } catch (err) {
+        alert('Failed to create lead: ' + err.message);
+      } finally {
       setCreating(false);
     }
   }
@@ -211,6 +230,19 @@ export default function Dashboard() {
                 <option value="other">Other</option>
               </select>
             </label>
+            {assignVisible && teamData?.students?.length > 0 && (
+              <label>
+                Assign To
+                <select value={newLead.assignedUserId} onChange={e => setNewLead({ ...newLead, assignedUserId: e.target.value })}>
+                  <option value="">Keep with me</option>
+                  {teamData.students.map(student => (
+                    <option key={student.id} value={student.id}>
+                      {student.first_name || student.email?.split('@')[0]} · {student.student_status || 'active'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={creating}>
@@ -311,6 +343,10 @@ export default function Dashboard() {
           <CCSection title="⚠️ Stalls Needing Intervention" items={kaylaCC.stalls} color="#ef4444" />
         </div>
       </div>
+
+      {teamVisible && teamData && (
+        <TeamFunnelSection teamData={teamData} />
+      )}
 
       {/* Today's Tasks Section */}
       <div className="today-tasks-section">
@@ -469,6 +505,102 @@ export default function Dashboard() {
     </div>
   );
 }
+
+function TeamFunnelSection({ teamData }) {
+  const students = teamData.students || [];
+  const stalledByEmail = new Map();
+  const overdueByEmail = new Map();
+
+  for (const lead of teamData.stalled || []) {
+    const key = lead.student_email || 'unknown';
+    stalledByEmail.set(key, (stalledByEmail.get(key) || 0) + 1);
+  }
+  for (const lead of teamData.overdue48hr || []) {
+    const key = lead.student_email || 'unknown';
+    overdueByEmail.set(key, (overdueByEmail.get(key) || 0) + 1);
+  }
+
+  const rankedStudents = [...students]
+    .map(student => ({
+      ...student,
+      stalledCount: stalledByEmail.get(student.email) || 0,
+      overdueCount: overdueByEmail.get(student.email) || 0,
+    }))
+    .sort((a, b) => (b.stalledCount + b.overdueCount + b.active_leads) - (a.stalledCount + a.overdueCount + a.active_leads));
+
+  return (
+    <div style={{
+      background: 'var(--bg-secondary)',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: 'var(--radius-lg)',
+      padding: '1rem',
+      marginBottom: '1rem',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <div>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: '600', margin: 0 }}>👥 Student Funnel Snapshot</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>
+            Bottlenecks, follow-up pressure, and assignment load for the team.
+          </p>
+        </div>
+        <Link to="/admin" style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', textDecoration: 'none' }}>
+          Open full team dashboard →
+        </Link>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+        <MiniStat label="Students" value={students.length} />
+        <MiniStat label="Stalled Leads" value={teamData.stalled?.length || 0} />
+        <MiniStat label="48hr Overdue" value={teamData.overdue48hr?.length || 0} />
+        <MiniStat label="Stage Groups" value={teamData.stageDistribution?.length || 0} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+        {rankedStudents.slice(0, 6).map(student => (
+          <div key={student.id} style={{
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.85rem',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
+              <strong style={{ fontSize: '0.9rem' }}>{student.first_name || student.email?.split('@')[0]}</strong>
+              <span style={{ fontSize: '0.72rem', color: '#f59e0b' }}>
+                {student.stalledCount + student.overdueCount} bottlenecks
+              </span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>{student.email}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', fontSize: '0.72rem' }}>
+              <span style={chipStyle}>Total {student.total_leads || 0}</span>
+              <span style={chipStyle}>Active {student.active_leads || 0}</span>
+              <span style={chipStyle}>Offers {student.offers_sent || 0}</span>
+              <span style={chipStyle}>Closed {student.deals_closed || 0}</span>
+              <span style={chipStyle}>Stalled {student.stalledCount}</span>
+              <span style={chipStyle}>48hr {student.overdueCount}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.75rem' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{label}</div>
+      <div style={{ fontSize: '1.2rem', fontWeight: '700' }}>{value}</div>
+    </div>
+  );
+}
+
+const chipStyle = {
+  background: 'rgba(91, 108, 240, 0.12)',
+  border: '1px solid rgba(91, 108, 240, 0.22)',
+  borderRadius: '999px',
+  padding: '0.2rem 0.5rem',
+  color: 'var(--text-secondary)',
+};
 
 function ProfitBadge({ label, value, color }) {
   return (

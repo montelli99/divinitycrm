@@ -114,6 +114,7 @@ export const api = {
 
   // Admin Dashboard
   getAdminDashboard: () => request('/admin/dashboard'),
+  getTeamDashboard: () => request('/admin/dashboard'),
 
   // Notifications
   getNotifications: (filter = 'all') => request(`/notifications?filter=${filter}`),

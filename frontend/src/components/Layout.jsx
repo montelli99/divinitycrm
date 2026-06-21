@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { clearToken } from '../lib/api';
+import { canViewTeam } from '../lib/access';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
@@ -8,10 +9,6 @@ const NAV_ITEMS = [
   { path: '/contracts', label: 'Contracts', icon: '📝' },
   { path: '/training', label: 'Training', icon: '📚' },
   { path: '/profile', label: 'Profile', icon: '⚙️' },
-];
-
-const ADMIN_NAV_ITEMS = [
-  { path: '/admin', label: 'Admin Dashboard', icon: '📊' },
 ];
 
 export default function Layout() {
@@ -24,6 +21,12 @@ export default function Layout() {
   } catch {
     user = null;
   }
+
+  const showTeamNav = canViewTeam(user);
+  const TEAM_NAV_ITEMS = showTeamNav ? [
+    { path: '/admin', label: 'Team Dashboard', icon: '📊' },
+    { path: '/students', label: 'Student Funnel', icon: '👥' },
+  ] : [];
 
   function handleLogout() {
     clearToken();
@@ -55,6 +58,17 @@ export default function Layout() {
 
         <ul className="nav-links">
           {NAV_ITEMS.map(item => (
+            <li key={item.path}>
+              <Link
+                to={item.path}
+                className={location.pathname === item.path ? 'active' : ''}
+              >
+                <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
+                {item.label}
+              </Link>
+            </li>
+          ))}
+          {TEAM_NAV_ITEMS.map(item => (
             <li key={item.path}>
               <Link
                 to={item.path}

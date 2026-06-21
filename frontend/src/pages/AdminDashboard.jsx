@@ -32,9 +32,9 @@ export default function AdminDashboard() {
     <div className="admin-dashboard">
       <div className="page-header">
         <div>
-          <h1>📊 Admin Dashboard</h1>
+          <h1>📊 Team Dashboard</h1>
           <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-            All students · All leads · Full visibility
+            Owner · Kayla · Lead managers · Full funnel visibility
           </p>
         </div>
       </div>

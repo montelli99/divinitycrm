@@ -4,6 +4,7 @@
 
 const { Router } = require('express');
 const { query } = require('../db/connection');
+const { isTeamViewer, canManageTeam } = require('../services/access');
 
 const router = Router();
 
@@ -54,9 +55,9 @@ router.get('/students', async (req, res, next) => {
   try {
     const userId = req.user.userId;
     // Check admin role
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
     }
 
     // Get all students with their lead stats
@@ -75,7 +76,7 @@ router.get('/students', async (req, res, next) => {
         MAX(l.updated_at) AS last_activity
       FROM users u
       LEFT JOIN leads l ON u.id = l.user_id
-      WHERE u.role = 'student'
+        WHERE u.role IN ('student', 'closer')
       GROUP BY u.id
       ORDER BY deals_closed DESC, total_leads DESC`
     );
@@ -101,9 +102,9 @@ router.get('/students', async (req, res, next) => {
 router.get('/students/:id/stats', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
     }
 
     const studentId = req.params.id;
@@ -199,9 +200,9 @@ const {
 router.post('/:id/vacation', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !canManageTeam(currentUser[0])) {
+      return res.status(403).json({ error: 'Team management access required' });
     }
 
     const targetId = req.params.id;
@@ -228,9 +229,9 @@ router.post('/:id/vacation', async (req, res, next) => {
 router.post('/:id/vacation/end', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !canManageTeam(currentUser[0])) {
+      return res.status(403).json({ error: 'Team management access required' });
     }
 
     const targetId = req.params.id;
@@ -246,9 +247,9 @@ router.post('/:id/vacation/end', async (req, res, next) => {
 router.post('/reassign', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !canManageTeam(currentUser[0])) {
+      return res.status(403).json({ error: 'Team management access required' });
     }
 
     const { leadId, newUserId, reason } = req.body;
@@ -267,9 +268,9 @@ router.post('/reassign', async (req, res, next) => {
 router.post('/reassign/bulk', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !canManageTeam(currentUser[0])) {
+      return res.status(403).json({ error: 'Team management access required' });
     }
 
     const { fromUserId, toUserId, reason } = req.body;
@@ -288,9 +289,9 @@ router.post('/reassign/bulk', async (req, res, next) => {
 router.get('/roster', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
     }
 
     const roster = await getStudentRoster();
@@ -304,9 +305,9 @@ router.get('/roster', async (req, res, next) => {
 router.get('/roster/:id', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
     }
 
     const details = await getStudentDetails(req.params.id);

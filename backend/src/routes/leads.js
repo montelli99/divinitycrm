@@ -6,6 +6,7 @@ const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
+const { canAssignLeads, canManageTeam } = require('../services/access');
 
 const router = Router();
 
@@ -75,6 +76,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const userId = req.user.userId;
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
     const {
       address, city, state, zip, price, source,
       beds, baths, sqft, year_built, condition,
@@ -82,10 +84,28 @@ router.post('/', async (req, res, next) => {
       seller_name, seller_phone, seller_email,
       notes,
       contract_type, contract,
+      assigned_user_id,
     } = req.body;
 
     if (!address) {
       return res.status(400).json({ error: 'Address is required' });
+    }
+
+    const teamAssignmentAllowed = currentUser.length > 0 && canAssignLeads(currentUser[0]);
+    if (assigned_user_id && !teamAssignmentAllowed) {
+      return res.status(403).json({ error: 'Lead assignment access required' });
+    }
+
+    let ownerId = userId;
+    if (assigned_user_id) {
+      const assignee = await query('SELECT id, role FROM users WHERE id = $1', [assigned_user_id]);
+      if (assignee.length === 0) {
+        return res.status(400).json({ error: 'Assigned student not found' });
+      }
+      if (!['student', 'closer', 'lead_manager', 'admin'].includes(assignee[0].role || 'student')) {
+        return res.status(400).json({ error: 'Assigned user must be a student or closer' });
+      }
+      ownerId = assigned_user_id;
     }
 
     const lead = await query(
@@ -106,7 +126,7 @@ router.post('/', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        uuid(), userId, address, city || null, state || null, zip || null,
+        uuid(), ownerId, address, city || null, state || null, zip || null,
         price || null, source || 'other',
         beds || null, baths || null, sqft || null, year_built || null,
         condition || 'unknown',
@@ -120,7 +140,7 @@ router.post('/', async (req, res, next) => {
     // Log activity
     await query(
       'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-      [userId, lead[0].id, 'lead_created', JSON.stringify({ address, price, source })]
+      [userId, lead[0].id, 'lead_created', JSON.stringify({ address, price, source, assigned_user_id: ownerId !== userId ? ownerId : null })]
     );
 
     res.status(201).json({ lead: lead[0] });
@@ -581,9 +601,9 @@ router.post('/:id/followups/complete', async (req, res, next) => {
 router.post('/followups/scan', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !canManageTeam(currentUser[0])) {
+      return res.status(403).json({ error: 'Team management access required' });
     }
 
     const scanResult = await scanOverdueFollowUps();

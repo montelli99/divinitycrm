@@ -51,7 +51,16 @@ async function login(email, password) {
     { expiresIn: JWT_EXPIRY }
   );
 
-  return { token, user: { id: user[0].id, email: user[0].email, firstName: user[0].first_name, lastName: user[0].last_name } };
+  return {
+    token,
+    user: {
+      id: user[0].id,
+      email: user[0].email,
+      firstName: user[0].first_name,
+      lastName: user[0].last_name,
+      role: user[0].role || 'student',
+    },
+  };
 }
 
 // Auth middleware

@@ -5,6 +5,7 @@
 
 const { Router } = require('express');
 const { query } = require('../db/connection');
+const { isTeamViewer } = require('../services/access');
 
 const router = Router();
 
@@ -12,9 +13,9 @@ const router = Router();
 router.get('/dashboard', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentUser = await query('SELECT role FROM users WHERE id = $1', [userId]);
-    if (currentUser.length === 0 || currentUser[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
     }
 
     // 1. Overall pipeline stats (all students combined)
@@ -53,6 +54,7 @@ router.get('/dashboard', async (req, res, next) => {
         MAX(l.updated_at) AS last_activity
       FROM users u
       LEFT JOIN leads l ON u.id = l.user_id
+      WHERE u.role IN ('student', 'closer')
       GROUP BY u.id
       ORDER BY deals_closed DESC, total_leads DESC`
     );

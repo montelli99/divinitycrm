@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { canManageTeam, canViewTeam } from '../lib/access';
 
 const TIER_COLORS = {
   Student_NCNDA: '#6366f1',
@@ -16,6 +17,16 @@ const STATUS_COLORS = {
 };
 
 export default function StudentRoster() {
+  const currentUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('divinity_user') || 'null');
+    } catch {
+      return null;
+    }
+  })();
+  const teamVisible = canViewTeam(currentUser);
+  const teamManageVisible = canManageTeam(currentUser);
+
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -118,10 +129,15 @@ export default function StudentRoster() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', margin: 0 }}>Student Roster</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', margin: 0 }}>Student Funnel</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-            {students.length} students · Track payment tiers, pipeline stats, and vacation coverage
+            {students.length} team members · Track bottlenecks, assignments, and coverage
           </p>
+          {teamVisible && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+              Team access enabled for owner, Kayla, and lead managers.
+            </div>
+          )}
         </div>
         <button
           onClick={loadRoster}
@@ -199,7 +215,7 @@ export default function StudentRoster() {
                 <th style={thStyle}>Conv. %</th>
                 <th style={thStyle}>Vacation</th>
                 <th style={thStyle}>Last Activity</th>
-                <th style={thStyle}>Actions</th>
+            {teamManageVisible && <th style={thStyle}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -269,39 +285,41 @@ export default function StudentRoster() {
                   <td style={tdStyle}>
                     {s.last_activity ? new Date(s.last_activity).toLocaleDateString() : '—'}
                   </td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button
-                        onClick={() => loadStudentDetail(s.id)}
-                        style={actionBtnStyle}
-                        title="View details"
-                      >📋</button>
-                      {s.vacation_mode ? (
+                  {teamManageVisible && (
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
                         <button
-                          onClick={() => handleEndVacation(s.id)}
-                          style={{ ...actionBtnStyle, color: '#22c55e' }}
-                          title="End vacation"
-                        >🔙</button>
-                      ) : (
+                          onClick={() => loadStudentDetail(s.id)}
+                          style={actionBtnStyle}
+                          title="View details"
+                        >📋</button>
+                        {s.vacation_mode ? (
+                          <button
+                            onClick={() => handleEndVacation(s.id)}
+                            style={{ ...actionBtnStyle, color: '#22c55e' }}
+                            title="End vacation"
+                          >🔙</button>
+                        ) : (
+                          <button
+                            onClick={() => setVacationModal(s)}
+                            style={{ ...actionBtnStyle, color: '#f59e0b' }}
+                            title="Set vacation"
+                          >🌴</button>
+                        )}
                         <button
-                          onClick={() => setVacationModal(s)}
-                          style={{ ...actionBtnStyle, color: '#f59e0b' }}
-                          title="Set vacation"
-                        >🌴</button>
-                      )}
-                      <button
-                        onClick={() => setReassignModal(s)}
-                        style={{ ...actionBtnStyle, color: '#6366f1' }}
-                        title="Reassign leads"
-                      >🔄</button>
-                    </div>
-                  </td>
+                          onClick={() => setReassignModal(s)}
+                          style={{ ...actionBtnStyle, color: '#6366f1' }}
+                          title="Reassign leads"
+                        >🔄</button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {students.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem' }}>
-                    No students found. Students appear here when Clerk users are assigned the "student" or "closer" role.
+                  <td colSpan={teamManageVisible ? 11 : 10} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem' }}>
+                    No students found. Students appear here when team members are assigned the "student", "closer", or "lead_manager" role.
                   </td>
                 </tr>
               )}

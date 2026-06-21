@@ -139,7 +139,7 @@ test('users stats routes return current pipeline stage counts', async () => {
   const router = loadRouter('src/routes/users.js', {
     '../db/connection': {
       query: async (sql, params) => {
-        if (sql.includes('SELECT role FROM users WHERE id = $1')) return [{ role: 'admin' }];
+        if (sql.includes('SELECT role') && sql.includes('FROM users WHERE id = $1')) return [{ role: 'admin' }];
         if (sql.includes('FROM users u') && sql.includes('COUNT(l.id) AS total_leads')) {
           return [{ id: 'student-1', email: 'student@example.com', first_name: 'Stu', last_name: 'Dent', role: 'student', created_at: new Date().toISOString(), total_leads: 3, active_leads: 2, offers_sent: 1, deals_closed: 1, deals_lost: 0, new_leads: 1, qualified_leads: 1, loi_leads: 1, under_contract: 1, last_activity: new Date().toISOString() }];
         }
@@ -167,6 +167,33 @@ test('users stats routes return current pipeline stage counts', async () => {
   assert.equal(statsRes.body.success, true);
   assert.equal(statsRes.body.pipelineProgress.step11_followup, 1);
   assert.equal(statsRes.body.stats.conversion_rate, 50);
+});
+
+test('team members can view student funnels', async () => {
+  const router = loadRouter('src/routes/users.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'closer', email: 'homewithkaylamauser@gmail.com' }];
+        if (sql.includes('FROM users u') && sql.includes('COUNT(l.id) AS total_leads')) {
+          return [{ id: 'student-1', email: 'student@example.com', first_name: 'Stu', last_name: 'Dent', role: 'student', created_at: new Date().toISOString(), total_leads: 2, active_leads: 1, offers_sent: 1, deals_closed: 0, deals_lost: 0, new_leads: 1, qualified_leads: 0, loi_leads: 1, under_contract: 0, last_activity: new Date().toISOString() }];
+        }
+        if (sql.includes('SELECT id, email, first_name, last_name, role, created_at FROM users WHERE id = $1')) return [{ id: 'student-1', email: 'student@example.com', first_name: 'Stu', last_name: 'Dent', role: 'student', created_at: new Date().toISOString() }];
+        if (sql.includes('SELECT stage, COUNT(*) as count FROM leads WHERE user_id = $1 GROUP BY stage ORDER BY count DESC')) return [{ stage: 'OFFER_SENT', count: 1 }];
+        if (sql.includes('SELECT source, COUNT(*) as count FROM leads WHERE user_id = $1 GROUP BY source ORDER BY count DESC')) return [{ source: 'referral', count: 1 }];
+        if (sql.includes('SELECT a.*, l.address')) return [];
+        if (sql.includes('COUNT(*) AS total_leads')) return [{ total_leads: 2, active: 1, closed: 0, dead: 0, avg_days_to_close: null }];
+        return [];
+      },
+    },
+  });
+
+  const rosterRes = await callRoute(router, 'get', '/students', { user: { userId: 'closer-1' } });
+  assert.equal(rosterRes.body.success, true);
+  assert.equal(rosterRes.body.students[0].email, 'student@example.com');
+
+  const detailRes = await callRoute(router, 'get', '/students/:id/stats', { params: { id: 'student-1' }, user: { userId: 'closer-1' } });
+  assert.equal(detailRes.body.success, true);
+  assert.equal(detailRes.body.pipelineProgress.step10_offer_sent, 1);
 });
 
 test('contract routes generate and hand off contracts', async () => {
@@ -200,6 +227,32 @@ test('contract routes generate and hand off contracts', async () => {
   assert.equal(generateRes.body.formatted.includes('123 Main St'), true);
   assert.equal(generateRes.body.automation.workflow, 'contract');
   assert.ok(calls.some(call => call.sql.includes('INSERT INTO contracts')));
+});
+
+test('lead managers can assign new leads on upload', async () => {
+  const router = loadRouter('src/routes/leads.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'lead_manager', email: 'manager@example.com' }];
+        if (sql.includes('SELECT id, role FROM users WHERE id = $1') && params?.[0] === 'student-1') return [{ id: 'student-1', role: 'student' }];
+        if (sql.includes('INSERT INTO leads')) return [{ id: 'lead-1', user_id: params?.[1] }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/stage-automations': {
+      executeStageAutomations: async () => null,
+      getAvailableTransitions: () => ['CONTACT_MADE'],
+    },
+  });
+
+  const createRes = await callRoute(router, 'post', '/', {
+    body: { address: '123 Main St', assigned_user_id: 'student-1' },
+    user: { userId: 'manager-1' },
+  });
+
+  assert.equal(createRes.statusCode, 201);
+  assert.equal(createRes.body.lead.user_id, 'student-1');
 });
 
 test('pipeline stats and health routes respond with aggregated data', async () => {
@@ -468,7 +521,7 @@ test('admin dashboard returns aggregates for admins only', async () => {
   const router = loadRouter('src/routes/admin.js', {
     '../db/connection': {
       query: async (sql, params) => {
-        if (sql.includes('SELECT role FROM users WHERE id = $1')) return [{ role: params?.[0] === 'admin-1' ? 'admin' : 'student' }];
+        if (sql.includes('SELECT role') && sql.includes('FROM users WHERE id = $1')) return [{ role: params?.[0] === 'admin-1' ? 'admin' : 'student' }];
         if (sql.includes('COUNT(*) AS total_leads')) return [{ total_leads: 10, active: 6, closed: 3, dead: 1, added_today: 2, avg_days_to_close: 14 }];
         if (sql.includes('SUM(price) AS total_value')) return [{ total_value: 1230000, total_profit: 210000, active_count: 6 }];
         if (sql.includes('COUNT(l.id) AS total_leads')) return [{ id: 'student-1', email: 'student@example.com', first_name: 'Stu', last_name: 'Dent', role: 'student', total_leads: 4, active_leads: 2, deals_closed: 1, deals_lost: 1, offers_sent: 1, active_negotiations: 1, contracts_to_draft: 1, under_contract: 1, last_activity: new Date().toISOString() }];
