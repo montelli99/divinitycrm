@@ -22,6 +22,7 @@ export default function Pipeline() {
   const [scriptPrompts, setScriptPrompts] = useState(null);
   const [viewingPrompts, setViewingPrompts] = useState(null);
   const stageRefs = useRef({});
+  const boardShellRef = useRef(null);
 
   const loadPipeline = useCallback(async () => {
     try {
@@ -37,6 +38,14 @@ export default function Pipeline() {
   }, []);
 
   useEffect(() => { loadPipeline(); }, [loadPipeline]);
+
+  useEffect(() => {
+    if (!pipeline || loading) return;
+    const frame = requestAnimationFrame(() => {
+      if (boardShellRef.current) boardShellRef.current.scrollLeft = 0;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pipeline, loading]);
 
   async function handleAdvance(leadId, toStage) {
     const lead = pipeline.pipeline[Object.keys(pipeline.pipeline).find(s =>
@@ -158,7 +167,7 @@ export default function Pipeline() {
             <button
               key={stage}
               type="button"
-              className="pipeline-stage-chip"
+              className={`pipeline-stage-chip ${index === 0 ? 'is-active' : ''}`}
               onClick={() => scrollToStage(stage)}
               title={STAGE_LABELS[stage]}
               style={{
@@ -281,7 +290,7 @@ export default function Pipeline() {
         ))}
       </div>
 
-      <div className="pipeline-board-shell">
+      <div className="pipeline-board-shell" ref={boardShellRef}>
         <div className="pipeline-board">
         {STAGE_ORDER.map(stage => {
           const leads = pipeline.pipeline[stage] || [];

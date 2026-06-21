@@ -1,16 +1,16 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { clearToken } from '../lib/api';
+import { api, clearToken, getToken } from '../lib/api';
 import { canViewTeam } from '../lib/access';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: DashboardIcon },
-  { path: '/pipeline', label: 'Pipeline', icon: PipelineIcon },
-  { path: '/calculator', label: 'Calculator', icon: CalculatorIcon },
-  { path: '/contracts', label: 'Contracts', icon: ContractsIcon },
-  { path: '/training', label: 'Training', icon: TrainingIcon },
-  { path: '/notifications', label: 'Notifications', icon: BellIcon },
-  { path: '/profile', label: 'Profile', icon: ProfileIcon },
+  { path: '/', label: 'Dashboard', icon: DashboardIcon, accent: '#6d7ef7' },
+  { path: '/pipeline', label: 'Pipeline', icon: PipelineIcon, accent: '#8b5cf6' },
+  { path: '/calculator', label: 'Calculator', icon: CalculatorIcon, accent: '#f59e0b' },
+  { path: '/contracts', label: 'Contracts', icon: ContractsIcon, accent: '#22c55e' },
+  { path: '/training', label: 'Training', icon: TrainingIcon, accent: '#06b6d4' },
+  { path: '/notifications', label: 'Inbox', icon: BellIcon, accent: '#f43f5e' },
+  { path: '/profile', label: 'Profile', icon: ProfileIcon, accent: '#94a3b8' },
 ];
 
 function IconShell({ children }) {
@@ -112,6 +112,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   let user = null;
   try {
     const userStr = localStorage.getItem('divinity_user');
@@ -133,6 +134,25 @@ export default function Layout() {
     }
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    async function loadUnread() {
+      if (!getToken()) return;
+      try {
+        const result = await api.getUnreadCount();
+        if (active) setUnreadCount(Number(result.count || 0));
+      } catch {
+        if (active) setUnreadCount(0);
+      }
+    }
+    loadUnread();
+    const timer = setInterval(loadUnread, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   function toggleSidebar() {
     setSidebarCollapsed(prev => {
       const next = !prev;
@@ -147,8 +167,8 @@ export default function Layout() {
 
   const showTeamNav = canViewTeam(user);
   const TEAM_NAV_ITEMS = showTeamNav ? [
-    { path: '/admin', label: 'Team Dashboard', icon: TeamDashboardIcon },
-    { path: '/students', label: 'Student Funnel', icon: StudentFunnelIcon },
+    { path: '/admin', label: 'Team Dashboard', icon: TeamDashboardIcon, accent: '#3b82f6' },
+    { path: '/students', label: 'Student Funnel', icon: StudentFunnelIcon, accent: '#10b981' },
   ] : [];
 
   function handleLogout() {
@@ -199,8 +219,15 @@ export default function Layout() {
                 title={item.label}
                 aria-label={item.label}
               >
-                <item.icon />
-                <span className="nav-text">{item.label}</span>
+                <span className="nav-icon-shell" style={{ '--nav-accent': item.accent }}>
+                  <item.icon />
+                </span>
+                <span className="nav-text-wrap">
+                  <span className="nav-text">{item.label}</span>
+                  {item.path === '/notifications' && unreadCount > 0 && (
+                    <span className="nav-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                  )}
+                </span>
               </Link>
             </li>
           ))}
@@ -212,8 +239,12 @@ export default function Layout() {
                 title={item.label}
                 aria-label={item.label}
               >
-                <item.icon />
-                <span className="nav-text">{item.label}</span>
+                <span className="nav-icon-shell" style={{ '--nav-accent': item.accent }}>
+                  <item.icon />
+                </span>
+                <span className="nav-text-wrap">
+                  <span className="nav-text">{item.label}</span>
+                </span>
               </Link>
             </li>
           ))}

@@ -223,15 +223,49 @@ a:hover {
   position: relative;
 }
 
+.nav-icon-shell {
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  border-radius: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nav-accent, var(--brand-primary));
+  background: color-mix(in srgb, var(--nav-accent, var(--brand-primary)) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nav-accent, var(--brand-primary)) 22%, transparent);
+}
+
 .nav-icon-svg {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1rem;
+  height: 1rem;
   flex: 0 0 auto;
   color: currentColor;
 }
 
+.nav-text-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .nav-text {
   white-space: nowrap;
+}
+
+.nav-badge {
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(91, 108, 240, 0.18);
+  color: #c7d2fe;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .nav-links a::before {
@@ -303,6 +337,16 @@ a:hover {
   justify-content: center;
   padding-left: 0.6rem;
   padding-right: 0.6rem;
+}
+
+.app-layout.sidebar-collapsed .nav-icon-shell {
+  width: 2rem;
+  height: 2rem;
+}
+
+.app-layout.sidebar-collapsed .nav-text-wrap,
+.app-layout.sidebar-collapsed .nav-badge {
+  display: none;
 }
 
 .app-layout.sidebar-collapsed .nav-links {
@@ -734,6 +778,11 @@ tbody tr:last-child td {
   overflow-x: auto;
   padding-bottom: 0.5rem;
   margin-bottom: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, rgba(17, 20, 31, 0.92), rgba(17, 20, 31, 0.78));
+  border-radius: var(--radius-xl);
+  padding: 0.85rem 0.85rem 0.5rem;
+  box-shadow: var(--shadow-lg);
 }
 
 .pipeline-stage-rail {
@@ -754,7 +803,7 @@ tbody tr:last-child td {
   padding: 0.45rem 0.7rem;
   cursor: pointer;
   transition: all var(--transition-fast);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
@@ -775,6 +824,12 @@ tbody tr:last-child td {
   color: inherit;
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+.pipeline-stage-chip.is-active {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--brand-primary);
 }
 
 .pipeline-stage-chip-text {
@@ -799,6 +854,7 @@ tbody tr:last-child td {
   border-radius: var(--radius-lg);
   overflow: hidden;
   transition: border-color var(--transition-normal);
+  box-shadow: var(--shadow-sm);
 }
 
 .pipeline-column:hover {
@@ -1602,6 +1658,11 @@ details summary:hover {
     flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 0.25rem;
+  }
+
+  .nav-icon-shell {
+    width: 1.8rem;
+    height: 1.8rem;
   }
 }
 
