@@ -292,6 +292,42 @@ test('lead managers can assign new leads on upload', async () => {
   assert.equal(createRes.body.lead.user_id, 'student-1');
 });
 
+test('team viewers can open shared lead detail and stage scripts', async () => {
+  const router = loadRouter('src/routes/leads.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'closer', email: 'homewithkaylamauser@gmail.com' }];
+        if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-1', user_id: 'owner-1', stage: 'CONTACT_MADE', address: '123 Main St' }];
+        if (sql.includes('SELECT * FROM lead_history')) return [];
+        if (sql.includes('SELECT * FROM reminders')) return [];
+        return [];
+      },
+    },
+  });
+
+  const detailRes = await callRoute(router, 'get', '/:id', { params: { id: 'lead-1' }, user: { userId: 'closer-1' } });
+  assert.equal(detailRes.statusCode, 200);
+  assert.equal(detailRes.body.lead.id, 'lead-1');
+
+  const promptsRouter = loadRouter('src/routes/script-prompts.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'closer', email: 'homewithkaylamauser@gmail.com' }];
+        if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-1', user_id: 'owner-1', stage: 'CONTACT_MADE', address: '123 Main St', seller_name: 'Jane Seller' }];
+        return [];
+      },
+    },
+  });
+
+  const promptRes = await callRoute(promptsRouter, 'get', '/stage/:lead_id/:stage', {
+    params: { lead_id: 'lead-1', stage: 'CONTACT_MADE' },
+    user: { userId: 'closer-1' },
+  });
+
+  assert.equal(promptRes.statusCode, 200);
+  assert.equal(promptRes.body.lead_id, 'lead-1');
+});
+
 test('bulk lead import maps fields and assigns leads to students', async () => {
   const router = loadRouter('src/routes/leads.js', {
     '../db/connection': {

@@ -6,9 +6,187 @@ const { Router } = require('express');
 const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
-const { canAssignLeads, canManageTeam } = require('../services/access');
+const { canAssignLeads, canManageTeam, isTeamViewer } = require('../services/access');
 
 const router = Router();
+
+const BULK_IMPORT_FIELD_KEYS = [
+  'address', 'city', 'state', 'zip', 'price', 'source',
+  'beds', 'baths', 'sqft', 'year_built', 'condition',
+  'agent_name', 'agent_phone', 'agent_email',
+  'seller_name', 'seller_phone', 'seller_email',
+  'notes', 'contract_type', 'contract', 'arv', 'monthly_rent',
+  'repairs_estimate', 'existing_loan_balance', 'existing_loan_rate',
+  'assigned_user_id',
+];
+
+function toNumberOrNull(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeFieldValue(field, value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  if (['price', 'beds', 'baths', 'sqft', 'year_built', 'arv', 'monthly_rent', 'repairs_estimate', 'existing_loan_balance', 'existing_loan_rate'].includes(field)) {
+    return toNumberOrNull(text);
+  }
+  return text;
+}
+
+function parseCsvRows(csvText) {
+  const rows = [];
+  const lines = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i += 1) {
+    const char = csvText[i];
+    const next = csvText[i + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (current.trim()) lines.push(current);
+      current = '';
+      if (char === '\r' && next === '\n') i += 1;
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) lines.push(current);
+
+  if (lines.length === 0) return [];
+
+  const headers = splitCsvLine(lines[0]).map(h => h.trim());
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const values = splitCsvLine(line);
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? '';
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function splitCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  values.push(current);
+  return values;
+}
+
+async function resolveLeadOwner({ currentUser, assignedUserId, defaultAssignedUserId }) {
+  const requestedUserId = assignedUserId || defaultAssignedUserId || null;
+  if (!requestedUserId) return null;
+
+  const teamAssignmentAllowed = currentUser.length > 0 && canAssignLeads(currentUser[0]);
+  if (!teamAssignmentAllowed) {
+    throw new Error('Lead assignment access required');
+  }
+
+  const assignee = await query('SELECT id, role FROM users WHERE id = $1', [requestedUserId]);
+  if (assignee.length === 0) {
+    throw new Error('Assigned user not found');
+  }
+  if (!['student', 'closer', 'lead_manager', 'admin'].includes(assignee[0].role || 'student')) {
+    throw new Error('Assigned user must be a student or closer');
+  }
+  return requestedUserId;
+}
+
+async function insertLeadRecord({ creatorUserId, ownerId, leadData }) {
+  const lead = await query(
+    `INSERT INTO leads (
+      id, user_id, address, city, state, zip, price, source,
+      beds, baths, sqft, year_built, condition,
+      agent_name, agent_phone, agent_email,
+      seller_name, seller_phone, seller_email,
+      notes, stage, contract_type, contract,
+      arv, monthly_rent, repairs_estimate, existing_loan_balance, existing_loan_rate
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6,
+      $7, $8,
+      $9, $10, $11, $12,
+      $13,
+      $14, $15, $16,
+      $17, $18, $19,
+      $20, $21, $22, $23,
+      $24, $25, $26, $27, $28
+    )
+    RETURNING *`,
+    [
+      uuid(), ownerId,
+      leadData.address,
+      leadData.city || null,
+      leadData.state || null,
+      leadData.zip || null,
+      leadData.price ?? null,
+      leadData.source || 'other',
+      leadData.beds ?? null,
+      leadData.baths ?? null,
+      leadData.sqft ?? null,
+      leadData.year_built ?? null,
+      leadData.condition || 'unknown',
+      leadData.agent_name || null,
+      leadData.agent_phone || null,
+      leadData.agent_email || null,
+      leadData.seller_name || null,
+      leadData.seller_phone || null,
+      leadData.seller_email || null,
+      leadData.notes || '',
+      'LEAD_ENTERED',
+      leadData.contract_type || leadData.contract || null,
+      leadData.contract || leadData.contract_type || null,
+      leadData.arv ?? null,
+      leadData.monthly_rent ?? null,
+      leadData.repairs_estimate ?? null,
+      leadData.existing_loan_balance ?? null,
+      leadData.existing_loan_rate ?? null,
+    ]
+  );
+
+  await query(
+    'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+    [creatorUserId, lead[0].id, 'lead_created', JSON.stringify({ address: leadData.address, price: leadData.price, source: leadData.source, assigned_user_id: ownerId !== creatorUserId ? ownerId : null })]
+  );
+
+  return lead[0];
+}
 
 // GET /api/leads — List all leads for the authenticated user
 router.get('/', async (req, res, next) => {
@@ -45,13 +223,18 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user.userId;
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
     const lead = await query(
-      'SELECT * FROM leads WHERE id = $1 AND user_id = $2',
-      [req.params.id, userId]
+      'SELECT * FROM leads WHERE id = $1',
+      [req.params.id]
     );
 
     if (lead.length === 0) {
       return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    if (lead[0].user_id !== userId && (currentUser.length === 0 || !isTeamViewer(currentUser[0]))) {
+      return res.status(403).json({ error: 'Lead access required' });
     }
 
     // Get history
@@ -91,59 +274,93 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    const teamAssignmentAllowed = currentUser.length > 0 && canAssignLeads(currentUser[0]);
-    if (assigned_user_id && !teamAssignmentAllowed) {
-      return res.status(403).json({ error: 'Lead assignment access required' });
+    const ownerId = await resolveLeadOwner({ currentUser, assignedUserId: assigned_user_id });
+    const lead = await insertLeadRecord({
+      creatorUserId: userId,
+      ownerId: ownerId || userId,
+      leadData: {
+        address,
+        city,
+        state,
+        zip,
+        price,
+        source,
+        beds,
+        baths,
+        sqft,
+        year_built,
+        condition,
+        agent_name,
+        agent_phone,
+        agent_email,
+        seller_name,
+        seller_phone,
+        seller_email,
+        notes,
+        contract_type,
+        contract,
+      },
+    });
+
+    res.status(201).json({ lead });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/leads/import — Bulk import leads with field mapping
+router.post('/import', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    const { rows, csvText, fieldMap = {}, defaultAssignedUserId, source = 'other' } = req.body;
+
+    const parsedRows = Array.isArray(rows) && rows.length > 0 ? rows : (csvText ? parseCsvRows(csvText) : []);
+    if (parsedRows.length === 0) {
+      return res.status(400).json({ error: 'rows or csvText are required' });
     }
 
-    let ownerId = userId;
-    if (assigned_user_id) {
-      const assignee = await query('SELECT id, role FROM users WHERE id = $1', [assigned_user_id]);
-      if (assignee.length === 0) {
-        return res.status(400).json({ error: 'Assigned student not found' });
+    const ownerId = await resolveLeadOwner({ currentUser, defaultAssignedUserId });
+    const created = [];
+    const failed = [];
+
+    for (const rawRow of parsedRows) {
+      try {
+        const leadData = { source };
+        for (const field of BULK_IMPORT_FIELD_KEYS) {
+          const sourceKey = fieldMap[field] || field;
+          if (!sourceKey) continue;
+          const rawValue = rawRow[sourceKey];
+          const value = normalizeFieldValue(field, rawValue);
+          if (value !== undefined && value !== null && value !== '') {
+            leadData[field] = value;
+          }
+        }
+
+        if (!leadData.address) {
+          throw new Error('Address is required');
+        }
+
+        const rowOwnerId = await resolveLeadOwner({ currentUser, assignedUserId: leadData.assigned_user_id, defaultAssignedUserId: ownerId });
+        delete leadData.assigned_user_id;
+        const lead = await insertLeadRecord({
+          creatorUserId: userId,
+          ownerId: rowOwnerId || userId,
+          leadData,
+        });
+        created.push(lead);
+      } catch (err) {
+        failed.push({ row: rawRow, error: err.message });
       }
-      if (!['student', 'closer', 'lead_manager', 'admin'].includes(assignee[0].role || 'student')) {
-        return res.status(400).json({ error: 'Assigned user must be a student or closer' });
-      }
-      ownerId = assigned_user_id;
     }
 
-    const lead = await query(
-      `INSERT INTO leads (
-        id, user_id, address, city, state, zip, price, source,
-        beds, baths, sqft, year_built, condition,
-        agent_name, agent_phone, agent_email,
-        seller_name, seller_phone, seller_email,
-        notes, stage, contract_type, contract
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8,
-        $9, $10, $11, $12,
-        $13,
-        $14, $15, $16,
-        $17, $18, $19,
-        $20, $21, $22, $23
-      )
-      RETURNING *`,
-      [
-        uuid(), ownerId, address, city || null, state || null, zip || null,
-        price || null, source || 'other',
-        beds || null, baths || null, sqft || null, year_built || null,
-        condition || 'unknown',
-        agent_name || null, agent_phone || null, agent_email || null,
-        seller_name || null, seller_phone || null, seller_email || null,
-        notes || '', 'LEAD_ENTERED',
-        contract_type || contract || null, contract || contract_type || null,
-      ]
-    );
-
-    // Log activity
-    await query(
-      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-      [userId, lead[0].id, 'lead_created', JSON.stringify({ address, price, source, assigned_user_id: ownerId !== userId ? ownerId : null })]
-    );
-
-    res.status(201).json({ lead: lead[0] });
+    res.status(failed.length > 0 ? 207 : 201).json({
+      success: failed.length === 0,
+      created: created.length,
+      failed: failed.length,
+      leads: created,
+      errors: failed,
+    });
   } catch (err) {
     next(err);
   }
@@ -271,17 +488,30 @@ router.patch('/:id', async (req, res, next) => {
       params
     );
 
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
     // Stage change automation — fires GHL-equivalent workflows
     let automation = null;
     if (req.body.stage && existing[0].stage !== req.body.stage) {
-      automation = await executeStageAutomations(leadId, userId, existing[0].stage, req.body.stage, existing[0]);
+      try {
+        automation = await executeStageAutomations(leadId, userId, existing[0].stage, req.body.stage, existing[0]);
+      } catch (automationErr) {
+        automation = { error: automationErr.message };
+      }
     }
 
     // Log activity
-    await query(
-      'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-      [userId, leadId, 'lead_updated', JSON.stringify(req.body)]
-    );
+    try {
+      await query(
+        'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
+        [userId, leadId, 'lead_updated', JSON.stringify(req.body)]
+      );
+    } catch (activityErr) {
+      automation = automation || {};
+      automation.activity_log_error = activityErr.message;
+    }
 
     res.json({ lead: result[0], automation });
   } catch (err) {
