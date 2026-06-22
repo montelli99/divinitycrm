@@ -171,6 +171,17 @@ export default function Layout() {
     { path: '/students', label: 'Student Funnel', icon: StudentFunnelIcon, accent: '#10b981' },
   ] : [];
 
+  const ORDERED_NAV_ITEMS = [
+    NAV_ITEMS[0],
+    NAV_ITEMS[5],
+    NAV_ITEMS[1],
+    ...TEAM_NAV_ITEMS,
+    NAV_ITEMS[2],
+    NAV_ITEMS[3],
+    NAV_ITEMS[4],
+    NAV_ITEMS[6],
+  ];
+
   function handleLogout() {
     clearToken();
     navigate('/login');
@@ -211,7 +222,7 @@ export default function Layout() {
         </div>
 
         <ul className="nav-links">
-          {NAV_ITEMS.map(item => (
+          {ORDERED_NAV_ITEMS.map(item => (
             <li key={item.path}>
               <Link
                 to={item.path}
