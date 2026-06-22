@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 
 const TYPE_ICONS = {
@@ -32,6 +32,7 @@ const QUICK_LINKS = [
 ];
 
 export default function Notifications() {
+  const navigate = useNavigate();
   const [data, setData] = useState({ notifications: [], unreadCount: 0 });
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -83,6 +84,21 @@ export default function Notifications() {
     } catch (err) {
       setActionError(err.message || 'Failed to archive notification');
     }
+  }
+
+  function resolveNotificationTarget(notification) {
+    if (notification.action_url) return notification.action_url;
+    if (notification.lead_id) return `/leads/${notification.lead_id}`;
+    return '/pipeline';
+  }
+
+  function openNotificationTarget(target) {
+    if (!target) return;
+    if (/^https?:\/\//i.test(target)) {
+      window.location.assign(target);
+      return;
+    }
+    navigate(target);
   }
 
   function formatTime(iso) {
@@ -243,6 +259,7 @@ export default function Notifications() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               {data.notifications.map(n => {
                 const isUnread = !n.read_at;
+                const target = resolveNotificationTarget(n);
                 return (
                   <div
                     key={n.id}
@@ -255,12 +272,22 @@ export default function Notifications() {
                       gap: '0.75rem',
                       alignItems: 'flex-start',
                       transition: 'all 0.15s',
-                      cursor: n.action_url ? 'pointer' : 'default',
+                      cursor: target ? 'pointer' : 'default',
                       boxShadow: isUnread ? '0 10px 30px rgba(0,0,0,0.18)' : 'none',
                     }}
                     onClick={() => {
                       if (isUnread) handleMarkRead(n.id);
-                      if (n.action_url) setTimeout(() => { window.location.href = n.action_url; }, 100);
+                      openNotificationTarget(target);
+                    }}
+                    role={target ? 'button' : undefined}
+                    tabIndex={target ? 0 : undefined}
+                    onKeyDown={e => {
+                      if (!target) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (isUnread) handleMarkRead(n.id);
+                        navigate(target);
+                      }
                     }}
                   >
                     <div style={{
@@ -302,16 +329,37 @@ export default function Notifications() {
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
                         {n.body}
                       </div>
-                      {n.action_label && (
+                      {target && (
                         <div style={{ marginTop: '0.55rem' }}>
                           <span style={{ color: 'var(--brand-primary)', fontSize: '0.78rem', fontWeight: '600' }}>
-                            {n.action_label} →
+                            {n.action_label || 'Open'} →
                           </span>
                         </div>
                       )}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }} onClick={e => e.stopPropagation()}>
+                      {target && (
+                        <button
+                          onClick={() => {
+                            if (isUnread) handleMarkRead(n.id);
+                            openNotificationTarget(target);
+                          }}
+                          title="Open linked page"
+                          style={{
+                            background: 'var(--brand-primary)',
+                            border: '1px solid var(--brand-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.7rem',
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          Open
+                        </button>
+                      )}
                       {!isUnread && (
                         <button
                           onClick={() => handleMarkRead(n.id)}

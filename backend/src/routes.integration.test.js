@@ -109,6 +109,26 @@ test('script prompts routes return canonical stage shortcut', async () => {
   assert.ok(queryCalls.length >= 2);
 });
 
+test('under contract stage no longer shows the previous inspection SMS shortcut', async () => {
+  const router = loadRouter('src/routes/script-prompts.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('FROM users')) return [{ id: 'user-1' }];
+        if (sql.includes('FROM leads')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'UNDER_CONTRACT', seller_name: 'Jane Seller', address: '123 Main St' }];
+        return [];
+      },
+    },
+  });
+
+  const stageRes = await callRoute(router, 'get', '/stage/:lead_id/:stage', {
+    params: { lead_id: 'lead-1', stage: 'UNDER_CONTRACT' },
+  });
+
+  assert.equal(stageRes.statusCode, 200);
+  assert.equal(stageRes.body.primaryShortcut, null);
+  assert.deepEqual(stageRes.body.scripts, []);
+});
+
 test('lead transition route enforces allowed next stages', async () => {
   const automation = { automated: true, workflow: 'wf', owner: 'Montelli' };
   const router = loadRouter('src/routes/leads.js', {
@@ -133,6 +153,23 @@ test('lead transition route enforces allowed next stages', async () => {
   const advanceRes = await callRoute(router, 'post', '/:id/advance', { params: { id: 'lead-1' }, body: { to_stage: 'CONTACT_MADE' } });
   assert.equal(advanceRes.body.lead.stage, 'CONTACT_MADE');
   assert.equal(advanceRes.body.automation.workflow, 'wf');
+});
+
+test('pipeline stats return zero conversion when no closed or dead deals exist', async () => {
+  const router = loadRouter('src/routes/pipeline.js', {
+    '../db/connection': {
+      query: async sql => {
+        if (sql.includes('COUNT(*) AS total')) return [{ total: 1, active: 1, closed: 0, dead: 0, avg_days_to_close: null }];
+        if (sql.includes('GROUP BY source')) return [{ source: 'other', count: 1 }];
+        if (sql.includes('GROUP BY stage')) return [{ stage: 'LEAD_ENTERED', count: 1 }];
+        return [];
+      },
+    },
+  });
+
+  const statsRes = await callRoute(router, 'get', '/stats', {});
+  assert.equal(statsRes.statusCode, 200);
+  assert.equal(statsRes.body.conversion_rate, 0);
 });
 
 test('users stats routes return current pipeline stage counts', async () => {
@@ -253,6 +290,116 @@ test('lead managers can assign new leads on upload', async () => {
 
   assert.equal(createRes.statusCode, 201);
   assert.equal(createRes.body.lead.user_id, 'student-1');
+});
+
+test('bulk lead import maps fields and assigns leads to students', async () => {
+  const router = loadRouter('src/routes/leads.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'lead_manager', email: 'manager@example.com' }];
+        if (sql.includes('SELECT id, role FROM users WHERE id = $1') && params?.[0] === 'student-1') return [{ id: 'student-1', role: 'student' }];
+        if (sql.includes('INSERT INTO leads')) return [{ id: 'lead-1', user_id: params?.[1], address: params?.[2], city: params?.[3], state: params?.[4], price: params?.[6] }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/stage-automations': {
+      executeStageAutomations: async () => null,
+      getAvailableTransitions: () => ['CONTACT_MADE'],
+    },
+  });
+
+  const res = await callRoute(router, 'post', '/import', {
+    user: { userId: 'manager-1' },
+    body: {
+      rows: [{ street: '123 Main St', town: 'Austin', region: 'TX', sale_price: '250000' }],
+      fieldMap: { address: 'street', city: 'town', state: 'region', price: 'sale_price' },
+      defaultAssignedUserId: 'student-1',
+      source: 'referral',
+    },
+  });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.created, 1);
+  assert.equal(res.body.leads[0].user_id, 'student-1');
+  assert.equal(res.body.leads[0].price, 250000);
+});
+
+test('lead updates still succeed when automation fails', async () => {
+  const router = loadRouter('src/routes/leads.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT id, stage FROM leads WHERE id = $1 AND user_id = $2')) return [{ id: 'lead-1', stage: 'LEAD_ENTERED' }];
+        if (sql.includes('UPDATE leads SET')) return [{ id: 'lead-1', stage: params[0] }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/stage-automations': {
+      executeStageAutomations: async () => { throw new Error('has undefined'); },
+      getAvailableTransitions: () => ['CONTACT_MADE', 'DEAD'],
+    },
+  });
+
+  const res = await callRoute(router, 'patch', '/:id', {
+    params: { id: 'lead-1' },
+    body: { stage: 'CONTACT_MADE', notes: 'updated' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.lead.stage, 'CONTACT_MADE');
+  assert.equal(res.body.automation.error, 'has undefined');
+});
+
+test('profile scheduling link saves through users me patch', async () => {
+  const router = loadRouter('src/routes/users.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('UPDATE users') && sql.includes('scheduling_link')) {
+          return [{ id: 'user-1', email: 'student@example.com', scheduling_link: params[2] }];
+        }
+        return [];
+      },
+    },
+  });
+
+  const res = await callRoute(router, 'patch', '/me', {
+    body: { scheduling_link: 'https://cal.example.com/30' },
+    user: { userId: 'user-1' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.user.scheduling_link, 'https://cal.example.com/30');
+});
+
+test('rabbit sign route passes normalized contract type and lead record', async () => {
+  const calls = [];
+  const router = loadRouter('src/routes/contracts.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT * FROM leads WHERE id = $1 AND user_id = $2')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, contract_type: 'subto' }];
+        return [];
+      },
+    },
+  });
+
+  const res = await callRoute(router, 'post', '/send-rabbitsign', {
+    body: { leadId: 'lead-1', contractType: 'SubTo' },
+    runtimeMocks: {
+      '../services/rabbitsign': {
+        isConfigured: () => true,
+        createContractEnvelope: async (lead, contractType) => {
+          calls.push({ lead, contractType });
+          return { folderId: 'folder-1', status: 'sent' };
+        },
+        getFolderStatus: async () => ({}),
+      },
+    },
+  });
+
+  assert.equal(res.body.folderId, 'folder-1');
+  assert.equal(calls[0].lead.id, 'lead-1');
+  assert.equal(calls[0].contractType, 'subto');
 });
 
 test('pipeline stats and health routes respond with aggregated data', async () => {
