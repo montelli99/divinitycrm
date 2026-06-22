@@ -6,6 +6,21 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
 const { calculate, checkBuyBox, recommendStrategy } = require('../services/calculator');
+const { isTeamViewer } = require('../services/access');
+
+async function loadLeadForCurrentUser(leadId, userId) {
+  const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+  if (currentUser.length === 0) return { error: 'User not found', status: 404 };
+
+  const lead = await query('SELECT * FROM leads WHERE id = $1', [leadId]);
+  if (lead.length === 0) return { error: 'Lead not found', status: 404 };
+
+  if (lead[0].user_id !== userId && !isTeamViewer(currentUser[0])) {
+    return { error: 'Lead access required', status: 403 };
+  }
+
+  return { lead: lead[0] };
+}
 
 // POST /api/calculator/analyze — Run full deal analysis
 router.post('/analyze', async (req, res) => {
@@ -77,6 +92,11 @@ router.post('/analyze', async (req, res) => {
 
     // If leadId provided, save results to lead record
     if (leadId) {
+      const access = await loadLeadForCurrentUser(leadId, userId);
+      if (access.error) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
       await query(
         `UPDATE leads
         SET
@@ -91,7 +111,7 @@ router.post('/analyze', async (req, res) => {
           repairs_estimate = $9,
           condition = $10,
           updated_at = NOW()
-        WHERE id = $11 AND user_id = $12`,
+        WHERE id = $11`,
         [
           Number(arv),
           calcResult.structures[0].offer,
@@ -104,7 +124,6 @@ router.post('/analyze', async (req, res) => {
           Number(repairEstimate || 0),
           condition || 'unknown',
           leadId,
-          userId
         ]
       );
 
@@ -208,23 +227,12 @@ router.get('/lead/:id', async (req, res) => {
     const userId = req.user.userId;
     const { id } = req.params;
 
-    const lead = await query(
-      `SELECT id, address, city, state, zip, price, arv, beds, baths, sqft,
-             condition, repairs_estimate, cash_offer, f50_offer, subto_offer,
-             recommended_strategy, one_percent_rule, dscr, cash_flow,
-             existing_loan_balance, existing_loan_rate, monthly_rent,
-             has_hoa, has_pool, in_flood_zone, population, occupancy,
-             source, stage
-      FROM leads
-      WHERE id = $1 AND user_id = $2`,
-      [id, userId]
-    );
-
-    if (lead.length === 0) {
-      return res.status(404).json({ error: 'Lead not found' });
+    const access = await loadLeadForCurrentUser(id, userId);
+    if (access.error) {
+      return res.status(access.status).json({ error: access.error });
     }
 
-    const l = lead[0];
+    const l = access.lead;
     res.json({
       success: true,
       lead: {

@@ -239,7 +239,8 @@ test('contract routes generate and hand off contracts', async () => {
     '../db/connection': {
       query: async (sql, params) => {
         calls.push({ sql, params });
-        if (sql.includes('SELECT * FROM leads WHERE id = $1 AND user_id = $2')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', apn: 'APN123', price: 250000, seller_name: 'Jane Seller', seller_email: 'jane@example.com', seller_phone: '555-111-2222', existing_loan_balance: 180000, existing_loan_rate: 0.045, contract_type: 'subto' }];
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'student', email: 'student@example.com' }];
+        if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', apn: 'APN123', price: 250000, seller_name: 'Jane Seller', seller_email: 'jane@example.com', seller_phone: '555-111-2222', existing_loan_balance: 180000, existing_loan_rate: 0.045, contract_type: 'subto' }];
         if (sql.includes('INSERT INTO contracts')) return [{ id: 'contract-1' }];
         if (sql.includes('UPDATE leads SET')) return [{ id: 'lead-1' }];
         if (sql.includes('INSERT INTO activity_log')) return [];
@@ -264,6 +265,46 @@ test('contract routes generate and hand off contracts', async () => {
   assert.equal(generateRes.body.formatted.includes('123 Main St'), true);
   assert.equal(generateRes.body.automation.workflow, 'contract');
   assert.ok(calls.some(call => call.sql.includes('INSERT INTO contracts')));
+});
+
+test('team viewers can generate shared contracts and RabbitSign envelopes', async () => {
+  const router = loadRouter('src/routes/contracts.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'closer', email: 'homewithkaylamauser@gmail.com' }];
+        if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-2', user_id: 'owner-1', stage: 'TERMS_AGREED', address: '456 Oak Ave', city: 'Austin', state: 'TX', zip: '78702', apn: 'APN456', price: 300000, seller_name: 'Jane Seller', seller_email: 'jane@example.com', seller_phone: '555-111-2222', existing_loan_balance: 180000, existing_loan_rate: 0.045, contract_type: 'subto' }];
+        if (sql.includes('INSERT INTO contracts')) return [{ id: 'contract-2' }];
+        if (sql.includes('UPDATE leads SET')) return [{ id: 'lead-2' }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/stage-automations': {
+      executeStageAutomations: async () => ({ automated: true, workflow: 'contract', owner: 'TC' }),
+      getAvailableTransitions: () => ['UNDER_CONTRACT'],
+    },
+  });
+
+  const genRes = await callRoute(router, 'post', '/generate-from-template', {
+    body: { lead_id: 'lead-2', template_id: 'PSA_CREATIVE_SUBTO' },
+    user: { userId: 'closer-1' },
+  });
+  assert.equal(genRes.statusCode, 200);
+  assert.equal(genRes.body.contract.id, 'contract-2');
+
+  const rsRes = await callRoute(router, 'post', '/send-rabbitsign', {
+    body: { leadId: 'lead-2', contractType: 'SubTo' },
+    user: { userId: 'closer-1' },
+    runtimeMocks: {
+      '../services/rabbitsign': {
+        isConfigured: () => true,
+        createContractEnvelope: async (lead, contractType) => ({ folderId: `folder-${lead.id}`, status: contractType }),
+        getFolderStatus: async () => ({}),
+      },
+    },
+  });
+  assert.equal(rsRes.statusCode, 200);
+  assert.equal(rsRes.body.folderId, 'folder-lead-2');
 });
 
 test('lead managers can assign new leads on upload', async () => {
@@ -413,7 +454,8 @@ test('rabbit sign route passes normalized contract type and lead record', async 
   const router = loadRouter('src/routes/contracts.js', {
     '../db/connection': {
       query: async (sql, params) => {
-        if (sql.includes('SELECT * FROM leads WHERE id = $1 AND user_id = $2')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, contract_type: 'subto' }];
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'student', email: 'student@example.com' }];
+        if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, contract_type: 'subto' }];
         return [];
       },
     },
@@ -567,13 +609,14 @@ test('calculator routes return analysis and persisted lead data', async () => {
   const router = loadRouter('src/routes/calculator.js', {
     '../db/connection': {
       query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'student', email: 'student@example.com' }];
         if (sql.includes('UPDATE leads')) return [{ id: 'lead-1' }];
         if (sql.includes('INSERT INTO activity_log')) return [];
         if (sql.includes('FROM activity_log a') && sql.includes("underwriting_run")) {
           return [{ id: 'hist-1', user_id: 'user-1', lead_id: 'lead-1', action: 'underwriting_run', details: JSON.stringify({ recommended: 'Stack50', dscr: '1.40', cashFlow: 250 }), created_at: new Date().toISOString(), address: '123 Main St' }];
         }
-        if (sql.includes('FROM leads') && sql.includes('WHERE id = $1 AND user_id = $2')) {
-          return [{ id: 'lead-1', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, arv: 325000, beds: 3, baths: 2, sqft: 1800, condition: 'turnkey', repairs_estimate: 20000, cash_offer: 150000, f50_offer: 175000, subto_offer: 180000, recommended_strategy: 'stack50', one_percent_rule: true, dscr: 1.3, cash_flow: 450, existing_loan_balance: 180000, existing_loan_rate: 0.045, monthly_rent: 2500, has_hoa: false, has_pool: false, in_flood_zone: false, population: 12000, occupancy: 'occupied', source: 'referral', stage: 'OFFER_READY' }];
+        if (sql.includes('FROM leads') && sql.includes('WHERE id = $1')) {
+          return [{ id: 'lead-1', user_id: 'user-1', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, arv: 325000, beds: 3, baths: 2, sqft: 1800, condition: 'turnkey', repairs_estimate: 20000, cash_offer: 150000, f50_offer: 175000, subto_offer: 180000, recommended_strategy: 'stack50', one_percent_rule: true, dscr: 1.3, cash_flow: 450, existing_loan_balance: 180000, existing_loan_rate: 0.045, monthly_rent: 2500, has_hoa: false, has_pool: false, in_flood_zone: false, population: 12000, occupancy: 'occupied', source: 'referral', stage: 'OFFER_READY' }];
         }
         return [];
       },
@@ -607,6 +650,36 @@ test('calculator routes return analysis and persisted lead data', async () => {
   const leadRes = await callRoute(router, 'get', '/lead/:id', { params: { id: 'lead-1' } });
   assert.equal(leadRes.body.success, true);
   assert.equal(leadRes.body.lead.stage, 'OFFER_READY');
+});
+
+test('shared leads can load calculator data for team viewers', async () => {
+  const router = loadRouter('src/routes/calculator.js', {
+    '../db/connection': {
+      query: async (sql, params) => {
+        if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'closer', email: 'homewithkaylamauser@gmail.com' }];
+        if (sql.includes('FROM leads') && sql.includes('WHERE id = $1')) return [{ id: 'lead-2', user_id: 'owner-1', address: '456 Oak Ave', city: 'Austin', state: 'TX', zip: '78702', price: 300000, arv: 375000, beds: 4, baths: 2, sqft: 2100, condition: 'turnkey', repairs_estimate: 10000, cash_offer: 180000, f50_offer: 195000, subto_offer: 205000, recommended_strategy: 'stack50', one_percent_rule: true, dscr: 1.4, cash_flow: 550, existing_loan_balance: 200000, existing_loan_rate: 0.047, monthly_rent: 3200, has_hoa: false, has_pool: false, in_flood_zone: false, population: 14000, occupancy: 'occupied', source: 'referral', stage: 'OFFER_READY' }];
+        if (sql.includes('UPDATE leads')) return [{ id: 'lead-2' }];
+        if (sql.includes('INSERT INTO activity_log')) return [];
+        return [];
+      },
+    },
+    '../services/calculator': {
+      calculate: () => ({ structures: [{ offer: 111 }, { offer: 222 }, {}, {}, { offer: 333 }], metadata: { percRule: 1.1, dscr: 1.4, cashFlow: 250 } }),
+      checkBuyBox: () => ({ allPass: true, failures: [] }),
+      recommendStrategy: () => ({ strategy: 'Stack50' }),
+    },
+  });
+
+  const leadRes = await callRoute(router, 'get', '/lead/:id', { params: { id: 'lead-2' }, user: { userId: 'closer-1' } });
+  assert.equal(leadRes.statusCode, 200);
+  assert.equal(leadRes.body.lead.address, '456 Oak Ave');
+
+  const analyzeRes = await callRoute(router, 'post', '/analyze', {
+    body: { arv: 375000, askingPrice: 300000, monthlyRent: 3200, leadId: 'lead-2' },
+    user: { userId: 'closer-1' },
+  });
+  assert.equal(analyzeRes.statusCode, 200);
+  assert.equal(analyzeRes.body.leadUpdated, true);
 });
 
 test('notifications routes list, count, and update inbox items', async () => {

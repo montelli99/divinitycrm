@@ -7,8 +7,23 @@ const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { generateContract, formatForTelegram } = require('../services/contract-generator');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
+const { isTeamViewer } = require('../services/access');
 
 const router = Router();
+
+async function loadLeadForCurrentUser(leadId, userId) {
+  const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+  if (currentUser.length === 0) return { error: 'User not found', status: 404 };
+
+  const lead = await query('SELECT * FROM leads WHERE id = $1', [leadId]);
+  if (lead.length === 0) return { error: 'Lead not found', status: 404 };
+
+  if (lead[0].user_id !== userId && !isTeamViewer(currentUser[0])) {
+    return { error: 'Lead access required', status: 403 };
+  }
+
+  return { lead: lead[0] };
+}
 
 // Full contract template definitions (from contract-templates.js)
 const CONTRACT_TEMPLATES = {
@@ -133,8 +148,9 @@ router.post('/generate-from-template', async (req, res, next) => {
     if (!tpl) return res.status(400).json({ error: 'Invalid template_id' });
 
     // Fetch lead
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [lead_id, userId]);
-    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
+    const access = await loadLeadForCurrentUser(lead_id, userId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    const lead = [access.lead];
 
     const l = lead[0];
 
@@ -390,18 +406,19 @@ router.post('/send-rabbitsign', async (req, res, next) => {
 
     const userId = req.user.userId;
 
-    const lead = await query('SELECT * FROM leads WHERE id = $1 AND user_id = $2', [leadId, userId]);
-    if (lead.length === 0) return res.status(404).json({ error: 'Lead not found' });
+    const access = await loadLeadForCurrentUser(leadId, userId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    const lead = [access.lead];
 
     const rs = require('../services/rabbitsign');
     if (!rs.isConfigured()) {
       return res.status(503).json({ error: 'RabbitSign not configured. Set RABBITSIGN_API_KEY in environment.' });
     }
 
-    const result = await rs.createContractEnvelope({
-      lead: lead[0],
-      contractType: contractType || lead[0].contract_type || 'SubTo',
-    });
+    const result = await rs.createContractEnvelope(
+      lead[0],
+      String(contractType || lead[0].contract_type || 'subto').toLowerCase(),
+    );
 
     res.json({ success: true, folderId: result.folderId, status: result.status });
   } catch (err) {
