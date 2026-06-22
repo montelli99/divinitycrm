@@ -242,23 +242,6 @@ export default function Layout() {
               </Link>
             </li>
           ))}
-          {TEAM_NAV_ITEMS.map(item => (
-            <li key={item.path}>
-              <Link
-                to={item.path}
-                className={location.pathname === item.path ? 'active' : ''}
-                title={item.label}
-                aria-label={item.label}
-              >
-                <span className="nav-icon-shell" style={{ '--nav-accent': item.accent }}>
-                  <item.icon />
-                </span>
-                <span className="nav-text-wrap">
-                  <span className="nav-text">{item.label}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
         </ul>
 
         <div style={{
