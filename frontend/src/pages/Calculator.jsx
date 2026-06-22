@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 
 const RED_STATES = ['AL','AK','AR','AZ','FL','GA','ID','IN','IA','KS','KY','LA','MS','MO','MT','NE','NV','NC','ND','OK','SC','SD','TN','TX','UT','WV','WY'];
@@ -18,12 +18,16 @@ export default function Calculator() {
   const leadId = searchParams.get('leadId');
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'underwriting');
   const [selectedLeadId, setSelectedLeadId] = useState(searchParams.get('leadId') || '');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadHighlightIndex, setLeadHighlightIndex] = useState(-1);
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loadedLeadId, setLoadedLeadId] = useState('');
-  const [leadOptions, setLeadOptions] = useState([]);
+  const [attachedLeadInfo, setAttachedLeadInfo] = useState(null);
+  const [leadResults, setLeadResults] = useState([]);
+  const [leadSearchLoading, setLeadSearchLoading] = useState(false);
   const [buyBoxLoading, setBuyBoxLoading] = useState(false);
   const [buyBoxResult, setBuyBoxResult] = useState(null);
   const [closingLoading, setClosingLoading] = useState(false);
@@ -34,6 +38,7 @@ export default function Calculator() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const resultsRef = useRef(null);
 
   const [form, setForm] = useState({
     arv: '', askingPrice: '', monthlyRent: '', repairEstimate: '0',
@@ -80,10 +85,48 @@ export default function Calculator() {
   }, [searchParams]);
 
   useEffect(() => {
-    api.getLeads({ limit: 25 })
-      .then(data => setLeadOptions(data.leads || []))
-      .catch(() => setLeadOptions([]));
-  }, []);
+    const query = leadSearch.trim();
+    if (!query) {
+      setLeadResults([]);
+      setLeadHighlightIndex(-1);
+      return undefined;
+    }
+
+    let active = true;
+    setLeadSearchLoading(true);
+    const timer = setTimeout(() => {
+      api.getLeads({ search: query, limit: 8 })
+        .then(data => {
+          if (active) {
+            const results = data.leads || [];
+            setLeadResults(results);
+            setLeadHighlightIndex(results.length > 0 ? 0 : -1);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setLeadResults([]);
+            setLeadHighlightIndex(-1);
+          }
+        })
+        .finally(() => {
+          if (active) setLeadSearchLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [leadSearch]);
+
+  function attachLead(option) {
+    setLeadSearch(option.address || '');
+    setAttachedLeadInfo(option);
+    setLeadResults([]);
+    setLeadHighlightIndex(-1);
+    updateLeadAttachment(option.id);
+  }
 
   useEffect(() => {
     const attachedLeadId = selectedLeadId || leadId || '';
@@ -93,9 +136,10 @@ export default function Calculator() {
     api.getLeadForCalc(attachedLeadId)
       .then(data => {
         const l = data.lead;
+        setLeadSearch(l.address || '');
         setForm(f => ({
           ...f,
-          arv: l.arv || l.price || '',
+          arv: l.arv || '',
           askingPrice: l.price || '',
           monthlyRent: l.monthlyRent || '',
           repairEstimate: l.repairsEstimate || '0',
@@ -114,6 +158,16 @@ export default function Calculator() {
           moveInReady: l.condition !== 'reno',
           needsRenovation: l.condition === 'reno',
         }));
+        setAttachedLeadInfo({
+          id: attachedLeadId,
+          address: l.address,
+          city: l.city,
+          state: l.state,
+          price: l.price,
+          stage: l.stage,
+          seller_name: l.seller_name,
+          agent_name: l.agent_name,
+        });
         setLoadedLeadId(attachedLeadId);
       })
       .catch(err => setError('Failed to load lead: ' + err.message))
@@ -138,6 +192,12 @@ export default function Calculator() {
     }
   }, [activeTab, selectedLeadId, leadId]);
 
+  useEffect(() => {
+    if (result) {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [result]);
+
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
   }
@@ -156,6 +216,7 @@ export default function Calculator() {
 
   function updateLeadAttachment(nextLeadId) {
     setSelectedLeadId(nextLeadId);
+    if (!nextLeadId) setAttachedLeadInfo(null);
     const next = new URLSearchParams(searchParams);
     if (nextLeadId) next.set('leadId', nextLeadId);
     else next.delete('leadId');
@@ -302,7 +363,11 @@ export default function Calculator() {
   };
 
   const attachedLeadId = selectedLeadId || leadId || '';
-  const attachedLead = leadOptions.find(item => item.id === attachedLeadId);
+  const attachedLead = attachedLeadInfo || leadResults.find(item => item.id === attachedLeadId);
+
+  const formatMoney = value => (Number.isFinite(Number(value)) ? Number(value).toLocaleString() : '—');
+  const calcMeta = result?.calculation?.metadata || {};
+  const decisionMatrix = result?.calculation?.decisionMatrix || null;
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -322,37 +387,112 @@ export default function Calculator() {
         ) : (
           <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Standalone history mode until you attach a lead</p>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.75rem', alignItems: 'end', marginTop: '0.75rem' }}>
+        <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.75rem' }}>
           <div>
-            <label style={labelStyle}>Attach to lead</label>
-            <select
-              value={attachedLeadId}
-              onChange={e => updateLeadAttachment(e.target.value)}
+            <label style={labelStyle}>Search contact or lead to attach</label>
+            <input
+              value={leadSearch}
+              onChange={e => {
+                const nextValue = e.target.value;
+                setLeadSearch(nextValue);
+                if (!nextValue.trim()) {
+                  updateLeadAttachment('');
+                }
+              }}
+              onKeyDown={e => {
+                if (leadResults.length === 0) return;
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setLeadHighlightIndex(index => Math.min(index + 1, leadResults.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setLeadHighlightIndex(index => Math.max(index - 1, 0));
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const selected = leadResults[Math.max(leadHighlightIndex, 0)];
+                  if (selected) attachLead(selected);
+                } else if (e.key === 'Escape') {
+                  setLeadResults([]);
+                  setLeadHighlightIndex(-1);
+                }
+              }}
+              placeholder="Search by address, seller, or stage"
               style={inputStyle}
-            >
-              <option value="">Standalone history only</option>
-              {leadOptions.map(option => (
-                <option key={option.id} value={option.id}>
-                  {option.address} {option.stage ? `· ${option.stage.replace(/_/g, ' ')}` : ''}
-                </option>
-              ))}
-            </select>
+            />
           </div>
-          {attachedLeadId && (
-            <a href={`#/leads/${attachedLeadId}`} style={{
-              alignSelf: 'end',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0.5rem 0.85rem',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-              textDecoration: 'none',
+
+          {leadSearchLoading && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Searching leads...</div>
+          )}
+
+          {leadSearch.trim() && leadResults.length > 0 && (
+            <div style={{
               background: 'var(--bg-secondary)',
-              fontSize: '0.8rem',
-              fontWeight: '600',
-            }}>Open lead</a>
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}>
+              {leadResults.map(option => (
+                  <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => attachLead(option)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.75rem 0.85rem',
+                    border: 'none',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    background: leadResults[leadHighlightIndex]?.id === option.id || option.id === attachedLeadId ? 'rgba(91,108,240,0.12)' : 'transparent',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                    <strong>{option.address}</strong>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{option.stage?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                    {option.seller_name || option.agent_name || 'Lead'}{(option.seller_name || option.agent_name) && (option.city || option.state) ? ' · ' : ''}{option.city || ''}{option.city && option.state ? ', ' : ''}{option.state || ''} {option.price ? `· $${Number(option.price).toLocaleString()}` : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {leadSearch.trim() && !leadSearchLoading && leadResults.length === 0 && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>No leads matched that search.</div>
+          )}
+
+          {attachedLeadId && (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Attached to {attachedLead?.address || attachedLeadId}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeadSearch('');
+                  updateLeadAttachment('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '999px',
+                  padding: '0.3rem 0.65rem',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Detach
+              </button>
+              <Link to={`/leads/${attachedLeadId}`} style={{ color: 'var(--brand-primary)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600' }}>
+                Open lead →
+              </Link>
+            </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
@@ -420,9 +560,9 @@ export default function Calculator() {
                     </div>
                     {item.leadId && (
                       <div style={{ marginTop: '0.45rem' }}>
-                        <a href={`#/leads/${item.leadId}`} style={{ color: 'var(--brand-primary)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600' }}>
+                        <Link to={`/leads/${item.leadId}`} style={{ color: 'var(--brand-primary)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600' }}>
                           Open attached lead →
-                        </a>
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -597,7 +737,7 @@ export default function Calculator() {
 
       {/* Results */}
       {result && (
-        <div>
+        <div ref={resultsRef}>
           {/* Buy Box Results */}
           <div style={{...cardStyle, marginBottom: '1rem'}}>
             <h3 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
@@ -629,12 +769,13 @@ export default function Calculator() {
           <div style={{...cardStyle, marginBottom: '1rem'}}>
             <h3 style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>📈 Quick Checks</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-              <MetricBox label="1% Rule" value={result.calculation.metadata.percRule} pass={result.calculation.metadata.percPass} detail={`Rent must be ≥1% of asking ($${result.calculation.metadata.onePercentThreshold?.toLocaleString()}/mo)`} />
-              <MetricBox label="DSCR" value={result.calculation.metadata.dscr + 'x'} pass={result.calculation.metadata.dscrPass} detail="Need ≥1.25x for DSCR loan" />
-              <MetricBox label="Cap Rate" value={result.calculation.metadata.capRate} pass={Number(result.calculation.metadata.capRate) >= 5} detail="≥5% is good" />
-              <MetricBox label="Monthly NOI" value={'$' + result.calculation.metadata.monthlyNOI.toLocaleString()} pass={result.calculation.metadata.monthlyNOI > 0} />
-              <MetricBox label="Cash Flow" value={'$' + result.calculation.metadata.cashFlow.toLocaleString() + '/mo'} pass={result.calculation.metadata.cashFlowPass} detail="Need ≥$200/mo" />
-              <MetricBox label="Max Mortgage" value={'$' + result.calculation.metadata.maxMortgage.toLocaleString()} pass={result.calculation.metadata.maxMortgage > 0} detail="DSCR-based capacity" />
+              <MetricBox label="1% Rule" value={calcMeta.percRule || '—'} pass={calcMeta.percPass} detail={`Rent must be ≥1% of asking ($${formatMoney(calcMeta.onePercentThreshold)}/mo)`} />
+              <MetricBox label="DSCR" value={(calcMeta.dscr || '—') + 'x'} pass={calcMeta.dscrPass} detail="Need ≥1.25x for DSCR loan" />
+              <MetricBox label="PITI" value={'$' + formatMoney(calcMeta.monthlyPITI) + '/mo'} pass={Number(calcMeta.monthlyPITI) > 0} detail="Principal, interest, tax, and insurance" />
+              <MetricBox label="Cap Rate" value={calcMeta.capRate || '—'} pass={Number(calcMeta.capRate) >= 5} detail="≥5% is good" />
+              <MetricBox label="Monthly NOI" value={'$' + formatMoney(calcMeta.monthlyNOI)} pass={Number(calcMeta.monthlyNOI) > 0} />
+              <MetricBox label="Cash Flow" value={'$' + formatMoney(calcMeta.cashFlow) + '/mo'} pass={calcMeta.cashFlowPass} detail="Need ≥$200/mo" />
+              <MetricBox label="Max Mortgage" value={'$' + formatMoney(calcMeta.maxMortgage)} pass={Number(calcMeta.maxMortgage) > 0} detail="DSCR-based capacity" />
             </div>
           </div>
 
@@ -647,6 +788,16 @@ export default function Calculator() {
               {result.strategy.condition}
               {result.strategy.fallback && ' (fallback — no specific rule matched)'}
             </p>
+            {decisionMatrix && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginTop: '0.75rem' }}>
+                <span style={{ fontSize: '0.75rem', padding: '0.28rem 0.6rem', borderRadius: '999px', background: decisionMatrix.onePercent ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: decisionMatrix.onePercent ? '#4ade80' : '#fca5a5' }}>1% {decisionMatrix.onePercent ? 'pass' : 'fail'}</span>
+                <span style={{ fontSize: '0.75rem', padding: '0.28rem 0.6rem', borderRadius: '999px', background: decisionMatrix.dscr ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: decisionMatrix.dscr ? '#4ade80' : '#fca5a5' }}>DSCR {decisionMatrix.dscr ? 'pass' : 'fail'}</span>
+                <span style={{ fontSize: '0.75rem', padding: '0.28rem 0.6rem', borderRadius: '999px', background: decisionMatrix.cashFlow ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: decisionMatrix.cashFlow ? '#4ade80' : '#fca5a5' }}>Cash flow {decisionMatrix.cashFlow ? 'pass' : 'fail'}</span>
+                <span style={{ fontSize: '0.75rem', padding: '0.28rem 0.6rem', borderRadius: '999px', background: decisionMatrix.sellerProtection?.subtoRequiresAddendum ? 'rgba(245,158,11,0.14)' : 'rgba(59,130,246,0.12)', color: decisionMatrix.sellerProtection?.subtoRequiresAddendum ? '#fbbf24' : '#93c5fd' }}>
+                  {decisionMatrix.sellerProtection?.subtoRequiresAddendum ? 'SubTo protection on' : 'No SubTo addendum needed'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Offer Structures */}
