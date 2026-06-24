@@ -201,7 +201,9 @@ router.get('/stats', async (req, res, next) => {
 
     res.json({
       ...stats[0],
-      conversion_rate: stats[0].total > 0 ? Math.round((stats[0].closed / (stats[0].closed + stats[0].dead)) * 100) : 0,
+      conversion_rate: (stats[0].closed + stats[0].dead) > 0
+        ? Math.round((stats[0].closed / (stats[0].closed + stats[0].dead)) * 100)
+        : 0,
       by_source: bySource,
       by_stage: byStage,
     });

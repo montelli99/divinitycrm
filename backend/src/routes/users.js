@@ -28,15 +28,16 @@ router.get('/me', async (req, res, next) => {
 router.patch('/me', async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { first_name, last_name } = req.body;
+    const { first_name, last_name, scheduling_link } = req.body;
 
     const result = await query(
       `UPDATE users 
       SET first_name = COALESCE($1, first_name),
-          last_name = COALESCE($2, last_name)
-      WHERE id = $3
+          last_name = COALESCE($2, last_name),
+          scheduling_link = COALESCE($3, scheduling_link)
+      WHERE id = $4
       RETURNING *`,
-      [first_name, last_name, userId]
+      [first_name, last_name, scheduling_link, userId]
     );
 
     if (result.length === 0) return res.status(404).json({ error: 'User not found' });

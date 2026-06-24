@@ -6,6 +6,7 @@ import { canViewTeam } from '../lib/access';
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: DashboardIcon, accent: '#6d7ef7' },
   { path: '/pipeline', label: 'Pipeline', icon: PipelineIcon, accent: '#8b5cf6' },
+  { path: '/teleprompter', label: 'Teleprompter', icon: TeleprompterIcon, accent: '#f59e0b' },
   { path: '/calculator', label: 'Calculator', icon: CalculatorIcon, accent: '#f59e0b' },
   { path: '/contracts', label: 'Contracts', icon: ContractsIcon, accent: '#22c55e' },
   { path: '/training', label: 'Training', icon: TrainingIcon, accent: '#06b6d4' },
@@ -33,6 +34,16 @@ function PipelineIcon() {
   return (
     <IconShell>
       <path d="M5 5h4v14H5zM10 9h4v10h-4zM15 7h4v12h-4z" fill="currentColor" />
+    </IconShell>
+  );
+}
+
+function TeleprompterIcon() {
+  return (
+    <IconShell>
+      <path d="M6 5h12v10H6z" fill="none" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M8 8h8M8 11h5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M10 15 8 19h8l-2-4" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
     </IconShell>
   );
 }
@@ -173,13 +184,14 @@ export default function Layout() {
 
   const ORDERED_NAV_ITEMS = [
     NAV_ITEMS[0],
-    NAV_ITEMS[5],
     NAV_ITEMS[1],
-    ...TEAM_NAV_ITEMS,
     NAV_ITEMS[2],
+    NAV_ITEMS[6],
+    ...TEAM_NAV_ITEMS,
     NAV_ITEMS[3],
     NAV_ITEMS[4],
-    NAV_ITEMS[6],
+    NAV_ITEMS[5],
+    NAV_ITEMS[7],
   ];
 
   function handleLogout() {

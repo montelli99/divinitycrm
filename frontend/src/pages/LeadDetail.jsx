@@ -136,13 +136,47 @@ export default function LeadDetail() {
   }
 
   if (loading) return <div className="loading">Loading lead...</div>;
-  if (!lead) return <div className="error">Lead not found.</div>;
+  if (!lead) {
+    return (
+      <div style={{ padding: '1.5rem', maxWidth: '860px', margin: '0 auto' }}>
+        <div style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-xl)',
+          padding: '1.5rem',
+        }}>
+          <h1 style={{ marginTop: 0 }}>Lead not found</h1>
+          <p style={{ color: 'var(--text-secondary)' }}>
+            This lead record is not available in the current CRM dataset.
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+            <Link to="/pipeline" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+              Open pipeline
+            </Link>
+            <Link to="/" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
+              Dashboard
+            </Link>
+            <Link to="/notifications" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
+              Inbox
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lead-detail">
       <div className="page-header">
         <h1>{lead.address}</h1>
         <div className="header-actions">
+          <Link
+            to={`/teleprompter/${id}`}
+            className="btn btn-secondary"
+            style={{ textDecoration: 'none' }}
+          >
+            Open Teleprompter
+          </Link>
           <select 
             value={lead.stage} 
             onChange={e => handleStageChange(e.target.value)}
@@ -237,6 +271,17 @@ export default function LeadDetail() {
                 color: 'var(--text-secondary)',
               }}>
                 Stage scripts are unavailable for this lead.
+              </div>
+            )}
+            {stagePrompt && (
+              <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <Link
+                  to={`/teleprompter/${id}`}
+                  className="btn btn-sm btn-secondary"
+                  style={{ textDecoration: 'none' }}
+                >
+                  Open Full Teleprompter
+                </Link>
               </div>
             )}
           </div>

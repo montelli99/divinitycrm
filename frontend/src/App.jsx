@@ -10,6 +10,7 @@ import StudentRoster from './pages/StudentRoster';
 import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
+import Teleprompter from './pages/Teleprompter';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
 
@@ -78,32 +79,6 @@ function LoginPage() {
           <p style={{ color: 'var(--text-tertiary)', fontSize: '0.82rem', marginTop: '0.15rem' }}>
             Student Pipeline Platform
           </p>
-        </div>
-
-        {/* Credentials card */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(91,108,240,0.06), rgba(129,140,248,0.04))',
-          border: '1px solid rgba(91,108,240,0.15)',
-          borderRadius: 'var(--radius-md)',
-          padding: '0.85rem 1rem',
-          marginBottom: '1.5rem',
-          fontSize: '0.78rem',
-          color: 'var(--text-secondary)',
-          lineHeight: '1.6',
-        }}>
-          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.4rem', fontSize: '0.8rem' }}>
-            🔑 Account Credentials
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ background: 'var(--brand-primary)', color: 'white', borderRadius: '4px', padding: '0.1rem 0.35rem', fontSize: '0.65rem', fontWeight: '700' }}>M</span>
-              <span><strong style={{ color: 'var(--text-primary)' }}>montelliscottrei@gmail.com</strong></span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ background: '#f59e0b', color: '#0a0c14', borderRadius: '4px', padding: '0.1rem 0.35rem', fontSize: '0.65rem', fontWeight: '700' }}>K</span>
-              <span><strong style={{ color: 'var(--text-primary)' }}>homewithkaylamauser@gmail.com</strong></span>
-            </div>
-          </div>
         </div>
 
         {error && (
@@ -211,6 +186,7 @@ export default function App() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/training" element={<Training />} />
         <Route path="/students" element={<StudentRoster />} />
+        <Route path="/teleprompter/:leadId?" element={<Teleprompter />} />
         <Route path="/profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" />} />
