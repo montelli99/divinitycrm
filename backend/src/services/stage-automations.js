@@ -23,6 +23,14 @@ const { sendTemplate } = require('./sms-service');
 const { fireStageNotifications, getUserByEmail, createNotification } = require('./notifications');
 const { STAGE_EMAIL_KEYS, sendStageEmail } = require('./email-service');
 const { createFolderFromTemplate } = require('./rabbitsign');
+const {
+  SETH_EMAIL,
+  KAYLA_EMAIL,
+  MONTELLI_EMAIL,
+  BUYER_ENTITY,
+  TITLE_NAME,
+  MONTELLI_NAME,
+} = require('../config/identities');
 
 const CONTRACT_TEMPLATE_MAP = {
   psa_creative_subto: 'w5EC5hnVWRoGVYUTbxuHwz',
@@ -100,7 +108,7 @@ const STAGE_TRANSITIONS = {
   'TERMS_AGREED→AWAITING_TITLE': { stageNumber: 10, workflow: 'wf_terms_agreed_contract_draft', owner: 'Montelli', name: 'Terms Agreed → Awaiting Title', description: 'Generate contract doc. Set 12 GHL fields. 72hr wait.', automations: [{ type: 'generate_contract' }, { type: 'write_fields', fields: ['contract_type', 'coe_date', 'inspection_end_date', 'emd_amount', 'title_company', 'llc_name', 'property_apn'] }, { type: 'notify' }, { type: 'log', message: 'Stage 10: Contract drafted. 12 GHL fields set.' }], ghl_actions: ['Generate Document', 'Write Custom Field', 'Internal Notification', 'Wait'] },
   'AWAITING_TITLE→CONTRACT_OUT': { stageNumber: 11, workflow: 'wf_awaiting_title_72hr', owner: 'TC', name: 'Awaiting Title → Contract Out', description: 'SMS seller for mortgage statement. 72hr alert if Loan Balance not set.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_reminder', reminder_type: 'custom', offset_hours: 72 }, { type: 'send_sms', template: 'PSA_CALL_OPENER' }, { type: 'send_sms', template: 'CONTRACT_OUT' }, { type: 'log', message: 'Stage 11: SMS sent to seller.' }], ghl_actions: ['Send SMS', 'Wait', 'If/Then'] },
   'CONTRACT_OUT→UNDER_CONTRACT': { stageNumber: 12, workflow: 'wf_contract_out_rabbitsign', owner: 'TC', name: 'Contract Out → Under Contract (THE BIG ONE)', description: 'RabbitSign envelope. PSA + Addendum if SubTo. + JV if applicable. Set PSA Signed Date, COE Date (+30), Inspection End Date (+14), Title Company, EMD Amount ($100), Has Subject To Addendum.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/contract-sign' }, { type: 'rabbitsign' }, { type: 'write_fields', fields: ['psa_signed_date', 'coe_date', 'inspection_end_date', 'title_company', 'emd_amount', 'has_subject_to_addendum'] }, { type: 'send_sms', template: 'INSPECTION_SCHEDULED' }, { type: 'log', message: 'Stage 12: RabbitSign envelope generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Write Custom Field', 'Wait'] },
-  'UNDER_CONTRACT→INSPECTION_PERIOD': { stageNumber: 13, workflow: 'wf_under_contract_tc_handoff', owner: 'TC', name: 'Under Contract → Inspection Period', description: 'TC handshake email (BGonzalez + monique). 14-day countdown. Day 7 SMS. Day 14 Kayla alert.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 13: TC handshake sent. 14-day countdown started.' }], ghl_actions: ['Send Email', 'Wait', 'Create Task'] },
+   'UNDER_CONTRACT→INSPECTION_PERIOD': { stageNumber: 13, workflow: 'wf_under_contract_tc_handoff', owner: 'TC', name: 'Under Contract → Inspection Period', description: `TC handshake email (${require('../config/identities').TC_B_NAME} + ${require('../config/identities').TC_M_NAME}). 14-day countdown. Day 7 SMS. Day 14 Kayla alert.`, automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 13: TC handshake sent. 14-day countdown started.' }], ghl_actions: ['Send Email', 'Wait', 'Create Task'] },
   'INSPECTION_PERIOD→INSPECTION_COMPLETE': { stageNumber: 14, workflow: 'wf_inspection_period_daily_check', owner: 'TC', name: 'Inspection Period → Inspection Complete', description: 'Day 14 alert to Kayla. If Inspection Terminated → SELLER_DECLINED.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 14: Inspection period active.' }], ghl_actions: ['Internal Notification', 'If/Then'] },
   'INSPECTION_COMPLETE→APPRAISAL_ORDERED': { stageNumber: 15, workflow: 'wf_inspection_complete', owner: 'TC', name: 'Inspection Complete → Appraisal Ordered', description: 'Auto-advance. No human action required.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'log', message: 'Stage 15: Inspection complete. Auto-advance to Stage 16.' }], ghl_actions: ['Write Custom Field'] },
   'APPRAISAL_ORDERED→APPRAISAL_DONE': { stageNumber: 16, workflow: 'wf_appraisal_ordered', owner: 'TC', name: 'Appraisal Ordered → Appraisal Done', description: 'Coordinate with TC for appraiser access. Wait for Appraisal Result field.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'send_sms', template: 'APPRAISAL_DONE' }, { type: 'log', message: 'Stage 16: Appraisal ordered.' }], ghl_actions: ['Create Task', 'Wait'] },
@@ -154,9 +162,9 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
                 else if (f === 'coe_date') { const d = new Date(now); d.setDate(d.getDate() + 30); value = d.toISOString().split('T')[0]; }
                 else if (f === 'inspection_end_date') { const d = new Date(now); d.setDate(d.getDate() + 14); value = d.toISOString().split('T')[0]; }
                 else if (f === 'emd_amount') value = 100;
-                else if (f === 'title_company') value = 'CLOSED Title';
+                else if (f === 'title_company') value = TITLE_NAME;
                 else if (f === 'has_subject_to_addendum') value = (leadData.contract === 'subto' || leadData.contract_type === 'subto');
-                else if (f === 'llc_name') value = 'Divinity Aligned LLC';
+                else if (f === 'llc_name') value = BUYER_ENTITY;
                 else if (f === 'property_apn') value = leadData.apn || null;
                 else if (f === 'contract_type') value = leadData.contract || leadData.contract_type || 'cash';
                 if (value !== undefined) fieldMap[f] = value;
@@ -397,7 +405,7 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
           }
           case 'loi_request': {
             // Verbatim from AIREI_MASTER_PLAYBOOK.md Part 2 Step 6:
-            // "If turnkey + 1% rule pass → email Seth at claytoninvestmentsolutions@gmail.com,
+            // "If turnkey + 1% rule pass → email Seth at ${SETH_EMAIL},
             //  subject 'FB LOI Request' or 'Renovation – LOI Request [address]'.
             //  Seth sends approved LOI."
             try {
@@ -417,7 +425,7 @@ Sqft: ${leadData.sqft || '?'}
 Source of truth: 17C-OH-3.12 transcript — "Seth is going to be underwriting all LOI potential requests so that if it doesn't cash flow at the 1% rule, after looking at..."`;
 
               // Notify Seth (if he has an account) — and always log activity so student can copy the email content
-              const sethId = await getUserByEmail('claytoninvestmentsolutions@gmail.com');
+              const sethId = await getUserByEmail(SETH_EMAIL);
               if (sethId) {
                 await createNotification({
                   recipientId: sethId,
@@ -497,7 +505,7 @@ Text seller every 3-5 days: "Hey [name] — just checking in — everything smoo
 First check-in: 3 days from now. Continue until close.`;
 
               // Notify Kayla (primary closer)
-              const kaylaId = await getUserByEmail('homewithkaylamauser@gmail.com');
+              const kaylaId = await getUserByEmail(KAYLA_EMAIL);
               if (kaylaId) {
                 await createNotification({
                   recipientId: kaylaId,
@@ -570,7 +578,7 @@ First check-in: 3 days from now. Continue until close.`;
                 date: new Date().toISOString().split('T')[0],
                 roles: [
                   { roleName: 'Seller', email: sellerEmail, name: sellerName },
-                  { roleName: 'Buyer', email: 'montelliscottrei@gmail.com', name: 'Montelli Scott' },
+                  { roleName: 'Buyer', email: MONTELLI_EMAIL, name: MONTELLI_NAME },
                 ],
               });
               await query(
@@ -604,14 +612,19 @@ First check-in: 3 days from now. Continue until close.`;
   }
 
   // Only record email work when the transition has an actual template.
+  // Guard: email-service.js may fail to load on Render (missing SMTP env vars).
+  // Don't let that crash the entire stage transition — log and continue.
   const emailKey = `${fromStage}→${toStage}`;
-  if (STAGE_EMAIL_KEYS.has(emailKey)) {
+  if (STAGE_EMAIL_KEYS && typeof STAGE_EMAIL_KEYS.has === 'function' && STAGE_EMAIL_KEYS.has(emailKey)) {
     try {
       const emailResult = await sendStageEmail(fromStage, toStage, leadData);
       results.push({ type: 'email', ok: !!emailResult?.sent, ...emailResult });
     } catch (e) {
       results.push({ type: 'email', ok: false, error: e.message });
     }
+  } else if (!STAGE_EMAIL_KEYS) {
+    // Email service unavailable — log but don't block the stage advance
+    results.push({ type: 'email', ok: false, skipped: true, reason: 'STAGE_EMAIL_KEYS unavailable (email service not initialized)' });
   }
 
   // Build the rich prompt with pre-filled templates
