@@ -58,6 +58,7 @@ export default function Pipeline() {
 
       if (result.automation?.prompt) {
         setScriptPrompts({
+          leadId,
           prompt: result.automation.prompt,
           scripts: result.automation.scripts,
           workflow: result.automation.workflow,
@@ -66,6 +67,7 @@ export default function Pipeline() {
         });
       } else if (result.automation?.scripts?.length > 0) {
         setScriptPrompts({
+          leadId,
           scripts: result.automation.scripts,
           workflow: result.automation.workflow,
         });
@@ -86,9 +88,9 @@ export default function Pipeline() {
       if (!result?.prompt && (!result?.scripts || result.scripts.length === 0)) return;
 
       setViewingPrompts({
+        leadId,
         prompt: result.prompt || null,
         scripts: result.scripts || [],
-        leadId,
         stage,
       });
     } catch (err) {
@@ -104,6 +106,27 @@ export default function Pipeline() {
       await loadPipeline();
     } catch (err) {
       alert('Pokémon spawn failed: ' + err.message);
+    }
+  }
+
+  async function handleMarkPromptSent(payload) {
+    const leadId = viewingPrompts?.leadId || scriptPrompts?.leadId;
+    if (!leadId) {
+      alert('Open the lead first so sent activity can be recorded.');
+      return;
+    }
+
+    try {
+      await api.markTeleprompterSent({
+        lead_id: leadId,
+        source: payload?.source || 'crm',
+        key: payload?.key || payload?.templateName || 'stage-script',
+        body: payload?.body || '',
+        recipient: payload?.recipient || 'unknown',
+        channel: 'sms',
+      });
+    } catch (err) {
+      alert('Failed to mark sent: ' + err.message);
     }
   }
 
@@ -260,7 +283,7 @@ export default function Pipeline() {
           prompt={scriptPrompts.prompt}
           scripts={scriptPrompts.scripts}
           onDismiss={() => setScriptPrompts(null)}
-          onMarkSent={(name) => console.log('Marked sent:', name)}
+          onMarkSent={handleMarkPromptSent}
         />
       )}
 
@@ -269,7 +292,7 @@ export default function Pipeline() {
           prompt={viewingPrompts.prompt}
           scripts={viewingPrompts.scripts}
           onDismiss={() => setViewingPrompts(null)}
-          onMarkSent={(name) => console.log('Marked sent:', name)}
+          onMarkSent={handleMarkPromptSent}
         />
       )}
 
@@ -392,13 +415,13 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {pipeline.reminders_due?.length > 0 && (
+          {pipeline.reminders_due?.length > 0 && (
         <div className="reminders-section">
           <h3>⏰ Reminders Due</h3>
           {pipeline.reminders_due.map(r => (
             <div key={r.id} className="reminder-item">
               <span className="reminder-type">{r.type}</span>
-              <Link to={`/leads/${r.id}`}>{r.address}</Link>
+              <Link to={`/leads/${r.lead_id || r.id}`}>{r.address}</Link>
               <span className="reminder-date">{new Date(r.due_date).toLocaleDateString()}</span>
             </div>
           ))}

@@ -53,6 +53,7 @@ export const api = {
   },
   getLead: (id) => request(`/leads/${id}`),
   createLead: (data) => request('/leads', { method: 'POST', body: JSON.stringify(data) }),
+  importLeads: (data) => request('/leads/import', { method: 'POST', body: JSON.stringify(data) }),
   updateLead: (id, data) => request(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteLead: (id) => request(`/leads/${id}`, { method: 'DELETE' }),
   getTransitions: (id) => request(`/leads/${id}/transitions`),
