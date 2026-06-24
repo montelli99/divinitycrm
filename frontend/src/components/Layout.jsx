@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { path: '/pipeline', label: 'Pipeline', icon: PipelineIcon, accent: '#8b5cf6' },
   { path: '/teleprompter', label: 'Teleprompter', icon: TeleprompterIcon, accent: '#f59e0b' },
   { path: '/calculator', label: 'Calculator', icon: CalculatorIcon, accent: '#f59e0b' },
+  { path: '/bulk-import', label: 'Bulk Import', icon: BulkImportIcon, accent: '#06b6d4', requires: 'canAssignLeads' },
   { path: '/contracts', label: 'Contracts', icon: ContractsIcon, accent: '#22c55e' },
   { path: '/training', label: 'Training', icon: TrainingIcon, accent: '#06b6d4' },
   { path: '/notifications', label: 'Inbox', icon: BellIcon, accent: '#f43f5e' },
@@ -91,6 +92,16 @@ function ProfileIcon() {
     <IconShell>
       <circle cx="12" cy="8.5" r="3" fill="none" stroke="currentColor" strokeWidth="1.75" />
       <path d="M6.5 19c.7-3 2.9-4.5 5.5-4.5s4.8 1.5 5.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </IconShell>
+  );
+}
+
+function BulkImportIcon() {
+  return (
+    <IconShell>
+      <path d="M5 4h11l3 3v13H5z" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M16 4v3h3" fill="none" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M9 11h6M9 14h4M9 17h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </IconShell>
   );
 }
@@ -182,16 +193,19 @@ export default function Layout() {
     { path: '/students', label: 'Student Funnel', icon: StudentFunnelIcon, accent: '#10b981' },
   ] : [];
 
+  const showBulkImport = user && (user.role === 'admin' || user.role === 'lead_manager' || user.email === 'montelliscottrei@gmail.com');
+
   const ORDERED_NAV_ITEMS = [
-    NAV_ITEMS[0],
-    NAV_ITEMS[1],
-    NAV_ITEMS[2],
-    NAV_ITEMS[6],
+    NAV_ITEMS[0], // Dashboard
+    NAV_ITEMS[1], // Pipeline
+    NAV_ITEMS[2], // Teleprompter
+    NAV_ITEMS[7], // Inbox
     ...TEAM_NAV_ITEMS,
-    NAV_ITEMS[3],
-    NAV_ITEMS[4],
-    NAV_ITEMS[5],
-    NAV_ITEMS[7],
+    NAV_ITEMS[3], // Calculator
+    ...(showBulkImport ? [NAV_ITEMS[4]] : []), // Bulk Import (admin/lead_manager only)
+    NAV_ITEMS[5], // Contracts
+    NAV_ITEMS[6], // Training
+    NAV_ITEMS[8], // Profile
   ];
 
   function handleLogout() {

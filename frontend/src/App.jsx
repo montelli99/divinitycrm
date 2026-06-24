@@ -11,6 +11,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import Teleprompter from './pages/Teleprompter';
+import BulkImport from './pages/BulkImport';
 import Layout from './components/Layout';
 import { api, getToken, setToken, clearToken } from './lib/api';
 
@@ -181,6 +182,7 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/pipeline" element={<Pipeline />} />
+        <Route path="/bulk-import" element={<BulkImport />} />
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/leads/:id" element={<LeadDetail />} />
         <Route path="/contracts" element={<Contracts />} />
