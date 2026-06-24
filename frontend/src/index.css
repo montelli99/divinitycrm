@@ -1089,6 +1089,20 @@ tbody tr:last-child td {
   color: #fca5a5;
 }
 
+.alert-clickable {
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.alert-clickable:hover {
+  filter: brightness(1.15);
+  transform: translateX(2px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.alert-clickable:active {
+  transform: translateX(1px) scale(0.998);
+}
+
 .alert-yellow {
   background: var(--warning-subtle);
   border-color: rgba(245, 158, 11, 0.3);

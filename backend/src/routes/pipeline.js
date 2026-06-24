@@ -83,33 +83,33 @@ router.get('/', async (req, res, next) => {
 
     // Stale leads: Stage 1 > 7 days
     leadEntered.forEach(l => {
-      if (l.days_in_stage > 7) alerts.push({ severity: 'yellow', type: 'stale_lead', lead: l.address, detail: `${l.days_in_stage} days at Lead Entered — no contact made` });
+      if (l.days_in_stage > 7) alerts.push({ severity: 'yellow', type: 'stale_lead', lead: l.address, lead_id: l.id, detail: `${l.days_in_stage} days at Lead Entered — no contact made` });
     });
 
     // Abandoned: Any stage > 30 days
     allActive.forEach(l => {
-      if (l.days_in_stage > 30) alerts.push({ severity: 'red', type: 'abandoned', lead: l.address, detail: `${l.days_in_stage} days no movement — mark lost?` });
+      if (l.days_in_stage > 30) alerts.push({ severity: 'red', type: 'abandoned', lead: l.address, lead_id: l.id, detail: `${l.days_in_stage} days no movement — mark lost?` });
     });
 
     // Offer stalled: Offer Sent > 2 days
     offerSent.forEach(l => {
-      if (l.days_in_stage > 2) alerts.push({ severity: 'red', type: 'offer_stalled', lead: l.address, detail: `${l.days_in_stage} days at Offer Sent — no response. Call.` });
+      if (l.days_in_stage > 2) alerts.push({ severity: 'red', type: 'offer_stalled', lead: l.address, lead_id: l.id, detail: `${l.days_in_stage} days at Offer Sent — no response. Call.` });
     });
 
     // Title overdue: Awaiting Title > 3 days
     awaitingTitle.forEach(l => {
-      if (l.days_in_stage > 3) alerts.push({ severity: 'red', type: 'title_overdue', lead: l.address, detail: `${l.days_in_stage} days — title info not received. Follow up.` });
+      if (l.days_in_stage > 3) alerts.push({ severity: 'red', type: 'title_overdue', lead: l.address, lead_id: l.id, detail: `${l.days_in_stage} days — title info not received. Follow up.` });
     });
 
     // Contract unsigned: Under Contract > 3 days
     underContract.forEach(l => {
-      if (l.days_in_stage > 3) alerts.push({ severity: 'red', type: 'contract_unsigned', lead: l.address, detail: `${l.days_in_stage} days — contract unsigned. Follow up.` });
+      if (l.days_in_stage > 3) alerts.push({ severity: 'red', type: 'contract_unsigned', lead: l.address, lead_id: l.id, detail: `${l.days_in_stage} days — contract unsigned. Follow up.` });
     });
 
     // 48hr follow-up overdue
     const overdue48hr = leads.filter(l => l.stage === 'OFFER_SENT' && !l.follow_up_48hr_done && l.follow_up_48hr_due && new Date(l.follow_up_48hr_due) < new Date());
     overdue48hr.forEach(l => {
-      alerts.push({ severity: 'red', type: '48hr_overdue', lead: l.address, detail: `48hr follow-up overdue — call now.` });
+      alerts.push({ severity: 'red', type: '48hr_overdue', lead: l.address, lead_id: l.id, detail: `48hr follow-up overdue — call now.` });
     });
 
     // Reminders due today

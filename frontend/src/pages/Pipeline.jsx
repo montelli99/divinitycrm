@@ -211,11 +211,27 @@ export default function Pipeline() {
 
       {pipeline.alerts?.length > 0 && (
         <div className="alerts">
-          {pipeline.alerts.map((a, i) => (
-            <div key={i} className={`alert alert-${a.severity}`}>
-              {a.severity === 'red' ? '🔴' : '🟡'} <strong>{a.type.replace(/_/g, ' ')}</strong>: {a.lead} — {a.detail}
-            </div>
-          ))}
+          {pipeline.alerts.map((a, i) => {
+            const inner = (
+              <>
+                {a.severity === 'red' ? '🔴' : '🟡'} <strong>{a.type.replace(/_/g, ' ')}</strong>: {a.lead} — {a.detail}
+              </>
+            );
+            return a.lead_id ? (
+              <Link
+                key={i}
+                to={`/leads/${a.lead_id}`}
+                className={`alert alert-${a.severity} alert-clickable`}
+                style={{ textDecoration: 'none', display: 'block', cursor: 'pointer' }}
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div key={i} className={`alert alert-${a.severity}`}>
+                {inner}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -245,19 +261,47 @@ export default function Pipeline() {
           </div>
           {health.alerts?.length > 0 && (
             <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {health.alerts.map((a, i) => (
-                <div key={i} style={{
-                  fontSize: '0.78rem',
-                  padding: '0.35rem 0.6rem',
-                  borderRadius: 'var(--radius-sm)',
-                  background: a.severity === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
-                  color: a.severity === 'red' ? '#fca5a5' : '#fcd34d',
-                  border: `1px solid ${a.severity === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
-                }}>
-                  {a.severity === 'red' ? '🔴' : '🟡'} <strong>{a.type.replace(/_/g, ' ')}</strong>
-                  {a.address ? ` — ${a.address}` : ''}: {a.detail}
-                </div>
-              ))}
+              {health.alerts.map((a, i) => {
+                const inner = (
+                  <>
+                    {a.severity === 'red' ? '🔴' : '🟡'} <strong>{a.type.replace(/_/g, ' ')}</strong>
+                    {a.address && a.address !== 'PIPELINE-WIDE' ? ` — ${a.address}` : ''}: {a.detail}
+                  </>
+                );
+                return a.leadId ? (
+                  <Link
+                    key={i}
+                    to={`/leads/${a.leadId}`}
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.35rem 0.6rem',
+                      borderRadius: 'var(--radius-sm)',
+                      background: a.severity === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                      color: a.severity === 'red' ? '#fca5a5' : '#fcd34d',
+                      border: `1px solid ${a.severity === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                      textDecoration: 'none',
+                      display: 'block',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {inner}
+                  </Link>
+                ) : (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.35rem 0.6rem',
+                      borderRadius: 'var(--radius-sm)',
+                      background: a.severity === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                      color: a.severity === 'red' ? '#fca5a5' : '#fcd34d',
+                      border: `1px solid ${a.severity === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                    }}
+                  >
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
