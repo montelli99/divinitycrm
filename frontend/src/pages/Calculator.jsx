@@ -233,19 +233,20 @@ export default function Calculator() {
     e.preventDefault();
     setError('');
     setResult(null);
+    setError('');
     setLoading(true);
     try {
       const attachedLeadId = selectedLeadId || leadId || undefined;
       const data = await api.analyzeDeal({
         ...form,
-        arv: Number(form.arv),
-        askingPrice: Number(form.askingPrice),
-        monthlyRent: Number(form.monthlyRent),
-        repairEstimate: Number(form.repairEstimate),
-        desiredProfit: Number(form.desiredProfit),
+        arv: Number(form.arv) || undefined,
+        askingPrice: Number(form.askingPrice) || undefined,
+        monthlyRent: Number(form.monthlyRent) || undefined,
+        repairEstimate: Number(form.repairEstimate) || 0,
+        desiredProfit: Number(form.desiredProfit) || 20000,
         loanAmount: form.loanAmount ? Number(form.loanAmount) : undefined,
         interestRate: form.interestRate ? Number(form.interestRate) : undefined,
-        insuranceMonthly: Number(form.insuranceMonthly),
+        insuranceMonthly: Number(form.insuranceMonthly) || 120,
         existingLoanBalance: form.existingLoanBalance ? Number(form.existingLoanBalance) : undefined,
         existingLoanRate: form.existingLoanRate ? Number(form.existingLoanRate) : undefined,
         sqft: form.sqft ? Number(form.sqft) : undefined,
@@ -257,8 +258,12 @@ export default function Calculator() {
       });
       setResult(data);
       await loadHistory();
+      // Auto-scroll to results after a beat so DOM has rendered
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Calculation failed — check your inputs and try again.');
     } finally {
       setLoading(false);
     }
