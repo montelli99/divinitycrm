@@ -29,7 +29,7 @@ router.post('/analyze', async (req, res) => {
     const {
       arv, askingPrice, monthlyRent, repairEstimate, desiredProfit,
       propertyType, loanAmount, interestRate, insuranceMonthly,
-      existingLoanBalance, existingLoanRate,
+      taxMonthly, existingLoanBalance, existingLoanRate,
       sqft, beds, baths, condition,
       state, population, hasHOA, hasPool, inFloodZone,
       motivation, equityPercent, isRental, isOwnedFree,
@@ -48,17 +48,19 @@ router.post('/analyze', async (req, res) => {
       askingPrice: Number(askingPrice),
       monthlyRent: Number(monthlyRent),
       repairEstimate: Number(repairEstimate || 0),
-      desiredProfit: Number(desiredProfit || 15000),
+      desiredProfit: Number(desiredProfit || 20000),
       propertyType: propertyType || 'turnkey',
       loanAmount: loanAmount ? Number(loanAmount) : undefined,
       interestRate: interestRate ? Number(interestRate) : undefined,
       insuranceMonthly: Number(insuranceMonthly || 120),
+      taxMonthly: taxMonthly ? Number(taxMonthly) : undefined,
       existingLoanBalance: Number(existingLoanBalance || 0),
       existingLoanRate: Number(existingLoanRate || 0),
       sqft: sqft ? Number(sqft) : undefined,
       beds: beds ? Number(beds) : undefined,
       baths: baths ? Number(baths) : undefined,
       condition: condition || 'unknown',
+      buyBoxPass: undefined, // recomputed below from real buyBox
     });
 
     // Buy box check
@@ -69,6 +71,23 @@ router.post('/analyze', async (req, res) => {
       hasPool: Boolean(hasPool),
       inFloodZone: Boolean(inFloodZone),
     });
+
+    // Fold real buyBox result into the decision matrix (be defensive — older mocks
+    // may not include decisionMatrix)
+    if (!calcResult.decisionMatrix) {
+      calcResult.decisionMatrix = { onePercent: false, dscr: false, cashFlow: false, buyBox: false, pass: false, kill: [] };
+    }
+    calcResult.decisionMatrix.buyBox = buyBox.allPass;
+    calcResult.decisionMatrix.buyBoxDetails = buyBox;
+    calcResult.decisionMatrix.pass = !!calcResult.decisionMatrix.onePercent
+      && !!calcResult.decisionMatrix.dscr
+      && !!calcResult.decisionMatrix.cashFlow
+      && buyBox.allPass;
+    if (!buyBox.allPass) {
+      const existingKill = Array.isArray(calcResult.decisionMatrix.kill) ? calcResult.decisionMatrix.kill : [];
+      calcResult.decisionMatrix.kill = existingKill.filter(k => !k.startsWith('Buy box'));
+      buyBox.failures.forEach(f => calcResult.decisionMatrix.kill.push(`Buy box: ${f}`));
+    }
 
     // Strategy recommendation
     const strategy = recommendStrategy({
@@ -97,32 +116,57 @@ router.post('/analyze', async (req, res) => {
         return res.status(access.status).json({ error: access.error });
       }
 
+      // Persist full structure set + decision matrix so the lead detail page can render later
+      const structureByKey = (key) => calcResult.structures.find(s => s.key === key);
+      const cashOffer = structureByKey('Cash')?.offer ?? calcResult.structures[0]?.offer;
+      const f50Offer = structureByKey('F50')?.offer ?? calcResult.structures[1]?.offer;
+      const f10Offer = structureByKey('F10')?.offer ?? null;
+      const stackPrincipalOffer = structureByKey('StackPrincipal')?.offer ?? null;
+      const interestOnlyOffer = structureByKey('InterestOnly')?.offer ?? null;
+      const zeroDownOffer = structureByKey('ZeroDown')?.offer ?? null;
+      const subtoOffer = structureByKey('SubTo')?.offer ?? calcResult.structures[6]?.offer;
+      const novationOffer = structureByKey('Novation')?.offer ?? null;
+
       await query(
         `UPDATE leads
         SET
           arv = $1,
           cash_offer = $2,
           f50_offer = $3,
-          subto_offer = $4,
-          recommended_strategy = $5,
-          one_percent_rule = $6,
-          dscr = $7,
-          cash_flow = $8,
-          repairs_estimate = $9,
-          condition = $10,
+          f10_offer = $4,
+          stack_principal_offer = $5,
+          interest_only_offer = $6,
+          zero_down_offer = $7,
+          subto_offer = $8,
+          novation_offer = $9,
+          recommended_strategy = $10,
+          one_percent_rule = $11,
+          dscr = $12,
+          cash_flow = $13,
+          repairs_estimate = $14,
+          condition = $15,
+          monthly_piti = $16,
+          decision_matrix = $17,
           updated_at = NOW()
-        WHERE id = $11`,
+        WHERE id = $18`,
         [
           Number(arv),
-          calcResult.structures[0].offer,
-          calcResult.structures[1].offer,
-          calcResult.structures[4].offer,
+          cashOffer,
+          f50Offer,
+          f10Offer,
+          stackPrincipalOffer,
+          interestOnlyOffer,
+          zeroDownOffer,
+          subtoOffer,
+          novationOffer,
           strategy.strategy,
           calcResult.metadata.percRule,
           calcResult.metadata.dscr,
           calcResult.metadata.cashFlow,
           Number(repairEstimate || 0),
           condition || 'unknown',
+          calcResult.metadata.monthlyPITI,
+          JSON.stringify(calcResult.decisionMatrix),
           leadId,
         ]
       );
