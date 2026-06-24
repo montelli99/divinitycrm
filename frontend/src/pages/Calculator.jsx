@@ -383,7 +383,7 @@ export default function Calculator() {
           </span>
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-          Underwrite deals with Cash, F50, F10, SubTo, DSCR, and Mid-Term strategies
+          8 deal structures: Cash, F50, F10, Stack w/ Principal, Interest-Only, $0 Down, SubTo, Novation
         </p>
         {attachedLeadId ? (
           <p style={{ color: 'var(--brand-primary)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
