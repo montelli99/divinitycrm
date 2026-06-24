@@ -22,33 +22,26 @@
 //
 // Sources of truth:
 //   - divinitycrm/backend/src/services/script-prompts.js (OUTREACH_SCRIPTS,
-//     CALL_SCRIPTS, PITCH_SCRIPTS) — 33 core text shortcuts
-//   - ghl-automations/modules/sms-templates.js (SELLER_UPDATE_TEMPLATES,
-//     PPC_TEXT_SHORTCUTS, OBJECTION_HANDLERS) — seller update SMS
-//     (CONTRACT_OUT, INSPECTION_SCHEDULED, etc.)
+//     CALL_SCRIPTS, PITCH_SCRIPTS, SELLER_UPDATE_TEMPLATES) — all local text
+//     shortcuts used by the standalone app
 // =============================================================
 
 const { Router } = require('express');
 const { query } = require('../db/connection');
-const path = require('path');
 
 const { STAGES, STAGE_LABELS, OWNERS, STAGE_BUCKETS } = require('./stages');
 const {
   listAllShortcuts,
   getTemplateByShortcut,
-  fillTemplate: fillCrmShortcut,
+  fillShortcutBySource,
   OUTREACH_SCRIPTS,
   CALL_SCRIPTS,
   PITCH_SCRIPTS,
 } = require('../services/script-prompts');
 
-// Pull in the GHL-side templates (seller update + PPC + objection handlers)
-const ghlPath = path.resolve(__dirname, '../../../../ghl-automations/modules');
-const ghlSms = require(path.join(ghlPath, 'sms-templates.js'));
-
 const router = Router();
 
-// Map our 21 GHL stages to seller-update template stages (numeric)
+// Map our 21 pipeline stages to seller-update template stages (numeric)
 const SELLER_UPDATE_STAGE_NUM = {
   CONTRACT_OUT: 12,
   INSPECTION_SCHEDULED: 14,
@@ -157,15 +150,15 @@ router.get('/shortcuts', async (req, res) => {
     }
   });
 
-  // 2) Pull from ghl-automations sms-templates.js (seller updates)
+  // 2) Pull from local seller-update templates (standalone copy)
   if (stageNum && SELLER_UPDATE_STAGE_NUM) {
     const sellerKeys = STAGE_NUM_TO_NAME[stageNum] || [];
     sellerKeys.forEach(key => {
       try {
-        const filled = ghlSms.fillSellerUpdate ? ghlSms.fillSellerUpdate(key, data) : null;
+        const filled = fillShortcutBySource ? fillShortcutBySource('sms', key, lead || {}) : null;
         if (filled && !filled.error) {
           shortcuts.push({
-            source: 'ghl',
+            source: 'sms',
             key,
             name: filled.name || key,
             description: 'Seller update SMS — pre-filled with lead data',
@@ -224,16 +217,16 @@ router.get('/shortcuts/:source/:key', async (req, res) => {
       body: filled.filled, unfilled: filled.unfilled || [],
       recipient: filled.recipient,
     });
-  } else if (source === 'ghl') {
-    const filled = ghlSms.fillSellerUpdate ? ghlSms.fillSellerUpdate(key, data) : null;
-    if (!filled || filled.error) return res.status(404).json({ error: 'GHL template not found' });
+  } else if (source === 'sms') {
+    const filled = fillShortcutBySource ? fillShortcutBySource('sms', key, lead || {}) : null;
+    if (!filled || filled.error) return res.status(404).json({ error: 'SMS template not found' });
     return res.json({
-      source, key, name: filled.name, description: 'Seller update SMS',
-      recipientType: 'seller', stage: filled.stage,
-      body: filled.body, unfilled: filled.unfilled,
+      source, key, name: filled.name, description: filled.description || 'Seller update SMS',
+      recipientType: filled.recipientType || 'seller', stage: filled.stage,
+      body: filled.filled || filled.body, unfilled: filled.unfilled || [],
     });
   } else {
-    return res.status(400).json({ error: 'source must be "crm" or "ghl"' });
+    return res.status(400).json({ error: 'source must be "crm" or "sms"' });
   }
 });
 

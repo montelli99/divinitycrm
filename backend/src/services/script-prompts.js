@@ -268,16 +268,168 @@ const OUTREACH_SCRIPTS = {
 };
 
 // =============================================================
-// SELLER UPDATE TEMPLATES — REMOVED
+// SELLER UPDATE TEMPLATES (standalone local copy)
 // =============================================================
-// Per user's instructions: students copy pre-filled text/email templates from
-// the 12 text shortcuts (INT, NOA, DNCT, CCC, GCJ, LOI, LOI2DAYS, INLOI, F50,
-// F10, PEND, SD) and paste them into their own phones. There are NO automated
-// seller update templates in the source. The 7 SELLER_UPDATE_TEMPLATES below
-// (CONTRACT_OUT, INSPECTION_SCHEDULED, APPRAISAL_DONE, JV_SIGNED,
-// CLOSING_CONFIRMED, EVERYBODY_WINS_PITCH, PSA_CALL_OPENER_SMS,
-// SUBTO_PROCESSOR_CONFIRMED) were entirely fabricated. Removed.
-const SELLER_UPDATE_TEMPLATES = {};
+// These templates were copied from the sibling GHL automation repo and kept
+// local so the standalone app no longer depends on that repo at runtime.
+const SELLER_UPDATE_TEMPLATES = {
+  CONTRACT_OUT: {
+    name: 'CONTRACT_OUT',
+    description: 'Sent to seller when their PSA is signed at Stage 12.',
+    stage: 12,
+    body: `Hi {{Seller Name}}, your purchase agreement for {{Property Address}} has been fully signed! 🎉
+
+Here's your timeline:
+• Contract Effective Date: {{PSA Signed Date}}
+• Inspection Period: {{Inspection Period Days}} days (ends {{Inspection End Date}})
+• Close of Escrow: {{COE Date}}
+• Title Company: {{Title Company}} ({{Title Company Phone}})
+
+{{#if isSubTo}}Since this is a Subject-To transaction, the Subject To Addendum is attached. Key points:
+- Your existing mortgage stays in place — we take over payments via a 3rd-party processing company set up within 48hrs of close
+- A Deed in Lieu of Foreclosure will be held in escrow — if we ever miss a payment, the property returns to you without court or foreclosure proceedings
+- You'll remain liable on the existing loan, but all payments are automated by our bookkeeper
+{{/if}}
+
+Next: Our transaction coordinator {{TC Name}} ({{TC Email}}, {{TC Phone}}) will reach out about lockbox/utility access for inspection. They guarantee responses within 24 hours.
+
+Reply with any questions!
+— {{Sender Name}}`,
+  },
+
+  INSPECTION_SCHEDULED: {
+    name: 'INSPECTION_SCHEDULED',
+    description: 'Sent when inspection is scheduled (Stage 14).',
+    stage: 14,
+    body: `Hi {{Seller Name}}, your inspection for {{Property Address}} is confirmed for {{Inspection Date}}. 🔍
+
+Important reminders from our transaction team:
+• A lockbox or remote lockbox code must be provided for inspector access, OR the agent must be present at the scheduled time. Delays = additional costs.
+• All utilities (gas, water, electricity) MUST be turned on prior to inspection — the inspection cannot be completed without them.
+• The inspection period runs {{Inspection Period Days}} days from the Effective Date (ending {{Inspection End Date}}).
+• If any issues come up, we'll address them promptly — our team guarantees same-day responses and replies within 24 hours.
+
+{{#if isSubTo}}This is an AS-IS sale — any inspection performed is for the buyer's awareness only.{{/if}}
+
+Your TC {{TC Name}} is managing the inspection coordination. Any questions, reply here or call {{TC Phone}}.
+— {{Sender Name}}`,
+  },
+
+  APPRAISAL_DONE: {
+    name: 'APPRAISAL_DONE',
+    description: 'Sent when appraisal result is uploaded (Stage 17).',
+    stage: 17,
+    body: `Hi {{Seller Name}}, the appraisal for {{Property Address}} is complete. Here's the update: 📊
+
+• Appraised Value: {{ARV}}
+• Contract Purchase Price: {{Purchase Price}}
+{{#if appraisalAbovePP}}✅ Appraisal came in at or above purchase price — we're moving forward to closing.{{else}}⚠️ The appraisal came in below the contract price. This requires a quick conversation — let's schedule a call to discuss adjusted terms that work for both of us.{{/if}}
+
+Key numbers reconfirmed:
+• Cash Flow: {{Cash Flow}}/mo
+• DSCR: {{DSCR}} (threshold: 1.25)
+• Close of Escrow target: {{COE Date}}
+
+Next step: Once we align on the appraisal, a closing date will be arranged and wire instructions will follow.
+— {{Sender Name}}`,
+  },
+
+  JV_SIGNED: {
+    name: 'JV_SIGNED',
+    description: 'Sent when all JV parties have signed (Stage 19).',
+    stage: 19,
+    body: `Hi {{Seller Name}}, the Joint Venture Agreement for {{Property Address}} is fully signed by all parties. 🤝
+
+Here's your confirmed position:
+• Your ownership share: {{Your Percentage}}%
+• Managing Party: {{Managing Party}}
+• Voting rules: Majority in Interest = 51% of voting percentage; Super Majority = 66% (required for lien/sale decisions)
+
+What happens next:
+• Monthly Cash Flow Report will be sent by the {{Managing Party}} on or before the last day of each month, showing all income, expenses, and reserves
+• Initial reserve: $5,000 held for property expenses
+• Any non-paying party is charged 25% annual interest on their unpaid share
+• Disputes: mediation in the state/county of the property, 10-business-day window
+
+Title to the Property is held in the name of: {{Title Holder}}
+
+Welcome to the JV. Let's make this property perform.
+— {{Sender Name}}`,
+  },
+
+  CLOSING_CONFIRMED: {
+    name: 'CLOSING_CONFIRMED',
+    description: 'Sent 7 days before COE (Stage 21).',
+    stage: 21,
+    body: `Hi {{Seller Name}}, we're ONE WEEK from closing on {{Property Address}}! 🏁
+
+Closing Details:
+• Close of Escrow Date: {{COE Date}}
+• Title Company: {{Title Company}} ({{Title Company Phone}})
+• Your net proceeds: {{Net to Seller}}
+
+{{#if isSubTo}}Subject-To Specific:
+• A 3rd-party processing company will be set up within 48 hours of closing to automate your mortgage payments
+• {{#if hasSellerCarryback}}Your seller carryback: {{Carryback Principal}} at {{Carryback Rate}}% — {{Carryback Monthly Payment}}/mo for {{Carryback Term}} months, starting {{Carryback Start Date}}{{/if}}
+• The Deed in Lieu of Foreclosure is held in escrow — if we ever miss a payment, property returns to you without court proceedings
+• Your existing loan stays in your name but payments are fully automated{{/if}}
+
+What {{Title Company}} needs from you:
+• Wire instructions for your proceeds
+• Any final documents they've requested
+
+Post-close support: Monique Pasciak (monique@sellsmartre.com, 262-304-0602) will be your primary point of contact after closing.
+
+Excited to get this across the finish line! 🎉
+— {{Sender Name}}`,
+  },
+
+  EVERYBODY_WINS_PITCH: {
+    name: 'EVERYBODY_WINS_PITCH',
+    description: 'Sent during active negotiation.',
+    stage: 3,
+    body: `Hi {{Seller Name}} — quick check-in on {{Property Address}}.
+
+The numbers work for everyone involved:
+• Cash flow on this deal: {{Cash Flow}}/mo (well above the $200/mo minimum)
+• DSCR: {{DSCR}} (above the 1.25 lender threshold)
+• 1% rule: {{1% Rule Status}}
+• Lender value: {{Lender Value}} (70% of purchase)
+
+What this means for you, the buyer, and the listing agent:
+• You walk away with {{Net to Seller}} — no repairs, no showings, no waiting
+• The buyer gets a cash-flowing property from day one
+• The listing agent finally gets paid after being on market {{Days on Market}} days
+
+Everybody wins in real estate. Let me know if you have any questions or if there's anything that would help you say yes.
+— {{Sender Name}}`,
+  },
+
+  PSA_CALL_OPENER_SMS: {
+    name: 'PSA_CALL_OPENER_SMS',
+    description: 'Pre-call text for the PSA signing call (Stage 12).',
+    stage: 12,
+    body: `Hi {{Seller Name}}! It's {{Sender Name}} from earlier. Got everything pulled up on my end for the contract on {{Property Address}} — should take us 10-15 min together. Mind if I give you a call now?
+
+(Quick tip: it really helps to have the property address handy + your LLC name if you have one. We'll be using a tool called RabbitSign for the e-signature — totally painless, just needs your email.)`,
+  },
+
+  SUBTO_PROCESSOR_CONFIRMED: {
+    name: 'SUBTO_PROCESSOR_CONFIRMED',
+    description: 'Sent within 48hrs of COE for SubTo deals.',
+    stage: 20,
+    body: `Hi {{Seller Name}}, quick update on {{Property Address}} — we're officially past closing! 🎉
+
+Per the SubTo Addendum, here's what happens next:
+• A 3rd-party processing company ({{Processor Name}}, {{Processor Contact}}) is now set up to automatically pay your existing mortgage on time every month
+• Your name stays on the loan — but you never have to think about the payment again
+• You'll get a monthly statement showing the payment was made
+• Deed in Lieu of Foreclosure is held in escrow with {{Title Company}} — your ultimate safety net
+
+If anything ever feels off, you can reach me directly at {{Sender Phone}}. Otherwise, you're all set.
+— {{Sender Name}}`,
+  },
+};
 
 // =============================================================
 // CALL SCRIPTS (from TRACK_MONTELLI.md + TRACK_STUDENT.md)
@@ -814,6 +966,12 @@ function getPrimaryShortcutForStage(stage, lead = {}) {
 
 function fillShortcutBySource(source, key, lead) {
   if (source === 'sms') {
+    const sellerTemplate = SELLER_UPDATE_TEMPLATES[key];
+    if (sellerTemplate) {
+      const result = fillTemplate(key, sellerTemplate, lead);
+      return { ...result, source };
+    }
+
     const template = SMS_TEMPLATES[key];
     if (!template) return { error: `Template "${key}" not found` };
     return {
@@ -829,13 +987,6 @@ function fillShortcutBySource(source, key, lead) {
       actionRequired: 'Ready to send',
       source,
     };
-  }
-
-  if (source === 'ghl') {
-    const def = SELLER_UPDATE_TEMPLATES[key];
-    if (!def) return { error: `Template "${key}" not found` };
-    const result = fillTemplate(key, def, lead);
-    return { ...result, source };
   }
 
   const result = getTemplateByShortcut(key, lead);

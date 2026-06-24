@@ -5,7 +5,6 @@ const Module = require('node:module');
 const { Webhook } = require('standardwebhooks');
 
 const ROOT = path.resolve(__dirname, '..');
-const TELEPROMPTER_GHL_SMS = path.join(path.resolve(path.join(ROOT, 'src/routes'), '../../../../ghl-automations/modules'), 'sms-templates.js');
 
 function makeRes() {
   return {
@@ -109,7 +108,7 @@ test('script prompts routes return canonical stage shortcut', async () => {
   assert.ok(queryCalls.length >= 2);
 });
 
-test('under contract stage no longer shows the previous inspection SMS shortcut', async () => {
+test('under contract stage shows the local inspection SMS shortcut', async () => {
   const router = loadRouter('src/routes/script-prompts.js', {
     '../db/connection': {
       query: async (sql, params) => {
@@ -125,8 +124,11 @@ test('under contract stage no longer shows the previous inspection SMS shortcut'
   });
 
   assert.equal(stageRes.statusCode, 200);
-  assert.equal(stageRes.body.primaryShortcut, null);
-  assert.deepEqual(stageRes.body.scripts, []);
+  assert.equal(stageRes.body.primaryShortcut.source, 'sms');
+  assert.equal(stageRes.body.primaryShortcut.templateName, 'INSPECTION_SCHEDULED');
+  assert.match(stageRes.body.primaryShortcut.filled, /123 Main St/);
+  assert.ok(Array.isArray(stageRes.body.scripts));
+  assert.equal(stageRes.body.scripts.length, 1);
 });
 
 test('lead transition route enforces allowed next stages', async () => {
@@ -549,9 +551,6 @@ test('teleprompter routes return filled shortcuts and log sends', async () => {
     '../services/script-prompts': {
       ...require('./services/script-prompts.js'),
     },
-    [TELEPROMPTER_GHL_SMS]: {
-      fillSellerUpdate: (key, data) => ({ name: key, body: `ghl:${key}:${data['Property Address'] || ''}`, unfilled: [], stage: key, recipient: 'seller' }),
-    },
   });
 
   const stagesRes = await callRoute(router, 'get', '/stages', {});
@@ -564,6 +563,14 @@ test('teleprompter routes return filled shortcuts and log sends', async () => {
   assert.equal(shortcutRes.body.source, 'crm');
   assert.equal(shortcutRes.body.key, 'INT');
   assert.match(shortcutRes.body.body, /123 Main St/);
+
+  const sellerShortcutRes = await callRoute(router, 'get', '/shortcuts/:source/:key', {
+    params: { source: 'sms', key: 'CONTRACT_OUT' },
+    query: { lead_id: 'lead-1' },
+  });
+  assert.equal(sellerShortcutRes.body.source, 'sms');
+  assert.equal(sellerShortcutRes.body.key, 'CONTRACT_OUT');
+  assert.match(sellerShortcutRes.body.body, /123 Main St/);
 
   const markSentRes = await callRoute(router, 'post', '/mark-sent', {
     body: { lead_id: 'lead-1', source: 'crm', key: 'INT', body: 'hello', recipient: 'Jane Seller', channel: 'sms' },
