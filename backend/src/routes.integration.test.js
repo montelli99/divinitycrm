@@ -108,19 +108,19 @@ test('script prompts routes return canonical stage shortcut', async () => {
   assert.ok(queryCalls.length >= 2);
 });
 
-test('under contract stage shows the local inspection SMS shortcut', async () => {
+test('inspection period stage shows the local inspection SMS shortcut', async () => {
   const router = loadRouter('src/routes/script-prompts.js', {
     '../db/connection': {
       query: async (sql, params) => {
         if (sql.includes('FROM users')) return [{ id: 'user-1' }];
-        if (sql.includes('FROM leads')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'UNDER_CONTRACT', seller_name: 'Jane Seller', address: '123 Main St' }];
+        if (sql.includes('FROM leads')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'INSPECTION_PERIOD', seller_name: 'Jane Seller', address: '123 Main St' }];
         return [];
       },
     },
   });
 
   const stageRes = await callRoute(router, 'get', '/stage/:lead_id/:stage', {
-    params: { lead_id: 'lead-1', stage: 'UNDER_CONTRACT' },
+    params: { lead_id: 'lead-1', stage: 'INSPECTION_PERIOD' },
   });
 
   assert.equal(stageRes.statusCode, 200);
