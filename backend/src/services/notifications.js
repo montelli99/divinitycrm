@@ -127,9 +127,8 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
       recipientEmail = recipientSpec.value;
       recipientName = recipientSpec.value.split('@')[0];
       recipientId = await getUserByEmail(recipientSpec.value);
-      if (!recipientId) {
-        console.warn(`[notifications] Recipient ${recipientSpec.value} not found in users table; sending email anyway`);
-      }
+      // If user not in users table, still send email but skip in-app notification
+      // (don't fail the whole notify just because recipient hasn't signed up yet)
     } else if (recipientSpec.type === 'role') {
       const roleIds = await getUsersByRole(recipientSpec.value);
       for (const rid of roleIds) {
@@ -162,17 +161,22 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
       continue;
     }
 
-    await createNotification({
-      recipientId,
-      leadId: leadData.id,
-      type: config.type,
-      title: config.titleTemplate(leadData),
-      body: config.bodyTemplate(leadData),
-      actionUrl: config.actionUrl?.(leadData) || null,
-      actionLabel: config.actionLabel || null,
-    });
-    fired++;
-    // Real email delivery for direct-email recipients
+    // Only create in-app notification if user is in users table
+    if (recipientId) {
+      await createNotification({
+        recipientId,
+        leadId: leadData.id,
+        type: config.type,
+        title: config.titleTemplate(leadData),
+        body: config.bodyTemplate(leadData),
+        actionUrl: config.actionUrl?.(leadData) || null,
+        actionLabel: config.actionLabel || null,
+      });
+      fired++;
+    } else {
+      console.warn(`[notifications] ${recipientEmail} not in users table — sending email only, skipping in-app`);
+    }
+    // Real email delivery for direct-email recipients (always attempt)
     if (recipientEmail) {
       const r = await sendRealEmailForNotification({
         recipientEmail,

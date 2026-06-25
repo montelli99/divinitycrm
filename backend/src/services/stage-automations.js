@@ -404,19 +404,19 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
                 [userId, leadId, 'notification_fired', JSON.stringify({ stage: toStage, count: notifResult.fired, emailsSent: notifResult.emailsSent, emailsFailed: notifResult.emailsFailed })]
               );
-              // notify is "ok" only if in-app fired AND real emails actually delivered
-              // If emailsFailed > 0 but in-app still fired, surface it as a partial ok with emailBlockers
-              const ok = notifResult.fired > 0 && notifResult.emailsFailed === 0;
+              // notify is "ok" if in-app inbox fired — that's the primary delivery path.
+              // Email is supplementary; if it fails we surface stats but don't fail the action.
+              const ok = notifResult.fired > 0;
               results.push({
                 type: 'notify',
                 ok,
                 fired: notifResult.fired,
                 emailsSent: notifResult.emailsSent,
                 emailsFailed: notifResult.emailsFailed,
-                emailBlockers: notifResult.emailsFailed > 0 ? ['see logs for email failure reasons'] : [],
+                emailChannel: notifResult.emailsSent > 0 ? 'agentmail' : (notifResult.emailsFailed > 0 ? 'blocked' : 'none'),
               });
-              if (!ok) {
-                console.warn(`[stage-automations] notify partial-fail: fired=${notifResult.fired}, emailsSent=${notifResult.emailsSent}, emailsFailed=${notifResult.emailsFailed}`);
+              if (notifResult.emailsFailed > 0) {
+                console.warn(`[stage-automations] notify partial-email-fail: inAppFired=${notifResult.fired}, emailsSent=${notifResult.emailsSent}, emailsFailed=${notifResult.emailsFailed}`);
               }
             } catch (e) {
               results.push({ type: 'notify', ok: false, error: e.message });
