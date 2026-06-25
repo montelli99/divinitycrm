@@ -105,6 +105,26 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
     actionUrl: (lead) => `/leads/${lead.id}`,
     actionLabel: 'View Lead',
   },
+  'INSPECTION_PERIOD:INSPECTION_COMPLETE': {
+    recipients: [
+      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
+    ],
+    type: 'inspection_complete',
+    titleTemplate: (lead) => `Inspection Complete: ${lead.address}`,
+    bodyTemplate: (lead) => `Inspection period finished. Ready to move to appraisal. Address: ${lead.address}.`,
+    actionUrl: (lead) => `/leads/${lead.id}`,
+    actionLabel: 'View Lead',
+  },
+  'INSPECTION_COMPLETE:APPRAISAL_ORDERED': {
+    recipients: [
+      { type: 'email', value: 'homewithkaylamauser@gmail.com' },
+    ],
+    type: 'appraisal_ordered',
+    titleTemplate: (lead) => `Appraisal Ordered: ${lead.address}`,
+    bodyTemplate: (lead) => `Inspection complete — appraisal has been ordered. Address: ${lead.address}.`,
+    actionUrl: (lead) => `/leads/${lead.id}`,
+    actionLabel: 'View Lead',
+  },
 };
 
 // =============================================================
