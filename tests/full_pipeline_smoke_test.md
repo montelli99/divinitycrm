@@ -57,15 +57,17 @@ Assert the URL contains `/#/leads/`.
 Click "Teleprompter" in the sidebar.
 
 Assert the URL contains `/#/teleprompter`.
-Assert text shortcut cards are listed.
+Assert the 21-stage stage rail is visible at the bottom of the page.
+Assert "Select a stage" or stage selector is visible.
+(Teleprompter loads text shortcuts after a lead is selected — this is by design.)
 
 ## Open Calculator
 
 Click "Calculator" in the sidebar.
 
 Assert the URL contains `/#/calculator`.
-Assert the title is "Underwriting Calculator".
-Assert the "Run Analysis" button is visible.
+Assert the H1 title is "Deal Calculator".
+Assert tab buttons are visible (Underwriting, Buy Box, Closing Costs, Mid-Term, Docs, History).
 
 ## Open Contracts
 
