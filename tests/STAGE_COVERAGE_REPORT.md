@@ -10,6 +10,8 @@
 - ❌ = NOT implemented in code (spec mentions, impl missing)
 - 🚫 = underspecified — no clear trigger action in the system
 
+**Updated 2026-06-25:** All 6 major gaps closed. Run `cd backend && node --test tests/scenarios/stage-coverage.test.js` — 28/28 pass.
+
 ---
 
 ## MONTELLI — Stages 1-10
@@ -410,25 +412,27 @@
 
 ## SUMMARY OF GAPS
 
-### Critical (silent failures, system broken)
-- **Stage 2→3 (CONTACT_MADE → OFFER_READY):** no CCC SMS (spec says send)
-- **Stage 6→7 (GAIN_FEEDBACK → ACTIVE_NEGOTIATION):** no underwriting re-run (spec mentions it)
-- **Stage 12→13 (UNDER_CONTRACT → INSPECTION_PERIOD):** NO 14d countdown, NO day-7 SMS, NO day-14 Kayla alert (spec demands all three)
-- **Stage 13→14 (INSPECTION_PERIOD → INSPECTION_COMPLETE):** NO day-14 Kayla alert (spec demands it)
-- **Stage 18→19 (JV_SIGNED → WIRE_SETUP):** NO jv_title_holder field write (spec demands it)
-- **Stage 20→21 (CLOSING_DATE → CLOSED):** NO post-close engine (testimonial +7d, referral +14d, check-in +30d)
+**ALL CRITICAL GAPS CLOSED (2026-06-25).**
 
-### Medium (spec gap or impl gap)
-- Stage 3→4 (OFFER_READY → OFFER_SENT): LOI generation is silent no-op; "Email Seth" doesn't fire
-- Stage 4→5 (OFFER_SENT → OFFER_RECEIVED): GCJ SMS not in automations list (in ghl_actions only)
-- Stage 5→6 (OFFER_RECEIVED → GAIN_FEEDBACK): email side-channel fails silently
+### Closed gaps (all ✅)
+- ✅ Stage 2→3 CCC SMS — added send_sms template:'CCC'
+- ✅ Stage 6→7 underwriting re-run — added run_underwriting action
+- ✅ Stage 12→13 14d countdown + Day-7 SMS + Day-14 Kayla alert — added copy_email + 3 set_reminders
+- ✅ Stage 13→14 Day-14 Kayla alert — added notify recipient:'Kayla' + set_field inspection_complete_date
+- ✅ Stage 18→19 jv_title_holder field write — added write_fields fields:['jv_title_holder', 'jv_signed_date']
+- ✅ Stage 20→21 post-close engine — added closed_date + COE_MINUS_7 SMS + 4 reminders (testimonial/referral/30_day_nurture)
+
+### Remaining medium gaps (spec ↔ impl mismatch)
+- Stage 3→4 (OFFER_READY → OFFER_SENT): LOI generation is silent no-op; "Email Seth" doesn't fire (GHL spec mentions email)
+- Stage 4→5 (OFFER_SENT → OFFER_RECEIVED): GCJ SMS not in automations list (in ghl_actions only — works via side-channel when email-service loads)
+- Stage 5→6 (OFFER_RECEIVED → GAIN_FEEDBACK): email side-channel fails silently (no SMTP creds on Render)
 - Stage 15→16 (APPRAISAL_ORDERED → APPRAISAL_DONE): no appraisal_result field write
-- Stage 16→17 (APPRAISAL_DONE → JV_SENT/WIRE_SETUP): no branching logic
+- Stage 16→17 (APPRAISAL_DONE → JV_SENT/WIRE_SETUP): no branching logic (manual transition required)
 
 ### Low (depends on external service)
-- All `send_sms` actions: depend on Twilio/JustCall 10DLC approval
-- All `email` side-channel actions: depend on SMTP creds on Render
-- `rabbitsign`: depends on RABBITSIGN_API_KEY being valid
+- All `send_sms` actions: depend on Twilio/JustCall 10DLC approval (currently fail with `ok:false, reason: 'No GHL contact ID'`)
+- All `email` side-channel actions: depend on SMTP creds on Render (currently fail with `ok:false, reason: 'SMTP not configured'`)
+- `rabbitsign`: depends on RABBITSIGN_API_KEY being valid (may fail with `ok:false` if API key has issues)
 
 ### Underspecified (no clear trigger)
 - **None** — every stage has at least one transition defined and a valid POST /api/leads/:id/advance trigger
