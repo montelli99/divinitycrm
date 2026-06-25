@@ -117,17 +117,25 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
   if (!config) return { fired: 0 };
 
   let fired = 0;
+  let emailsSent = 0;
+  let emailsFailed = 0;
   for (const recipientSpec of config.recipients) {
     let recipientId = null;
+    let recipientEmail = null;
+    let recipientName = null;
     if (recipientSpec.type === 'email') {
+      recipientEmail = recipientSpec.value;
+      recipientName = recipientSpec.value.split('@')[0];
       recipientId = await getUserByEmail(recipientSpec.value);
       if (!recipientId) {
-        console.warn(`[notifications] Recipient ${recipientSpec.value} not found in users table`);
-        continue;
+        console.warn(`[notifications] Recipient ${recipientSpec.value} not found in users table; sending email anyway`);
       }
     } else if (recipientSpec.type === 'role') {
       const roleIds = await getUsersByRole(recipientSpec.value);
       for (const rid of roleIds) {
+        const u = await query('SELECT email, first_name FROM users WHERE id = $1', [rid]);
+        recipientEmail = u[0]?.email;
+        recipientName = u[0]?.first_name || recipientEmail?.split('@')[0] || 'Team';
         await createNotification({
           recipientId: rid,
           leadId: leadData.id,
@@ -138,6 +146,18 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
           actionLabel: config.actionLabel || null,
         });
         fired++;
+        // Real email delivery
+        if (recipientEmail) {
+          const r = await sendRealEmailForNotification({
+            recipientEmail,
+            recipientName,
+            title: config.titleTemplate(leadData),
+            body: config.bodyTemplate(leadData),
+            leadId: leadData.id,
+          });
+          if (r.sent) emailsSent++;
+          else emailsFailed++;
+        }
       }
       continue;
     }
@@ -152,9 +172,40 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
       actionLabel: config.actionLabel || null,
     });
     fired++;
+    // Real email delivery for direct-email recipients
+    if (recipientEmail) {
+      const r = await sendRealEmailForNotification({
+        recipientEmail,
+        recipientName,
+        title: config.titleTemplate(leadData),
+        body: config.bodyTemplate(leadData),
+        leadId: leadData.id,
+      });
+      if (r.sent) emailsSent++;
+      else emailsFailed++;
+    }
   }
 
-  return { fired };
+  return { fired, emailsSent, emailsFailed };
+}
+
+// =============================================================
+// Send real email via SMTP or AgentMail (in addition to in-app inbox)
+// =============================================================
+
+async function sendRealEmailForNotification({ recipientEmail, recipientName, title, body, leadId }) {
+  const { sendEmail } = require('./email-service');
+  const result = await sendEmail({
+    to: { email: recipientEmail, name: recipientName },
+    subject: title,
+    body: `${body}\n\n---\nOpen in CRM: https://divinitycrm.onrender.com/leads/${leadId}\n\nAtlas (Divinity CRM)`,
+  });
+  if (result.sent) {
+    console.log(`[notifications] Real email sent via ${result.channel}: ${title} → ${recipientEmail}`);
+  } else {
+    console.warn(`[notifications] Real email FAILED: ${title} → ${recipientEmail}: ${result.reason || result.error}`);
+  }
+  return result;
 }
 
 // =============================================================

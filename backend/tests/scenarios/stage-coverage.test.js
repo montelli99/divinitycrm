@@ -73,14 +73,51 @@ function assertHasAction(results, actionType, label) {
   return found;
 }
 function assertNoSilentFailures(results, label) {
-  // Skip email + send_sms + rabbitsign failures - those depend on external services
-  // (SMTP, Twilio/JustCall, RabbitSign) that may not be configured in test env.
-  // What we DO flag: webhook, log, set_reminder, set_field, write_fields, generate_contract,
-  // run_underwriting, run_comps, run_doc_analysis, notify - these are local DB/service ops.
+  // Local DB/service ops MUST succeed — flag any silent failure on these.
+  // External ops (send_sms, email, rabbitsign) are checked separately via assertChannelDelivered().
   const silentlyFailing = ['webhook', 'log', 'set_reminder', 'set_field', 'write_fields',
-    'generate_contract', 'run_underwriting', 'run_comps', 'run_doc_analysis', 'notify', 'quick_buybox', 'loi_request'];
+    'generate_contract', 'run_underwriting', 'run_comps', 'run_doc_analysis', 'notify', 'quick_buybox', 'loi_request', 'copy_email', 'scan_followups'];
   const failures = results.filter(r => r.ok === false && silentlyFailing.includes(r.type));
   if (failures.length > 0) assert.fail(`${label} has silent failures: ${JSON.stringify(failures)}`);
+}
+
+/**
+ * Assert that a send-style action actually delivered.
+ *
+ * When TEST_CHANNEL_REAL=true: action.result.ok MUST be true. Otherwise fail.
+ * When TEST_CHANNEL_REAL=false (default): capture channel status for reporting but don't fail.
+ *
+ * The action is considered "delivered" if result.ok === true OR if it has a `deliveryStatus` of 'sent'.
+ * A result with ok=false and a clear "blocked" reason (missing 10DLC, missing SMTP, etc.) is acceptable
+ * only if the stage automation code has flagged it explicitly.
+ */
+function assertChannelDelivered(results, actionType, label) {
+  const found = results.find(r => r.type === actionType);
+  if (!found) assert.fail(`${label} should fire '${actionType}'. Got: ${results.map(r => r.type).join(', ')}`);
+  // Always assert the action exists with the right shape
+  assert.ok(found, `${label} action ${actionType} exists`);
+  if (process.env.TEST_CHANNEL_REAL === 'true') {
+    if (!found.ok) {
+      assert.fail(`${label} channel ${actionType} returned ok:false. ` +
+        `Reason: ${found.reason || found.error || 'unknown'}. ` +
+        `Wire the real channel or set TEST_CHANNEL_REAL=false.`);
+    }
+  }
+  return found;
+}
+
+/**
+ * Diagnostic helper: report channel readiness for a stage.
+ * Always log so reports show which channels were blocked vs delivered.
+ */
+function reportChannelStatus(label, results) {
+  const channels = ['send_sms', 'email', 'rabbitsign'];
+  const lines = channels.map(type => {
+    const r = results.find(x => x.type === type);
+    if (!r) return `  ${type}: not fired`;
+    return `  ${type}: ${r.ok ? '✓ delivered' : '✗ BLOCKED (' + (r.reason || r.error || 'unknown') + ')'}`;
+  });
+  console.log(`Channel status for ${label}:\n${lines.join('\n')}`);
 }
 
 async function leadAtStage(token, stage, overrides = {}) {

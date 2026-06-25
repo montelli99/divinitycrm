@@ -216,17 +216,148 @@ async function sendStageSMS(fromStage, toStage, lead, contactId) {
 }
 
 /**
+ * Send SMS via JustCall v2.1 API.
+ * JustCall sends directly from a registered 10DLC number to any phone.
+ * Doesn't require GHL contactId — uses lead phone directly.
+ *
+ * Docs: https://developer.justcall.io/reference/send-sms-text
+ */
+async function sendSMSViaJustCall(phone, message) {
+  const API_KEY = process.env.JUSTCALL_API_KEY;
+  const API_SECRET = process.env.JUSTCALL_API_SECRET;
+  let FROM = process.env.JUSTCALL_FROM_NUMBER;
+  if (!API_KEY || !API_SECRET) {
+    return { sent: false, reason: 'JustCall not configured (missing JUSTCALL_API_KEY/JUSTCALL_API_SECRET)' };
+  }
+  if (!phone) {
+    return { sent: false, reason: 'No recipient phone number' };
+  }
+  // JustCall requires the from number WITHOUT the leading + (e.g. "15716012619" not "+15716012619")
+  if (FROM && FROM.startsWith('+')) {
+    FROM = FROM.slice(1);
+  }
+  // If FROM is missing or invalid, fetch the first available number from account
+  if (!FROM) {
+    try {
+      const list = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname: 'api.justcall.io',
+          path: '/v2.1/phone-numbers',
+          method: 'GET',
+          headers: { 'Authorization': `${API_KEY}:${API_SECRET}` },
+        }, (res) => {
+          let d = '';
+          res.on('data', c => d += c);
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(d);
+              const first = parsed.data?.[0]?.justcall_number;
+              resolve(first || null);
+            } catch { resolve(null); }
+          });
+        });
+        req.on('error', reject);
+        req.end();
+      });
+      if (!list) return { sent: false, reason: 'No JustCall numbers available on this account' };
+      FROM = list;
+      console.log(`[sms-service] Auto-selected JustCall number: ${FROM}`);
+    } catch (e) {
+      return { sent: false, reason: `Cannot fetch JustCall numbers: ${e.message}` };
+    }
+  }
+  // JustCall v2.1 API uses `Authorization: API_KEY:API_SECRET` (not Basic auth)
+  // POST /v2.1/texts/new with { justcall_number, contact_number, body, media }
+  const body = JSON.stringify({
+    justcall_number: FROM,
+    contact_number: phone,
+    body: message,
+    media: [],
+  });
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'api.justcall.io',
+      path: '/v2.1/texts/new',
+      method: 'POST',
+      headers: {
+        'Authorization': `${API_KEY}:${API_SECRET}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(d);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            // JustCall returns { status: "success", id: <message_id>, ... }
+            if (parsed.status === 'success') {
+              console.log(`[sms-service] JustCall sent: ${FROM} → ${phone} (${parsed.id || 'no id'})`);
+              resolve({ sent: true, channel: 'justcall', messageId: parsed.id || 'sent', response: parsed });
+            } else {
+              console.error(`[sms-service] JustCall refused: ${JSON.stringify(parsed)}`);
+              resolve({ sent: false, channel: 'justcall', reason: parsed.message || parsed.error || 'unknown refusal', response: parsed });
+            }
+          } else {
+            console.error(`[sms-service] JustCall HTTP ${res.statusCode}: ${d.substring(0, 200)}`);
+            // Try to extract a clearer error message from the response body
+            let clearReason = `HTTP ${res.statusCode}`;
+            try {
+              const parsedErr = JSON.parse(d);
+              if (parsedErr.message) {
+                clearReason = typeof parsedErr.message === 'string'
+                  ? parsedErr.message
+                  : parsedErr.message.join(', ');
+              }
+            } catch {}
+            resolve({ sent: false, channel: 'justcall', reason: clearReason, response: d.substring(0, 500) });
+          }
+        } catch (e) {
+          console.error(`[sms-service] JustCall parse error: ${e.message}`);
+          resolve({ sent: false, channel: 'justcall', reason: `parse error: ${e.message}` });
+        }
+      });
+    });
+    req.on('error', (e) => {
+      console.error(`[sms-service] JustCall network error: ${e.message}`);
+      resolve({ sent: false, channel: 'justcall', reason: `network: ${e.message}` });
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
  * Send a specific SMS template for a lead (manual trigger).
+ *
+ * Resolution order:
+ *   1. If GHL contactId provided -> GHL Conversations API (legacy path)
+ *   2. Else if lead.phone present + JustCall configured -> JustCall direct SMS
+ *   3. Else fail loudly (no silent no-op)
  */
 async function sendTemplate(lead, templateKey, contactId) {
-  const cid = contactId || lead.ghl_contact_id;
-  if (!cid) return { sent: false, reason: 'No GHL contact ID' };
-
   const template = SMS_TEMPLATES[templateKey];
   if (!template) return { sent: false, reason: `Unknown template: ${templateKey}` };
 
   const message = fillSMSTemplate(template, lead);
-  return sendSMS(cid, message);
+
+  // Path 1: GHL contactId if available
+  const cid = contactId || lead.ghl_contact_id;
+  if (cid) {
+    const r = await sendSMS(cid, message);
+    if (r.sent) return { ...r, channel: 'ghl' };
+    // GHL failed but we still might be able to try JustCall as backup
+    console.warn(`[sms-service] GHL send failed (${r.reason || r.error}); trying JustCall fallback`);
+  }
+
+  // Path 2: JustCall direct from lead phone
+  const phone = lead.seller_phone || lead.agent_phone || lead.phone;
+  if (phone) {
+    return await sendSMSViaJustCall(phone, message);
+  }
+
+  return { sent: false, reason: 'No GHL contactId and no lead phone — cannot determine recipient' };
 }
 
 module.exports = {
@@ -234,6 +365,7 @@ module.exports = {
   sendSMS,
   sendStageSMS,
   sendTemplate,
+  sendSMSViaJustCall,
   fillSMSTemplate,
   SMS_TEMPLATES,
 };

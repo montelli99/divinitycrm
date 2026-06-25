@@ -306,27 +306,73 @@ function buildKaylaJaxonCounterEmail(lead) {
  * @returns {Object} { sent, messageId, error? }
  */
 async function sendEmail(opts) {
-  if (!isConfigured()) {
-    console.warn('[email-service] SMTP not configured — skipping send');
-    return { sent: false, reason: 'SMTP not configured' };
-  }
-
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
   const toStr = recipients.map(r => `"${r.name}" <${r.email}>`).join(', ');
 
-  try {
-    const info = await getTransporter().sendMail({
-      from: `"Divinity CRM" <${SMTP.auth.user}>`,
-      to: toStr,
-      subject: opts.subject,
-      text: opts.body,
-    });
-    console.log(`[email-service] Sent: "${opts.subject}" → ${toStr} (${info.messageId})`);
-    return { sent: true, messageId: info.messageId };
-  } catch (err) {
-    console.error(`[email-service] FAILED: "${opts.subject}" → ${toStr}: ${err.message}`);
-    return { sent: false, error: err.message };
+  // Try SMTP first (real Gmail delivery)
+  if (isConfigured()) {
+    try {
+      const info = await getTransporter().sendMail({
+        from: `"Divinity CRM" <${SMTP.auth.user}>`,
+        to: toStr,
+        subject: opts.subject,
+        text: opts.body,
+      });
+      console.log(`[email-service] SMTP sent: "${opts.subject}" → ${toStr} (${info.messageId})`);
+      return { sent: true, channel: 'smtp', messageId: info.messageId };
+    } catch (err) {
+      console.error(`[email-service] SMTP FAILED: "${opts.subject}" → ${toStr}: ${err.message}`);
+      // Fall through to AgentMail fallback
+    }
   }
+
+  // Fallback to AgentMail API (already configured for AI REI / Atlas inbox)
+  const agentMailKey = process.env.AGENTMAIL_AIREI_KEY;
+  const agentMailFrom = process.env.AGENTMAIL_AIREI_EMAIL;
+  if (agentMailKey && agentMailFrom) {
+    try {
+      const https = require('https');
+      const body = JSON.stringify({
+        to: recipients.map(r => r.email),
+        subject: opts.subject,
+        text: opts.body,
+      });
+      // URL-encode the inbox_id (e.g. airei@agentmail.to → airei%40agentmail.to)
+      const encodedInbox = encodeURIComponent(agentMailFrom);
+      const result = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname: 'api.agentmail.to',
+          path: `/v0/inboxes/${encodedInbox}/messages/send`,
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${agentMailKey}`,
+            'Content-Type': 'application/json',
+          },
+        }, (res) => {
+          let d = '';
+          res.on('data', c => d += c);
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); }
+            } else {
+              reject(new Error(`AgentMail ${res.statusCode}: ${d.substring(0, 200)}`));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+      console.log(`[email-service] AgentMail sent: "${opts.subject}" → ${toStr} (${result.message_id || result.id || 'no id'})`);
+      return { sent: true, channel: 'agentmail', messageId: result.message_id || result.id || 'sent', response: result };
+    } catch (err) {
+      console.error(`[email-service] AgentMail FAILED: "${opts.subject}" → ${toStr}: ${err.message}`);
+      return { sent: false, channel: 'agentmail_failed', error: err.message };
+    }
+  }
+
+  // No channel available — fail loudly
+  return { sent: false, reason: 'No email channel: SMTP_PASS and AGENTMAIL_AIREI_KEY both missing' };
 }
 
 // =============================================================

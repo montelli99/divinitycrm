@@ -182,11 +182,17 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             // ready-to-download text. Uses the same contract-generator.js the
             // legacy code already had.
             try {
-              const contractType = leadData.contract || leadData.contract_type || 'cash';
+              // Resolve contractType in this priority:
+              //   1. action.template (set in automation config)
+              //   2. action.contract_type (alias for template)
+              //   3. leadData.contract_type (set on lead record)
+              //   4. leadData.contract (legacy field)
+              //   5. fallback to 'cash'
+              const contractType = action.template || action.contract_type || leadData.contract_type || leadData.contract || 'cash';
               const { generateContract, formatForTelegram } = require('./contract-generator');
               const generated = generateContract(leadData, contractType);
               if (generated.error) {
-                results.push({ type: 'generate_contract', ok: false, error: generated.error });
+                results.push({ type: 'generate_contract', ok: false, error: generated.error, contractType });
                 break;
               }
               // Format the structured pkg into a single text blob for storage.
@@ -215,8 +221,7 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
             break;
           }
           case 'rabbitsign': {
-            // Real RabbitSign envelope creation. Falls back gracefully if API
-            // key is bad (logs to activity_log so student can copy/fax instead).
+            // Real RabbitSign envelope creation. ok:false if it fails.
             try {
               const contractType = leadData.contract || leadData.contract_type || 'psa_creative_subto';
               const { createContractEnvelope } = require('./rabbitsign');
@@ -238,16 +243,17 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
                 );
                 results.push({ type: 'rabbitsign', ok: true, folderId: envelopeResult.folderId, contractType });
               } else {
+                // Fail loudly - the user said no silent ok:true on real channel failures
                 await query(
                   'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                  [userId, leadId, 'rabbitsign_envelope_failed', JSON.stringify({ contractType, error: envelopeErr || 'no folderId returned', fallback: 'student can copy contract text manually' })]
+                  [userId, leadId, 'rabbitsign_envelope_failed', JSON.stringify({ contractType, error: envelopeErr || 'no folderId returned' })]
                 );
                 results.push({
                   type: 'rabbitsign',
-                  ok: true, // soft-ok — fallback to manual works
+                  ok: false,
                   contractType,
-                  envelopeErr: envelopeErr || 'no folderId returned',
-                  fallback: 'student copies contract text manually',
+                  error: envelopeErr || 'no folderId returned',
+                  blocker: 'RABBITSIGN_API_KEY may be invalid, expired, or template/template id is wrong',
                 });
               }
             } catch (e) {
@@ -396,9 +402,22 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
               const notifResult = await fireStageNotifications(fromStage, toStage, leadData);
               await query(
                 'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                [userId, leadId, 'notification_fired', JSON.stringify({ stage: toStage, count: notifResult.fired })]
+                [userId, leadId, 'notification_fired', JSON.stringify({ stage: toStage, count: notifResult.fired, emailsSent: notifResult.emailsSent, emailsFailed: notifResult.emailsFailed })]
               );
-              results.push({ type: 'notify', ok: true, fired: notifResult.fired });
+              // notify is "ok" only if in-app fired AND real emails actually delivered
+              // If emailsFailed > 0 but in-app still fired, surface it as a partial ok with emailBlockers
+              const ok = notifResult.fired > 0 && notifResult.emailsFailed === 0;
+              results.push({
+                type: 'notify',
+                ok,
+                fired: notifResult.fired,
+                emailsSent: notifResult.emailsSent,
+                emailsFailed: notifResult.emailsFailed,
+                emailBlockers: notifResult.emailsFailed > 0 ? ['see logs for email failure reasons'] : [],
+              });
+              if (!ok) {
+                console.warn(`[stage-automations] notify partial-fail: fired=${notifResult.fired}, emailsSent=${notifResult.emailsSent}, emailsFailed=${notifResult.emailsFailed}`);
+              }
             } catch (e) {
               results.push({ type: 'notify', ok: false, error: e.message });
             }
