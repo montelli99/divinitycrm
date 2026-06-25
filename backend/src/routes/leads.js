@@ -585,6 +585,15 @@ router.post('/:id/advance', async (req, res, next) => {
       [to_stage, leadId]
     );
 
+    // If caller passed appraisal_value, persist it BEFORE running automations
+    // (so the branching logic below can read the latest value)
+    if (req.body.appraisal_value !== undefined && to_stage === 'APPRAISAL_DONE') {
+      await query('UPDATE leads SET appraisal_value = $1 WHERE id = $2', [Number(req.body.appraisal_value), leadId]);
+      // Refresh result[0] with the new value
+      const refreshed = await query('SELECT * FROM leads WHERE id = $1', [leadId]);
+      Object.assign(result[0], refreshed[0]);
+    }
+
     // Execute automations
     let automation = await executeStageAutomations(leadId, userId, fromStage, to_stage, result[0], { body: req.body });
 

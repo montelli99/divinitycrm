@@ -139,7 +139,7 @@ test('Stage 03: CONTACT_MADE → OFFER_READY - 48hr reminder fires', async (t) =
   await deleteLead(token, lead.id);
 });
 
-test('Stage 04: OFFER_READY → OFFER_SENT - run_underwriting + send_sms GCJ', async (t) => {
+test('Stage 04: OFFER_READY → OFFER_SENT — run_underwriting + LOI doc generated + GCJ SMS', async (t) => {
   const token = await login();
   const lead = await createLead(token);
   await advance(token, lead.id, 'CONTACT_MADE');
@@ -151,13 +151,22 @@ test('Stage 04: OFFER_READY → OFFER_SENT - run_underwriting + send_sms GCJ', a
   assertHasAction(results, 'run_underwriting', 'OFFER_READY→OFFER_SENT');
   assertHasAction(results, 'run_comps', 'OFFER_READY→OFFER_SENT');
   assertHasAction(results, 'run_doc_analysis', 'OFFER_READY→OFFER_SENT');
+  // LOI doc generation must produce a real doc (not silent log)
+  const loi = assertHasAction(results, 'loi_request', 'OFFER_READY→OFFER_SENT');
+  assert.ok(loi.loi, 'loi_request should include generated LOI doc');
+  assert.ok(loi.loi.templateName, `LOI should have templateName. Got: ${JSON.stringify(loi.loi)}`);
+  assert.ok(loi.loi.length > 100, `LOI body should be > 100 chars. Got length: ${loi.loi.length}`);
+  assert.equal(loi.loi.contractType, 'loi');
   assertHasAction(results, 'send_sms', 'OFFER_READY→OFFER_SENT');
   assert.equal(results.find(x => x.type === 'send_sms').template, 'GCJ');
   assertNoSilentFailures(results.filter(x => x.type !== 'send_sms' && x.type !== 'email'), 'OFFER_READY→OFFER_SENT');
+  // DB VERIFICATION — LOI doc persisted on lead
+  const fetched = await getLead(token, lead.id);
+  assert.ok(fetched.body.lead.draft_loi_url, `draft_loi_url should be set. Got: ${JSON.stringify(fetched.body.lead.draft_loi_url)}`);
   await deleteLead(token, lead.id);
 });
 
-test('Stage 05: OFFER_SENT → OFFER_RECEIVED - offer_sent_date set + 48hr reminder', async () => {
+test('Stage 05: OFFER_SENT → OFFER_RECEIVED - offer_sent_date set + 48hr reminder + GCJ SMS', async () => {
   const token = await login();
   const lead = await leadAtStage(token, 'OFFER_SENT');
   const r = await advance(token, lead.id, 'OFFER_RECEIVED');
@@ -167,7 +176,10 @@ test('Stage 05: OFFER_SENT → OFFER_RECEIVED - offer_sent_date set + 48hr remin
   assert.equal(sf.field, 'offer_sent_date');
   assert.ok(sf.value);
   assertHasAction(results, 'set_reminder', 'OFFER_SENT→OFFER_RECEIVED');
-  assertNoSilentFailures(results, 'OFFER_SENT→OFFER_RECEIVED');
+  // Real GCJ SMS (not side-channel)
+  const gcjSms = assertHasAction(results, 'send_sms', 'OFFER_SENT→OFFER_RECEIVED');
+  assert.equal(gcjSms.template, 'GCJ', `GCJ SMS must fire explicitly. Got: ${gcjSms.template}`);
+  assertNoSilentFailures(results.filter(x => x.type !== 'send_sms' && x.type !== 'email'), 'OFFER_SENT→OFFER_RECEIVED');
   const fetched = await getLead(token, lead.id);
   assert.ok(fetched.body.lead.offer_sent_date, 'offer_sent_date should persist');
   await deleteLead(token, lead.id);
@@ -349,15 +361,64 @@ test('Stage 15: INSPECTION_COMPLETE → APPRAISAL_ORDERED - auto-advance', async
   await deleteLead(token, lead.id);
 });
 
-test('Stage 16: APPRAISAL_ORDERED → APPRAISAL_DONE - APPRAISAL_DONE SMS', async () => {
+test('Stage 16: APPRAISAL_ORDERED → APPRAISAL_DONE - appraisal_done_date + appraisal_value + APPRAISAL_DONE SMS', async () => {
   const token = await login();
   const lead = await leadAtStage(token, 'APPRAISAL_ORDERED');
-  const r = await advance(token, lead.id, 'APPRAISAL_DONE');
+  // Provide appraisal_value so set_field template resolves
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 280000 });
+  // Branching logic will auto-advance to JV_SENT or WIRE_SETUP after this
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
+  assertHasAction(results, 'set_field', 'APPRAISAL_ORDERED→APPRAISAL_DONE');
+  const sfDone = results.find(x => x.type === 'set_field' && x.field === 'appraisal_done_date');
+  assert.ok(sfDone, 'appraisal_done_date set_field must fire');
+  const sfVal = results.find(x => x.type === 'set_field' && x.field === 'appraisal_value');
+  assert.ok(sfVal, 'appraisal_value set_field must fire');
+  assert.equal(Number(sfVal.value), 280000);
   const sms = assertHasAction(results, 'send_sms', 'APPRAISAL_ORDERED→APPRAISAL_DONE');
   assert.equal(sms.template, 'APPRAISAL_DONE');
   assertNoSilentFailures(results.filter(x => x.type !== 'send_sms' && x.type !== 'email'), 'APPRAISAL_ORDERED→APPRAISAL_DONE');
+  // DB VERIFICATION
+  const fetched = await getLead(token, lead.id);
+  assert.ok(fetched.body.lead.appraisal_done_date, 'appraisal_done_date should persist');
+  assert.equal(Number(fetched.body.lead.appraisal_value), 280000, 'appraisal_value should persist');
+  await deleteLead(token, lead.id);
+});
+
+test('Stage 17 branching: APPRAISAL_DONE auto-routes to JV_SENT when appraisal < PP', async (t) => {
+  const token = await login();
+  const lead = await leadAtStage(token, 'APPRAISAL_ORDERED');
+  // price was 250000, set appraisal_value to 180000 (less than PP)
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 180000 });
+  assert.equal(r.ok, true);
+  t.diagnostic(`Final stage: ${r.body.lead.stage}`);
+  t.diagnostic(`Branch: ${JSON.stringify(r.body.automation?.branch)}`);
+  // BRANCHING ASSERTION - must auto-advance to JV_SENT
+  assert.equal(r.body.lead.stage, 'JV_SENT', `Should auto-route to JV_SENT when appraisal < PP. Got: ${r.body.lead.stage}`);
+  assert.ok(r.body.automation?.branch, 'Response should include branch metadata');
+  assert.equal(r.body.automation.branch.to, 'JV_SENT');
+  assert.match(r.body.automation.branch.reason, /appraisal < PP/);
+  assert.ok(r.body.automation.followup, 'JV path automations should have fired');
+  // DB VERIFICATION - branched_to_jv should be 'true'
+  const fetched = await getLead(token, lead.id);
+  assert.equal(fetched.body.lead.branched_to_jv, 'true', 'branched_to_jv should be true');
+  await deleteLead(token, lead.id);
+});
+
+test('Stage 17 branching: APPRAISAL_DONE auto-routes to WIRE_SETUP when appraisal >= PP', async (t) => {
+  const token = await login();
+  const lead = await leadAtStage(token, 'APPRAISAL_ORDERED');
+  // price was 250000, set appraisal_value to 300000 (>= PP, skip JV)
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 300000 });
+  assert.equal(r.ok, true);
+  t.diagnostic(`Final stage: ${r.body.lead.stage}`);
+  t.diagnostic(`Branch: ${JSON.stringify(r.body.automation?.branch)}`);
+  assert.equal(r.body.lead.stage, 'WIRE_SETUP', `Should auto-route to WIRE_SETUP when appraisal >= PP. Got: ${r.body.lead.stage}`);
+  assert.ok(r.body.automation?.branch, 'Response should include branch metadata');
+  assert.equal(r.body.automation.branch.to, 'WIRE_SETUP');
+  assert.match(r.body.automation.branch.reason, /appraisal >= PP/);
+  const fetched = await getLead(token, lead.id);
+  assert.equal(fetched.body.lead.branched_to_jv, 'false', 'branched_to_jv should be false');
   await deleteLead(token, lead.id);
 });
 

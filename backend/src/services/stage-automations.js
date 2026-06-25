@@ -454,22 +454,42 @@ Source of truth: 17C-OH-3.12 transcript — "Seth is going to be underwriting al
               // Generate LOI doc via contract-generator and persist draft URL + body
               let loiResult = null;
               try {
-                const { generateContract } = require('./contract-generator');
+                const { generateContract, CLAUSES, CONTRACT_TYPES } = require('./contract-generator');
                 const pkg = generateContract(leadData, 'loi');
+                // Build LOI body from template + clauses
+                const loiBody = [
+                  `LETTER OF INTENT`,
+                  ``,
+                  `Date: ${new Date().toISOString().split('T')[0]}`,
+                  `Property: ${leadData.address || 'TBD'}`,
+                  `Buyer: Divinity Aligned LLC`,
+                  `Seller: ${leadData.seller_name || leadData.contacts?.seller_name || 'TBD'}`,
+                  ``,
+                  `Terms:`,
+                  `  Purchase Price: $${pkg.financials?.purchasePrice || leadData.price || 0}`,
+                  `  Template: ${pkg.template || 'LOIStandard'}`,
+                  ``,
+                  `Clauses:`,
+                  ...(pkg.clauses || []).map((c, i) => `  ${i + 1}. [${c.id || c.name || 'clause'}]: ${(c.text || c.body || '').slice(0, 200)}`),
+                  ``,
+                  `This Letter of Intent is non-binding and serves as a formal expression of interest to acquire the above property.`,
+                ].join('\n');
                 loiResult = {
                   contractType: 'loi',
-                  templateName: pkg.templateName,
-                  body: pkg.body || pkg.fullText || '',
-                  clausesIncluded: pkg.clauses?.length || 0,
-                  length: (pkg.body || pkg.fullText || '').length,
+                  templateName: pkg.template || 'LOIStandard',
+                  body: loiBody,
+                  clausesIncluded: pkg.clauses?.length || Object.keys(CLAUSES).length,
+                  length: loiBody.length,
+                  parties: pkg.parties,
+                  financials: pkg.financials,
                 };
                 await query(
-                  'UPDATE leads SET draft_loi_url = $1 WHERE id = $2',
-                  [`loi://${leadId}`, leadId]
+                  'UPDATE leads SET draft_loi_url = $1, draft_loi_body = $2 WHERE id = $3',
+                  [`loi://${leadId}`, loiBody, leadId]
                 );
                 await query(
                   'INSERT INTO activity_log (user_id, lead_id, action, details) VALUES ($1, $2, $3, $4)',
-                  [userId, leadId, 'loi_doc_generated', JSON.stringify({ templateName: pkg.templateName, length: loiResult.length })]
+                  [userId, leadId, 'loi_doc_generated', JSON.stringify({ templateName: pkg.template, length: loiBody.length, clauses: pkg.clauses?.length || 0 })]
                 );
               } catch (genErr) {
                 loiResult = { error: genErr.message };
