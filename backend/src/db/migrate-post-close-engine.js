@@ -32,6 +32,26 @@ async function migrate() {
   await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS inspection_complete_date TIMESTAMPTZ');
   console.log('   ✓ inspection_complete_date');
 
+  console.log('\n4. Adding appraisal_ordered_date column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS appraisal_ordered_date TIMESTAMPTZ');
+  console.log('   ✓ appraisal_ordered_date');
+
+  console.log('\n5. Adding appraisal_done_date column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS appraisal_done_date TIMESTAMPTZ');
+  console.log('   ✓ appraisal_done_date');
+
+  console.log('\n6. Adding appraisal_value column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS appraisal_value NUMERIC');
+  console.log('   ✓ appraisal_value');
+
+  console.log('\n7. Adding draft_loi_url column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS draft_loi_url TEXT');
+  console.log('   ✓ draft_loi_url');
+
+  console.log('\n8. Adding draft_loi_body column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS draft_loi_body TEXT');
+  console.log('   ✓ draft_loi_body');
+
   console.log('\n4. Dropping and recreating reminders_type_check constraint to allow inspection_day_* types...');
   try {
     await query('ALTER TABLE reminders DROP CONSTRAINT IF EXISTS reminders_type_check');

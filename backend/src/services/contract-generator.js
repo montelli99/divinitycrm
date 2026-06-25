@@ -186,6 +186,26 @@ const CONTRACT_TYPES = {
     asIs: false,
     deedInLieu: false,
   },
+  loi: {
+    template: 'LOIStandard',
+    addenda: [],
+    description: 'Letter of Intent — pre-PSA expression of interest sent to seller',
+    emd: 0,
+    emdMaxPercent: 0,
+    inspectionDays: 0,
+    inspectionMax: 0,
+    coeDays: 0,
+    coeBasis: 'effective_date',
+    titleCompany: 'N/A — LOI stage',
+    titleEmail: '',
+    titlePhone: '',
+    transferTax: 'N/A — LOI stage',
+    titlePolicy: 'N/A — LOI stage',
+    thirdPartyProcessor: false,
+    wrapAroundDisclosure: false,
+    asIs: false,
+    deedInLieu: false,
+  },
 };
 
 // =============================================================

@@ -586,7 +586,27 @@ router.post('/:id/advance', async (req, res, next) => {
     );
 
     // Execute automations
-    const automation = await executeStageAutomations(leadId, userId, fromStage, to_stage, existing[0]);
+    let automation = await executeStageAutomations(leadId, userId, fromStage, to_stage, result[0], { body: req.body });
+
+    // BRANCHING LOGIC: APPRAISAL_DONE → auto-advance based on appraisal_value vs purchase price
+    if (to_stage === 'APPRAISAL_DONE') {
+      const appraisalValue = Number(result[0].appraisal_value || existing[0].appraisal_value || 0);
+      const purchasePrice = Number(result[0].price || existing[0].price || 0);
+      const isJVDomain = appraisalValue > 0 && purchasePrice > 0 && appraisalValue < purchasePrice;
+      const nextStage = isJVDomain ? 'JV_SENT' : 'WIRE_SETUP';
+
+      // Verify the transition is allowed
+      const nextTransitions = getAvailableTransitions('APPRAISAL_DONE');
+      if (nextTransitions.includes(nextStage)) {
+        // Run the next transition's automations too (recursive but bounded)
+        await query('UPDATE leads SET stage = $1 WHERE id = $2', [nextStage, leadId]);
+        const followup = await executeStageAutomations(leadId, userId, 'APPRAISAL_DONE', nextStage, result[0], { body: req.body });
+        automation = { ...automation, branch: { from: 'APPRAISAL_DONE', to: nextStage, reason: isJVDomain ? 'appraisal < PP' : 'appraisal >= PP', appraisalValue, purchasePrice }, followup };
+        // Refresh lead with final stage
+        const finalLead = await query('SELECT * FROM leads WHERE id = $1', [leadId]);
+        return res.json({ lead: finalLead[0], automation });
+      }
+    }
 
     res.json({ lead: result[0], automation });
   } catch (err) {
