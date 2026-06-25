@@ -21,21 +21,40 @@ const STAGES = [
 ];
 
 // GET /api/pipeline — Full pipeline view with health scan
+// Optional query params:
+//   ?filter=all         — show every stage (default)
+//   ?filter=active      — exclude ARCHIVED, CLOSING_DATE, DEAD (Montelli+TC stages)
+//   ?filter=closed      — only CLOSING_DATE leads
+//   ?filter=dead        — only DEAD leads
+//   ?filter=closing_soon — TC stages (11-19) where inspection_end_date is within 30 days OR follow_up_due within 7 days
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.userId;
+    const filter = String(req.query.filter || 'all').toLowerCase();
+
+    // Build SQL WHERE clause based on filter
+    let stageFilter = `AND stage NOT IN ('ARCHIVED', 'CLOSING_DATE', 'DEAD')`;
+    if (filter === 'closed') {
+      stageFilter = `AND stage = 'CLOSING_DATE'`;
+    } else if (filter === 'dead') {
+      stageFilter = `AND stage = 'DEAD'`;
+    } else if (filter === 'active') {
+      stageFilter = `AND stage NOT IN ('ARCHIVED', 'CLOSING_DATE', 'DEAD')`;
+    } else if (filter === 'closing_soon') {
+      stageFilter = `AND stage IN ('AWAITING_TITLE','CONTRACT_OUT','UNDER_CONTRACT','INSPECTION_PERIOD','INSPECTION_COMPLETE','APPRAISAL_ORDERED','APPRAISAL_DONE','JV_SENT','JV_SIGNED','WIRE_SETUP','CLOSING_DATE')`;
+    }
 
     const leads = await query(
       `SELECT * FROM leads 
       WHERE user_id = $1 
-      AND stage NOT IN ('ARCHIVED', 'CLOSING_DATE', 'DEAD')
+      ${stageFilter}
       ORDER BY updated_at DESC`,
       [userId]
     );
 
     const byStage = {};
     STAGES.forEach(stage => { byStage[stage] = []; });
-    
+
     leads.forEach(lead => {
       const stage = lead.stage;
       if (byStage[stage]) {
@@ -130,6 +149,8 @@ router.get('/', async (req, res, next) => {
       stats: { ...stats[0], conversion_rate: conversionRate },
       alerts,
       reminders_due: reminders,
+      filter,
+      visibleStageCount: leads.length > 0 ? Object.values(byStage).filter(arr => arr.length > 0).length : 21,
     });
   } catch (err) {
     next(err);

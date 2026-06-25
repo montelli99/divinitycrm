@@ -45,35 +45,35 @@ export default function AdminDashboard() {
           <span className="stat-number">{overall.total_leads}</span>
           <span className="stat-label">Total Leads</span>
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=active" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number">{overall.active}</span>
           <span className="stat-label">Active</span>
           {overall.added_today > 0 && (
             <span className="stat-trend up">+{overall.added_today} today</span>
           )}
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number">{overall.closed}</span>
           <span className="stat-label">Closed Deals</span>
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=dead" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number">{overall.dead}</span>
           <span className="stat-label">Dead Leads</span>
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number">{overall.conversion_rate}%</span>
           <span className="stat-label">Conversion Rate</span>
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=active" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number">${Number(overall.pipeline_value || 0).toLocaleString()}</span>
           <span className="stat-label">Pipeline Value</span>
         </Link>
-        <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
           <span className="stat-number" style={{ color: '#4ade80' }}>${Number(overall.estimated_profit || 0).toLocaleString()}</span>
           <span className="stat-label">Est. Profit</span>
         </Link>
         {overall.avg_days_to_close && (
-          <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="stat-number">{Math.round(overall.avg_days_to_close)}</span>
             <span className="stat-label">Avg Days to Close</span>
           </Link>

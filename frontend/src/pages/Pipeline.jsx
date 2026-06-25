@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 import {
@@ -11,7 +11,17 @@ import {
   NEXT_STAGE,
 } from '../lib/pipeline-stages';
 
+const FILTER_LABELS = {
+  all: { label: 'All Stages', color: '#6d7ef7' },
+  active: { label: 'Active Only', color: '#10b981' },
+  closed: { label: 'Closed Deals', color: '#22c55e' },
+  dead: { label: 'Dead Leads', color: '#ef4444' },
+  closing_soon: { label: 'Closing Soon', color: '#f59e0b' },
+};
+
 export default function Pipeline() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeFilter = searchParams.get('filter') || 'all';
   const [pipeline, setPipeline] = useState(null);
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +37,7 @@ export default function Pipeline() {
   const loadPipeline = useCallback(async () => {
     try {
       const [pipeData, healthData] = await Promise.all([
-        api.getPipeline(),
+        api.getPipeline(activeFilter),
         api.getPipelineHealth().catch(() => null),
       ]);
       setPipeline(pipeData);
@@ -35,7 +45,7 @@ export default function Pipeline() {
     }
     catch (err) { console.error('Pipeline load error:', err); }
     finally { setLoading(false); }
-  }, []);
+  }, [activeFilter]);
 
   useEffect(() => { loadPipeline(); }, [loadPipeline]);
 
@@ -181,6 +191,50 @@ export default function Pipeline() {
           <span>{pipeline.stats.closed} closed</span>
           <span>{pipeline.stats.conversion_rate}% conv.</span>
         </div>
+      </div>
+
+      {/* Filter pills — driven by URL ?filter=... */}
+      <div className="pipeline-filter-bar" style={{
+        display: 'flex',
+        gap: '0.5rem',
+        marginBottom: '0.75rem',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+      }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em', marginRight: '0.25rem' }}>
+          View:
+        </span>
+        {Object.entries(FILTER_LABELS).map(([key, meta]) => {
+          const isActive = activeFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                if (key === 'all') setSearchParams({});
+                else setSearchParams({ filter: key });
+              }}
+              style={{
+                padding: '0.3rem 0.7rem',
+                borderRadius: '999px',
+                border: `1px solid ${isActive ? meta.color : 'var(--border-subtle)'}`,
+                background: isActive ? meta.color : 'transparent',
+                color: isActive ? '#0a0e1a' : 'var(--text-secondary)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
+        {activeFilter !== 'all' && (
+          <Link to="/pipeline" style={{ fontSize: '0.7rem', color: 'var(--brand-primary)', textDecoration: 'none', marginLeft: '0.5rem' }}>
+            Clear filter
+          </Link>
+        )}
       </div>
 
       <div className="pipeline-stage-rail" aria-label="Pipeline stage jump list">

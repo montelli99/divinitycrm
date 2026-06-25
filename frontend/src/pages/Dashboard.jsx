@@ -272,27 +272,27 @@ export default function Dashboard() {
             <span className="stat-number">{stats.total}</span>
             <span className="stat-label">Total Leads</span>
           </Link>
-          <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link to="/pipeline?filter=active" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="stat-number">{stats.active}</span>
             <span className="stat-label">Active</span>
             {stats.added_today > 0 && (
               <span className="stat-trend up">+{stats.added_today} today</span>
             )}
           </Link>
-          <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="stat-number">{stats.closed}</span>
             <span className="stat-label">Closed Deals</span>
           </Link>
-          <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link to="/pipeline?filter=dead" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="stat-number">{stats.dead}</span>
             <span className="stat-label">Dead Leads</span>
           </Link>
-          <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <span className="stat-number">{stats.conversion_rate}%</span>
             <span className="stat-label">Conversion Rate</span>
           </Link>
           {stats.avg_days_to_close && (
-            <Link to="/pipeline" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <Link to="/pipeline?filter=closed" className="stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
               <span className="stat-number">{Math.round(stats.avg_days_to_close)}</span>
               <span className="stat-label">Avg Days to Close</span>
             </Link>
@@ -313,11 +313,11 @@ export default function Dashboard() {
             📡 Pipeline Profit Radar
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <ProfitBadge to="/pipeline" label="Total Pipeline Value" value={`$${Number(profitRadar.totalPipelineValue || 0).toLocaleString()}`} color="#4ade80" />
-            <ProfitBadge to="/pipeline" label="Estimated Profit" value={`$${Number(profitRadar.estimatedProfit || 0).toLocaleString()}`} color="#f59e0b" />
-            <ProfitBadge to="/pipeline" label="Weighted Pipeline" value={`$${Number(profitRadar.weightedPipeline || 0).toLocaleString()}`} color="#60a5fa" />
-            <ProfitBadge to="/pipeline" label="Avg Deal Size" value={`$${Number(profitRadar.avgDealSize || 0).toLocaleString()}`} color="#a78bfa" />
-            <ProfitBadge to="/pipeline" label="Deals Closing (30d)" value={profitRadar.dealsClosing30d || 0} color="#f472b6" />
+            <ProfitBadge to="/pipeline?filter=active" label="Total Pipeline Value" value={`$${Number(profitRadar.totalPipelineValue || 0).toLocaleString()}`} color="#4ade80" />
+            <ProfitBadge to="/pipeline?filter=closed" label="Estimated Profit" value={`$${Number(profitRadar.estimatedProfit || 0).toLocaleString()}`} color="#f59e0b" />
+            <ProfitBadge to="/pipeline?filter=active" label="Weighted Pipeline" value={`$${Number(profitRadar.weightedPipeline || 0).toLocaleString()}`} color="#60a5fa" />
+            <ProfitBadge to="/pipeline?filter=active" label="Avg Deal Size" value={`$${Number(profitRadar.avgDealSize || 0).toLocaleString()}`} color="#a78bfa" />
+            <ProfitBadge to="/pipeline?filter=closing_soon" label="Deals Closing (30d)" value={profitRadar.dealsClosing30d || 0} color="#f472b6" />
           </div>
           {profitRadar.topDeals?.length > 0 && (
             <div style={{ marginTop: '0.75rem' }}>

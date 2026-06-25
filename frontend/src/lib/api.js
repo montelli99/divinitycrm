@@ -62,7 +62,7 @@ export const api = {
   addReminder: (leadId, data) => request(`/leads/${leadId}/reminders`, { method: 'POST', body: JSON.stringify(data) }),
 
   // Pipeline
-  getPipeline: () => request('/pipeline'),
+  getPipeline: (filter) => request(filter ? `/pipeline?filter=${encodeURIComponent(filter)}` : '/pipeline'),
   getToday: () => request('/pipeline/today'),
   getStats: () => request('/pipeline/stats'),
   getProfitRadar: () => request('/pipeline/profit-radar'),
