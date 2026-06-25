@@ -52,6 +52,10 @@ async function migrate() {
   await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS draft_loi_body TEXT');
   console.log('   ✓ draft_loi_body');
 
+  console.log('\n9. Adding branched_to_jv column...');
+  await query('ALTER TABLE leads ADD COLUMN IF NOT EXISTS branched_to_jv TEXT');
+  console.log('   ✓ branched_to_jv');
+
   console.log('\n4. Dropping and recreating reminders_type_check constraint to allow inspection_day_* types...');
   try {
     await query('ALTER TABLE reminders DROP CONSTRAINT IF EXISTS reminders_type_check');

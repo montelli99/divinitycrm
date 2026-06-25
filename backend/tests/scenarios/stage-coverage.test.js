@@ -88,9 +88,44 @@ async function leadAtStage(token, stage, overrides = {}) {
   const stages = ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'AWAITING_TITLE', 'CONTRACT_OUT', 'UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', 'APPRAISAL_ORDERED', 'APPRAISAL_DONE', 'JV_SENT', 'JV_SIGNED', 'WIRE_SETUP', 'CLOSING_DATE'];
   const idx = stages.indexOf(stage);
   if (idx === -1) throw new Error(`Unknown stage: ${stage}`);
+  const appraisalDoneIdx = stages.indexOf('APPRAISAL_DONE');
+  const appraisalValue = (idx >= stages.indexOf('JV_SENT')) ? 180000 : 300000;
+  // Track current stage — branching can auto-advance from APPRAISAL_DONE
+  let currentStage = 'LEAD_ENTERED';
   for (let i = 1; i <= idx; i++) {
+    const targetStage = stages[i];
+    // Skip if already at this stage due to branching
+    if (currentStage === targetStage) continue;
+    const body = (i === appraisalDoneIdx)
+      ? { to_stage: targetStage, appraisal_value: appraisalValue }
+      : { to_stage: targetStage };
+    const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, body);
+    if (!r.ok) throw new Error(`Walk to ${targetStage} failed: ${r.status} ${JSON.stringify(r.body).slice(0,200)}`);
+    // Update currentStage from response (handles branching)
+    currentStage = r.body.lead?.stage || targetStage;
+  }
+  return lead;
+}
+
+/**
+ * Walk via the JV branch (appraisal_value < PP). Use this when test needs
+ * lead at JV_SENT or JV_SIGNED — the default leadAtStage routes to WIRE_SETUP.
+ */
+async function leadAtStageJV(token, stage = 'JV_SENT', overrides = {}) {
+  const lead = await createLead(token, overrides);
+  const stages = ['LEAD_ENTERED', 'CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'AWAITING_TITLE', 'CONTRACT_OUT', 'UNDER_CONTRACT', 'INSPECTION_PERIOD', 'INSPECTION_COMPLETE', 'APPRAISAL_ORDERED'];
+  const targetIdx = stages.indexOf(stage === 'JV_SENT' || stage === 'JV_SIGNED' ? 'APPRAISAL_ORDERED' : stage);
+  for (let i = 1; i <= targetIdx; i++) {
     const r = await advance(token, lead.id, stages[i]);
     if (!r.ok) throw new Error(`Walk to ${stages[i]} failed: ${r.status}`);
+  }
+  // Walk APPRAISAL_DONE with low appraisal_value to trigger JV branch
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 180000 });
+  if (!r.ok) throw new Error(`Walk to APPRAISAL_DONE failed: ${r.status} ${JSON.stringify(r.body).slice(0,200)}`);
+  if (r.body.lead.stage !== 'JV_SENT') throw new Error(`JV branch should land at JV_SENT. Got: ${r.body.lead.stage}`);
+  if (stage === 'JV_SIGNED') {
+    const r2 = await advance(token, lead.id, 'JV_SIGNED');
+    if (!r2.ok) throw new Error(`Walk to JV_SIGNED failed: ${r2.status}`);
   }
   return lead;
 }
@@ -422,32 +457,40 @@ test('Stage 17 branching: APPRAISAL_DONE auto-routes to WIRE_SETUP when appraisa
   await deleteLead(token, lead.id);
 });
 
-test('Stage 17 (JV path): APPRAISAL_DONE → JV_SENT - run_underwriting + notify', async () => {
+test('Stage 17 (JV path): APPRAISAL_DONE → JV_SENT - run_underwriting + notify (auto-branched when appraisal < PP)', async () => {
   const token = await login();
-  const lead = await leadAtStage(token, 'APPRAISAL_DONE');
-  const r = await advance(token, lead.id, 'JV_SENT');
+  // Walk to APPRAISAL_DONE with appraisal_value set LOW so branching auto-routes to JV_SENT
+  const lead = await leadAtStage(token, 'APPRAISAL_ORDERED');
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 180000 });
   assert.equal(r.ok, true);
-  const results = r.body.automation.results;
-  assertHasAction(results, 'run_underwriting', 'APPRAISAL_DONE→JV_SENT');
-  assertHasAction(results, 'notify', 'APPRAISAL_DONE→JV_SENT');
-  assertNoSilentFailures(results.filter(x => x.type !== 'send_sms' && x.type !== 'email'), 'APPRAISAL_DONE→JV_SENT');
+  assert.equal(r.body.lead.stage, 'JV_SENT', `Auto-branch should land at JV_SENT. Got: ${r.body.lead.stage}`);
+  // followup = the JV path automations that ran after branching
+  const results = r.body.automation.followup?.results || [];
+  assertHasAction(results, 'run_underwriting', 'APPRAISAL_DONE→JV_SENT (followup)');
+  assertHasAction(results, 'notify', 'APPRAISAL_DONE→JV_SENT (followup)');
+  const branchedField = results.find(x => x.type === 'set_field' && x.field === 'branched_to_jv');
+  assert.ok(branchedField, 'branched_to_jv set_field must fire');
+  assert.equal(branchedField.value, 'true');
   await deleteLead(token, lead.id);
 });
 
-test('Stage 17 (no-JV path): APPRAISAL_DONE → WIRE_SETUP - skip JV', async () => {
+test('Stage 17 (no-JV path): APPRAISAL_DONE → WIRE_SETUP - skip JV (auto-branched when appraisal >= PP)', async () => {
   const token = await login();
-  const lead = await leadAtStage(token, 'APPRAISAL_DONE');
-  const r = await advance(token, lead.id, 'WIRE_SETUP');
+  const lead = await leadAtStage(token, 'APPRAISAL_ORDERED');
+  const r = await api(token, 'POST', `/api/leads/${lead.id}/advance`, { to_stage: 'APPRAISAL_DONE', appraisal_value: 300000 });
   assert.equal(r.ok, true);
-  const results = r.body.automation.results;
-  assertHasAction(results, 'run_underwriting', 'APPRAISAL_DONE→WIRE_SETUP');
-  assertNoSilentFailures(results.filter(x => x.type !== 'send_sms' && x.type !== 'email'), 'APPRAISAL_DONE→WIRE_SETUP');
+  assert.equal(r.body.lead.stage, 'WIRE_SETUP', `Auto-branch should land at WIRE_SETUP. Got: ${r.body.lead.stage}`);
+  const results = r.body.automation.followup?.results || [];
+  assertHasAction(results, 'run_underwriting', 'APPRAISAL_DONE→WIRE_SETUP (followup)');
+  const branchedField = results.find(x => x.type === 'set_field' && x.field === 'branched_to_jv');
+  assert.ok(branchedField, 'branched_to_jv set_field must fire');
+  assert.equal(branchedField.value, 'false');
   await deleteLead(token, lead.id);
 });
 
 test('Stage 18: JV_SENT → JV_SIGNED - RabbitSign + JV_SIGNED SMS', async () => {
   const token = await login();
-  const lead = await leadAtStage(token, 'JV_SENT');
+  const lead = await leadAtStageJV(token);
   const r = await advance(token, lead.id, 'JV_SIGNED');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
@@ -460,7 +503,7 @@ test('Stage 18: JV_SENT → JV_SIGNED - RabbitSign + JV_SIGNED SMS', async () =>
 
 test('Stage 19: JV_SIGNED → WIRE_SETUP - jv_title_holder + jv_signed_date + JV_SIGNED SMS', async (t) => {
   const token = await login();
-  const lead = await leadAtStage(token, 'JV_SIGNED');
+  const lead = await leadAtStageJV(token, 'JV_SIGNED');
   const r = await advance(token, lead.id, 'WIRE_SETUP');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
