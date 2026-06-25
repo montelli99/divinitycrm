@@ -86,8 +86,27 @@ async function getLead(token, leadId) {
 
 // ============================================================================
 // SCENARIO 1: New lead intake -> qualification -> contact made -> offer sent
+//
+// Per GHL_WORKFLOWS_SPEC.md, the OFFER_READY -> OFFER_SENT transition fires:
+//   - run_doc_analysis, run_comps, run_underwriting
+//   - loi_request
+//   - send_sms (template 'GCJ')
+//   - webhook stub
+//   - log
+//
+// And the OFFER_SENT -> OFFER_RECEIVED transition fires:
+//   - set_field: offer_sent_date = now
+//   - set_reminder: 48hr_followup, offset_hours: 48
+//   - send_sms (template 'GCJ')
+//   - webhook stub
+//   - log
+//
+// This test asserts the AUTOMATION RESULTS, not just "automation exists":
+//   - result.results[] contains expected action types (write_fields, send_sms, etc.)
+//   - the lead fields actually got updated in DB (offer_sent_date is set)
+//   - a 48hr_followup reminder row exists in the reminders table
 // ============================================================================
-test('Scenario 1: new lead intake → contact made → offer sent', async (t) => {
+test('Scenario 1: new lead intake → contact made → offer sent (asserts real side effects)', async (t) => {
   const token = await login();
 
   // Create a realistic seller inquiry
@@ -112,27 +131,72 @@ test('Scenario 1: new lead intake → contact made → offer sent', async (t) =>
   const leadId = created.id;
   t.diagnostic(`Created lead ${leadId} at ${created.address}`);
 
-  // Assert initial stage
+  // Assert initial state
   assert.equal(created.stage, 'LEAD_ENTERED', 'New lead should start at LEAD_ENTERED');
   assert.equal(created.address, '4872 Scenario One Ave, Tampa, FL 33611');
 
-  // Qualify: LEAD_ENTERED -> CONTACT_MADE
+  // STEP 1 — Lead entered: Buy-box check (LEAD_ENTERED -> CONTACT_MADE)
+  // Per spec, this transition fires: webhook stub, quick_buybox, log
   const r1 = await advance(token, leadId, 'CONTACT_MADE');
   assert.equal(r1.ok, true, `CONTACT_MADE failed: ${r1.status} ${JSON.stringify(r1.body).slice(0, 200)}`);
   assert.equal(r1.body.lead.stage, 'CONTACT_MADE');
+  assert.ok(Array.isArray(r1.body.automation?.results), 'automation.results should be an array');
+  const r1Types = r1.body.automation.results.map(x => x.type);
+  assert.ok(r1Types.includes('webhook'), `LEAD_ENTERED→CONTACT_MADE should fire webhook. Got: ${r1Types.join(',')}`);
+  assert.ok(r1Types.includes('log'), `LEAD_ENTERED→CONTACT_MADE should log. Got: ${r1Types.join(',')}`);
 
-  // Build the offer: CONTACT_MADE -> OFFER_READY
+  // STEP 2 — Set 48hr timer (CONTACT_MADE -> OFFER_READY)
+  // Per spec: webhook, set_reminder 48hr_followup, log. (CCC SMS replaced by copy_email side-channel.)
   const r2 = await advance(token, leadId, 'OFFER_READY');
   assert.equal(r2.ok, true);
   assert.equal(r2.body.lead.stage, 'OFFER_READY');
+  const r2Types = r2.body.automation.results.map(x => x.type);
+  assert.ok(r2Types.includes('set_reminder'), `CONTACT_MADE→OFFER_READY should set reminder. Got: ${r2Types.join(',')}`);
+  assert.ok(r2Types.includes('webhook'), `CONTACT_MADE→OFFER_READY should webhook. Got: ${r2Types.join(',')}`);
+  // The 48hr_followup reminder should be in the reminders table now
+  // GET /api/leads/:id/followups returns { lead, followUp48hr, listingExpiry, postClose, reminders: [...] }
+  const rems2 = await api(token, 'GET', `/api/leads/${leadId}/followups`);
+  assert.equal(rems2.ok, true);
+  assert.ok(Array.isArray(rems2.body.reminders), 'followups should include reminders array');
+  assert.ok(rems2.body.reminders.some(r => r.type === '48hr_followup'),
+    `Expected a 48hr_followup reminder. Got types: ${rems2.body.reminders.map(r=>r.type).join(',')}`);
 
-  // Send the offer: OFFER_READY -> OFFER_SENT
+  // STEP 3 — Run 5-strategy underwriting, pick recommended, generate LOI
+  //          Email Seth, send GCJ (OFFER_READY -> OFFER_SENT)
+  // Per spec: run_doc_analysis, run_comps, run_underwriting, loi_request, send_sms GCJ, webhook, log
   const r3 = await advance(token, leadId, 'OFFER_SENT');
   assert.equal(r3.ok, true);
   assert.equal(r3.body.lead.stage, 'OFFER_SENT');
+  const r3Types = r3.body.automation.results.map(x => x.type);
+  t.diagnostic(`OFFER_READY→OFFER_SENT action types: ${r3Types.join(', ')}`);
+  assert.ok(r3Types.includes('run_underwriting'), `OFFER_READY→OFFER_SENT should run underwriting. Got: ${r3Types.join(',')}`);
+  assert.ok(r3Types.includes('send_sms'), `OFFER_READY→OFFER_SENT should send SMS (GCJ). Got: ${r3Types.join(',')}`);
+  // The send_sms result should name the GCJ template
+  const smsResult = r3.body.automation.results.find(x => x.type === 'send_sms');
+  assert.equal(smsResult.template, 'GCJ', `Expected GCJ template, got: ${smsResult.template}`);
 
-  // Automation should have fired something
-  assert.ok(r3.body.automation, 'OFFER_SENT transition should produce automation output');
+  // STEP 4 — Log offer sent, schedule 48hr timer, send GCJ (OFFER_SENT -> OFFER_RECEIVED)
+  // Per spec: set_field offer_sent_date, set_reminder 48hr_followup, send_sms GCJ, webhook, log
+  const r4 = await advance(token, leadId, 'OFFER_RECEIVED');
+  assert.equal(r4.ok, true);
+  assert.equal(r4.body.lead.stage, 'OFFER_RECEIVED');
+  const r4Types = r4.body.automation.results.map(x => x.type);
+  t.diagnostic(`OFFER_SENT→OFFER_RECEIVED action types: ${r4Types.join(', ')}`);
+  assert.ok(r4Types.includes('set_field'), `OFFER_SENT→OFFER_RECEIVED should set field. Got: ${r4Types.join(',')}`);
+  assert.ok(r4Types.includes('set_reminder'), `OFFER_SENT→OFFER_RECEIVED should set reminder. Got: ${r4Types.join(',')}`);
+  const setFieldResult = r4.body.automation.results.find(x => x.type === 'set_field');
+  assert.equal(setFieldResult.field, 'offer_sent_date', `Expected offer_sent_date field, got: ${setFieldResult.field}`);
+  assert.ok(setFieldResult.value, 'offer_sent_date value should be set');
+
+  // SIDE EFFECT VERIFICATION — The lead record in DB should have offer_sent_date set
+  const leadAfter = await getLead(token, leadId);
+  assert.equal(leadAfter.body.lead.stage, 'OFFER_RECEIVED');
+  assert.ok(leadAfter.body.lead.offer_sent_date, `offer_sent_date should be set on lead. Got: ${JSON.stringify(leadAfter.body.lead.offer_sent_date)}`);
+
+  // 48hr_followup reminder should be in reminders table
+  const rems4 = await api(token, 'GET', `/api/leads/${leadId}/followups`);
+  const cccAndFollowupCount = rems4.body.reminders.filter(r => r.type === '48hr_followup').length;
+  assert.ok(cccAndFollowupCount >= 2, `Expected at least 2 48hr_followup reminders (CONTACT_MADE + OFFER_SENT). Got: ${cccAndFollowupCount}`);
 
   // Cleanup
   await api(token, 'DELETE', `/api/leads/${leadId}`);
@@ -140,8 +204,21 @@ test('Scenario 1: new lead intake → contact made → offer sent', async (t) =>
 
 // ============================================================================
 // SCENARIO 2: Offer sent -> seller response -> negotiation -> terms agreed -> under contract
+//
+// This test walks the full Montelli (1-10) and TC (11-13) handoff, asserting
+// that each transition fires the RIGHT automations and that the key side effects
+// actually land in the database.
+//
+// Critical transitions and their required side effects:
+//   GAIN_FEEDBACK → ACTIVE_NEGOTIATION: send_sms LOI, set_reminder 48hr
+//   ACTIVE_NEGOTIATION → TERMS_AGREED: run_underwriting, notify (Kayla+Jaxon)
+//   TERMS_AGREED → AWAITING_TITLE: generate_contract, write_fields 7 GHL fields, notify
+//   AWAITING_TITLE → CONTRACT_OUT: send_sms PSA_CALL_OPENER + CONTRACT_OUT
+//   CONTRACT_OUT → UNDER_CONTRACT (THE BIG ONE): rabbitsign, write_fields
+//                  psa_signed_date/coe_date/inspection_end_date/title_company/emd_amount/has_subject_to_addendum,
+//                  send_sms INSPECTION_SCHEDULED
 // ============================================================================
-test('Scenario 2: offer sent → terms agreed → under contract', async (t) => {
+test('Scenario 2: offer sent → terms agreed → under contract (asserts automation + DB state)', async (t) => {
   const token = await login();
 
   const lead = await createLead(token, {
@@ -150,41 +227,152 @@ test('Scenario 2: offer sent → terms agreed → under contract', async (t) => 
     state: 'AZ',
     zip: '85016',
     price: 320000,
-    source: 'agent_referred',  // valid enum
+    source: 'agent_referred',
     seller_name: 'David Scenario',
     seller_phone: '602-555-0303',
     seller_email: 'david.scenario@example.com',
     agent_name: 'Lisa Realtor',
+    contract: 'subto',  // IMPORTANT: makes has_subject_to_addendum = true at stage 12
+    existing_loan_balance: 180000,
     notes: 'Scenario 2 — seller counter-offers, then accepts at 95%',
   });
-  t.diagnostic(`Created lead ${lead.id}`);
+  const leadId = lead.id;
+  t.diagnostic(`Created lead ${leadId}`);
 
-  // Walk through Montelli stages (1-10)
-  for (const stage of ['CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED']) {
-    const r = await advance(token, lead.id, stage);
-    assert.equal(r.ok, true, `Failed at ${stage}: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+  // Walk through Montelli stages (1-10) — quick passes, just verify stage transitions work
+  for (const stage of ['CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED']) {
+    const r = await advance(token, leadId, stage);
+    assert.equal(r.ok, true, `${stage} failed: ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
     assert.equal(r.body.lead.stage, stage);
   }
 
-  // Hand off to TC: TERMS_AGREED -> AWAITING_TITLE -> CONTRACT_OUT -> UNDER_CONTRACT
-  for (const stage of ['AWAITING_TITLE', 'CONTRACT_OUT', 'UNDER_CONTRACT']) {
-    const r = await advance(token, lead.id, stage);
-    assert.equal(r.ok, true, `Failed at ${stage}: ${r.status}`);
-    assert.equal(r.body.lead.stage, stage);
-  }
+  // GAIN_FEEDBACK (notify Kayla, send LOI SMS) — stage 5
+  const rgfb = await advance(token, leadId, 'GAIN_FEEDBACK');
+  assert.equal(rgfb.ok, true);
+  const gfbTypes = rgfb.body.automation.results.map(x => x.type);
+  assert.ok(gfbTypes.includes('send_sms'), `GAIN_FEEDBACK should send LOI SMS. Got: ${gfbTypes.join(',')}`);
+  const gfbSms = rgfb.body.automation.results.find(x => x.type === 'send_sms');
+  assert.equal(gfbSms.template, 'LOI', `Expected LOI template, got: ${gfbSms.template}`);
 
-  // Verify the lead is now in TC's hands
-  const final = await getLead(token, lead.id);
-  assert.equal(final.body.lead.stage, 'UNDER_CONTRACT');
+  // GAIN_FEEDBACK → ACTIVE_NEGOTIATION — stage 6
+  // Per impl: webhook, set_reminder 48hr_followup, send_sms LOI, log
+  // (Note: spec description mentions "Branch on Seller Response" — no underwriting re-run)
+  const ran = await advance(token, leadId, 'ACTIVE_NEGOTIATION');
+  assert.equal(ran.ok, true);
+  const anTypes = ran.body.automation.results.map(x => x.type);
+  t.diagnostic(`GAIN_FEEDBACK→ACTIVE_NEGOTIATION action types: ${anTypes.join(', ')}`);
+  assert.ok(anTypes.includes('send_sms'), `GAIN_FEEDBACK→ACTIVE_NEGOTIATION should send SMS (LOI). Got: ${anTypes.join(',')}`);
+  assert.ok(anTypes.includes('set_reminder'), `GAIN_FEEDBACK→ACTIVE_NEGOTIATION should set reminder. Got: ${anTypes.join(',')}`);
+  const anSms = ran.body.automation.results.find(x => x.type === 'send_sms');
+  assert.equal(anSms.template, 'LOI', `Expected LOI template. Got: ${anSms.template}`);
+
+  // ACTIVE_NEGOTIATION → TERMS_AGREED — re-run underwriting, notify Kayla+Jaxon
+  // Per spec: run_underwriting, notify, webhook, log
+  const rtag = await advance(token, leadId, 'TERMS_AGREED');
+  assert.equal(rtag.ok, true);
+  const tagTypes = rtag.body.automation.results.map(x => x.type);
+  t.diagnostic(`ACTIVE_NEGOTIATION→TERMS_AGREED action types: ${tagTypes.join(', ')}`);
+  assert.ok(tagTypes.includes('run_underwriting'),
+    `ACTIVE_NEGOTIATION→TERMS_AGREED should run_underwriting. Got: ${tagTypes.join(',')}`);
+  assert.ok(tagTypes.includes('notify'),
+    `ACTIVE_NEGOTIATION→TERMS_AGREED should notify. Got: ${tagTypes.join(',')}`);
+
+  // TERMS_AGREED → AWAITING_TITLE — THE BIG MONTELLI HANDOFF
+  // Per spec: generate_contract, write_fields (contract_type, coe_date, inspection_end_date,
+  //   emd_amount, title_company, llc_name, property_apn), notify, log
+  // (TERMS_AGREED itself is just a holding stage — the transition that fires automations is
+  // TERMS_AGREED → AWAITING_TITLE)
+  const rath = await advance(token, leadId, 'AWAITING_TITLE');
+  assert.equal(rath.ok, true);
+  assert.equal(rath.body.lead.stage, 'AWAITING_TITLE');
+  const athTypes = rath.body.automation.results.map(x => x.type);
+  t.diagnostic(`TERMS_AGREED→AWAITING_TITLE action types: ${athTypes.join(', ')}`);
+  assert.ok(athTypes.includes('generate_contract'),
+    `TERMS_AGREED→AWAITING_TITLE should generate_contract. Got: ${athTypes.join(',')}`);
+  assert.ok(athTypes.includes('write_fields'),
+    `TERMS_AGREED→AWAITING_TITLE should write_fields. Got: ${athTypes.join(',')}`);
+  // The contract should be stored on the lead
+  const writeFieldsResult = rath.body.automation.results.find(x => x.type === 'write_fields');
+  t.diagnostic(`write_fields result: ${JSON.stringify(writeFieldsResult)}`);
+  assert.ok(writeFieldsResult.fields.includes('contract_type'),
+    `write_fields should include contract_type. Got: ${writeFieldsResult.fields.join(',')}`);
+  assert.ok(writeFieldsResult.fields.includes('coe_date'),
+    `write_fields should include coe_date. Got: ${writeFieldsResult.fields.join(',')}`);
+  assert.ok(writeFieldsResult.fields.includes('emd_amount'),
+    `write_fields should include emd_amount. Got: ${writeFieldsResult.fields.join(',')}`);
+  assert.ok(writeFieldsResult.fields.includes('llc_name'),
+    `write_fields should include llc_name (Divinity Aligned LLC). Got: ${writeFieldsResult.fields.join(',')}`);
+
+  // SIDE EFFECT VERIFICATION — lead now has contract_type, coe_date, emd_amount set
+  const leadAfterAth = await getLead(token, leadId);
+  assert.equal(leadAfterAth.body.lead.contract_type, 'subto',
+    `contract_type should be 'subto'. Got: ${leadAfterAth.body.lead.contract_type}`);
+  assert.ok(leadAfterAth.body.lead.coe_date, 'coe_date should be set');
+  assert.ok(leadAfterAth.body.lead.llc_name, 'llc_name should be set');
+  assert.equal(leadAfterAth.body.lead.llc_name, 'Divinity Aligned LLC');
+
+  // AWAITING_TITLE → CONTRACT_OUT (send_sms PSA_CALL_OPENER + CONTRACT_OUT, 72hr reminder)
+  const rco = await advance(token, leadId, 'CONTRACT_OUT');
+  assert.equal(rco.ok, true);
+  const coTypes = rco.body.automation.results.map(x => x.type);
+  const smsResults = rco.body.automation.results.filter(x => x.type === 'send_sms');
+  t.diagnostic(`CONTRACT_OUT action types: ${coTypes.join(', ')} (${smsResults.length} SMS)`);
+  assert.ok(smsResults.length >= 2, `CONTRACT_OUT should send 2 SMS (PSA_CALL_OPENER + CONTRACT_OUT). Got: ${smsResults.length}`);
+  const smsTemplates = smsResults.map(s => s.template).sort();
+  assert.deepEqual(smsTemplates, ['CONTRACT_OUT', 'PSA_CALL_OPENER'],
+    `Expected [CONTRACT_OUT, PSA_CALL_OPENER] SMS templates. Got: ${smsTemplates.join(',')}`);
+
+  // CONTRACT_OUT → UNDER_CONTRACT — THE BIG ONE
+  // Per spec: rabbitsign, write_fields (psa_signed_date, coe_date, inspection_end_date,
+  //   title_company, emd_amount, has_subject_to_addendum), send_sms INSPECTION_SCHEDULED
+  const ruc = await advance(token, leadId, 'UNDER_CONTRACT');
+  assert.equal(ruc.ok, true);
+  assert.equal(ruc.body.lead.stage, 'UNDER_CONTRACT');
+  const ucTypes = ruc.body.automation.results.map(x => x.type);
+  t.diagnostic(`CONTRACT_OUT→UNDER_CONTRACT action types: ${ucTypes.join(', ')}`);
+  assert.ok(ucTypes.includes('rabbitsign'),
+    `CONTRACT_OUT→UNDER_CONTRACT should call RabbitSign. Got: ${ucTypes.join(',')}`);
+  assert.ok(ucTypes.includes('write_fields'),
+    `CONTRACT_OUT→UNDER_CONTRACT should write_fields. Got: ${ucTypes.join(',')}`);
+  // INSPECTION_SCHEDULED SMS should be sent
+  const ucSms = ruc.body.automation.results.filter(x => x.type === 'send_sms');
+  assert.ok(ucSms.some(s => s.template === 'INSPECTION_SCHEDULED'),
+    `CONTRACT_OUT→UNDER_CONTRACT should send INSPECTION_SCHEDULED SMS. Got: ${ucSms.map(s=>s.template).join(',')}`);
+
+  // The big-write should include psa_signed_date AND has_subject_to_addendum=true (since contract=subto)
+  const ucWriteFields = ruc.body.automation.results.find(x => x.type === 'write_fields');
+  assert.ok(ucWriteFields.fields.includes('psa_signed_date'),
+    `Big write should include psa_signed_date. Got: ${ucWriteFields.fields.join(',')}`);
+  assert.ok(ucWriteFields.fields.includes('inspection_end_date'),
+    `Big write should include inspection_end_date. Got: ${ucWriteFields.fields.join(',')}`);
+
+  // SIDE EFFECT VERIFICATION — lead now has psa_signed_date and has_subject_to_addendum=true
+  const leadFinal = await getLead(token, leadId);
+  assert.equal(leadFinal.body.lead.stage, 'UNDER_CONTRACT');
+  assert.ok(leadFinal.body.lead.psa_signed_date,
+    `psa_signed_date should be set. Got: ${leadFinal.body.lead.psa_signed_date}`);
+  assert.equal(leadFinal.body.lead.has_subject_to_addendum, true,
+    `has_subject_to_addendum should be true (contract=subto). Got: ${leadFinal.body.lead.has_subject_to_addendum}`);
 
   // Cleanup
-  await api(token, 'DELETE', `/api/leads/${lead.id}`);
+  await api(token, 'DELETE', `/api/leads/${leadId}`);
 });
 
 // ============================================================================
 // SCENARIO 3: Dead lead path (NEGATIVE PATH)
+//
+// Per GHL spec:
+//   GAIN_FEEDBACK → SELLER_DECLINED: send_sms 'SD', set_reminder dom_181
+//   SELLER_DECLINED → GAIN_FEEDBACK (recovery): allowed, fires notify re-engagement
+//   GAIN_FEEDBACK → DEAD: terminal
+//
+// Asserts:
+//   - SD SMS template fires on decline
+//   - DOM-181 reminder is created
+//   - State machine rejects GAIN_FEEDBACK → CLOSING_DATE (HTTP 400)
+//   - DEAD is terminal
 // ============================================================================
-test('Scenario 3: dead lead path — seller declined → DEAD', async (t) => {
+test('Scenario 3: dead lead path — seller declined → DEAD (asserts SMS, reminders, state machine)', async (t) => {
   const token = await login();
 
   const lead = await createLead(token, {
@@ -193,42 +381,59 @@ test('Scenario 3: dead lead path — seller declined → DEAD', async (t) => {
     state: 'OH',
     zip: '44102',
     price: 95000,
-    source: 'other',  // valid enum
+    source: 'other',
     seller_name: 'Robert Scenario',
     seller_phone: '216-555-0404',
     notes: 'Scenario 3 — seller stops responding after counter-offer',
   });
+  const leadId = lead.id;
 
   // Walk to GAIN_FEEDBACK
   for (const stage of ['CONTACT_MADE', 'OFFER_READY', 'OFFER_SENT', 'OFFER_RECEIVED', 'GAIN_FEEDBACK']) {
-    const r = await advance(token, lead.id, stage);
+    const r = await advance(token, leadId, stage);
     assert.equal(r.ok, true, `Failed at ${stage}`);
   }
 
   // NEGATIVE: seller declines → SELLER_DECLINED
-  const declined = await advance(token, lead.id, 'SELLER_DECLINED');
+  // Per spec: send_sms 'SD' (Seller Declined template), set_reminder dom_181
+  const declined = await advance(token, leadId, 'SELLER_DECLINED');
   assert.equal(declined.ok, true);
   assert.equal(declined.body.lead.stage, 'SELLER_DECLINED');
+  const declTypes = declined.body.automation.results.map(x => x.type);
+  assert.ok(declTypes.includes('send_sms'), `SELLER_DECLINED should send SMS. Got: ${declTypes.join(',')}`);
+  assert.ok(declTypes.includes('set_reminder'), `SELLER_DECLINED should set reminder. Got: ${declTypes.join(',')}`);
+  const declSms = declined.body.automation.results.find(x => x.type === 'send_sms');
+  assert.equal(declSms.template, 'SD', `Expected SD SMS template. Got: ${declSms.template}`);
+  const declReminder = declined.body.automation.results.find(x => x.type === 'set_reminder');
+  assert.equal(declReminder.reminder_type, 'dom_181',
+    `Expected dom_181 reminder. Got: ${declReminder.reminder_type}`);
 
   // RECOVERY PATH: try to win back — SELLER_DECLINED -> GAIN_FEEDBACK
-  // (per the transition map, SELLER_DECLINED can go back to GAIN_FEEDBACK)
-  const recover = await advance(token, lead.id, 'GAIN_FEEDBACK');
+  const recover = await advance(token, leadId, 'GAIN_FEEDBACK');
   assert.equal(recover.ok, true, `Recovery from SELLER_DECLINED should be allowed: ${recover.status}`);
   assert.equal(recover.body.lead.stage, 'GAIN_FEEDBACK');
 
-  // NEGATIVE FINAL: try invalid transition — GAIN_FEEDBACK -> CLOSING_DATE (must fail)
-  const invalid = await advance(token, lead.id, 'CLOSING_DATE');
+  // NEGATIVE: try invalid transition — GAIN_FEEDBACK -> CLOSING_DATE (must fail)
+  const invalid = await advance(token, leadId, 'CLOSING_DATE');
   assert.equal(invalid.ok, false, 'Skipping to CLOSING_DATE should NOT be allowed');
   assert.equal(invalid.status, 400);
   assert.match(invalid.body.error, /Invalid transition/);
+  // Response should list valid next stages
+  assert.ok(Array.isArray(invalid.body.available_transitions),
+    `400 response should include available_transitions. Got: ${JSON.stringify(invalid.body).slice(0, 200)}`);
 
   // Final: mark dead
-  const dead = await advance(token, lead.id, 'DEAD');
+  const dead = await advance(token, leadId, 'DEAD');
   assert.equal(dead.ok, true);
   assert.equal(dead.body.lead.stage, 'DEAD');
 
+  // NEGATIVE: DEAD should be terminal — try to leave it
+  const stuck = await advance(token, leadId, 'GAIN_FEEDBACK');
+  assert.equal(stuck.ok, false, 'DEAD should be terminal — no transitions out');
+  assert.equal(stuck.status, 400);
+
   // Cleanup
-  await api(token, 'DELETE', `/api/leads/${lead.id}`);
+  await api(token, 'DELETE', `/api/leads/${leadId}`);
 });
 
 // ============================================================================
