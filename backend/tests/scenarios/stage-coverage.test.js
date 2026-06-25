@@ -303,29 +303,37 @@ test('Stage 12: CONTRACT_OUT → UNDER_CONTRACT (THE BIG ONE) - RabbitSign + 6 f
   await deleteLead(token, lead.id);
 });
 
-test('Stage 13: UNDER_CONTRACT → INSPECTION_PERIOD - impl is log-only (MAJOR SPEC GAP)', async (t) => {
+test('Stage 13: UNDER_CONTRACT → INSPECTION_PERIOD - copy_email + 14-day countdown + Day 7/14 reminders', async (t) => {
   const token = await login();
   const lead = await leadAtStage(token, 'UNDER_CONTRACT');
   const r = await advance(token, lead.id, 'INSPECTION_PERIOD');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
   t.diagnostic(`actions: ${results.map(x => x.type).join(', ')}`);
-  const hasReminder = results.some(x => x.type === 'set_reminder');
-  const hasSms = results.some(x => x.type === 'send_sms');
-  if (!hasReminder) t.diagnostic('GAP: No 14-day countdown reminder.');
-  if (!hasSms) t.diagnostic('GAP: No Day-7 SMS.');
+  assertHasAction(results, 'copy_email', 'UNDER_CONTRACT→INSPECTION_PERIOD');
+  const reminders = results.filter(x => x.type === 'set_reminder');
+  assert.ok(reminders.length >= 3, `Expected 3+ reminders (14-day, day 7, day 14). Got: ${reminders.length}`);
+  const types = reminders.map(x => x.reminder_type);
+  assert.ok(types.some(t => t.includes('inspection')), `Expected inspection-period reminder. Got: ${types.join(',')}`);
+  assertNoSilentFailures(results, 'UNDER_CONTRACT→INSPECTION_PERIOD');
   await deleteLead(token, lead.id);
 });
 
-test('Stage 14: INSPECTION_PERIOD → INSPECTION_COMPLETE - Day-14 alert missing', async (t) => {
+test('Stage 14: INSPECTION_PERIOD → INSPECTION_COMPLETE - notify Kayla + inspection_complete_date', async (t) => {
   const token = await login();
   const lead = await leadAtStage(token, 'INSPECTION_PERIOD');
   const r = await advance(token, lead.id, 'INSPECTION_COMPLETE');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
   t.diagnostic(`actions: ${results.map(x => x.type).join(', ')}`);
-  const hasAlert = results.some(x => x.type === 'set_reminder' || x.type === 'notify');
-  if (!hasAlert) t.diagnostic('GAP: No Day-14 alert to Kayla.');
+  assertHasAction(results, 'notify', 'INSPECTION_PERIOD→INSPECTION_COMPLETE');
+  assertHasAction(results, 'set_field', 'INSPECTION_PERIOD→INSPECTION_COMPLETE');
+  const sf = results.find(x => x.type === 'set_field');
+  assert.equal(sf.field, 'inspection_complete_date');
+  assertNoSilentFailures(results, 'INSPECTION_PERIOD→INSPECTION_COMPLETE');
+  // DB VERIFICATION
+  const fetched = await getLead(token, lead.id);
+  assert.ok(fetched.body.lead.inspection_complete_date, 'inspection_complete_date should persist');
   await deleteLead(token, lead.id);
 });
 
@@ -389,18 +397,23 @@ test('Stage 18: JV_SENT → JV_SIGNED - RabbitSign + JV_SIGNED SMS', async () =>
   await deleteLead(token, lead.id);
 });
 
-test('Stage 19: JV_SIGNED → WIRE_SETUP - jv_title_holder missing', async (t) => {
+test('Stage 19: JV_SIGNED → WIRE_SETUP - jv_title_holder + jv_signed_date + JV_SIGNED SMS', async (t) => {
   const token = await login();
   const lead = await leadAtStage(token, 'JV_SIGNED');
   const r = await advance(token, lead.id, 'WIRE_SETUP');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
   t.diagnostic(`actions: ${results.map(x => x.type).join(', ')}`);
-  const hasTitleHolder = results.some(x =>
-    (x.type === 'set_field' && x.field?.includes('title')) ||
-    (x.type === 'write_fields' && x.fields?.some(f => f.includes('title_holder') || f.includes('jv_title')))
-  );
-  if (!hasTitleHolder) t.diagnostic('GAP: Spec says "Set JV Title Holder" but no field write fires.');
+  const wf = assertHasAction(results, 'write_fields', 'JV_SIGNED→WIRE_SETUP');
+  assert.ok(wf.fields.includes('jv_title_holder'), `write_fields should include jv_title_holder. Got: ${wf.fields.join(',')}`);
+  assert.ok(wf.fields.includes('jv_signed_date'), `write_fields should include jv_signed_date. Got: ${wf.fields.join(',')}`);
+  const sms = assertHasAction(results, 'send_sms', 'JV_SIGNED→WIRE_SETUP');
+  assert.equal(sms.template, 'JV_SIGNED');
+  assertNoSilentFailures(results.filter(x => x.type !== 'send_sms'), 'JV_SIGNED→WIRE_SETUP');
+  // DB VERIFICATION
+  const fetched = await getLead(token, lead.id);
+  assert.ok(fetched.body.lead.jv_title_holder, 'jv_title_holder should persist on lead');
+  assert.ok(fetched.body.lead.jv_signed_date, 'jv_signed_date should persist on lead');
   await deleteLead(token, lead.id);
 });
 
@@ -416,21 +429,31 @@ test('Stage 20: WIRE_SETUP → CLOSING_DATE - SUBTO_PROCESSOR SMS for subto lead
   await deleteLead(token, lead.id);
 });
 
-test('Stage 21: CLOSING_DATE → CLOSED - post-close engine MISSING (testimonial/referral/check-in)', async (t) => {
+test('Stage 21: CLOSING_DATE → CLOSED - closed_date + COE_MINUS_7 SMS + 4 reminders (post-close engine)', async (t) => {
   const token = await login();
   const lead = await leadAtStage(token, 'CLOSING_DATE');
   const r = await advance(token, lead.id, 'CLOSED');
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
   t.diagnostic(`actions: ${results.map(x => x.type).join(', ')}`);
+  // Stage 21 must fire: closed_date field + COE_MINUS_7 SMS + 4 reminders (coe + testimonial + referral + 30_day_nurture)
+  assertHasAction(results, 'set_field', 'CLOSING_DATE→CLOSED');
+  const sf = results.find(x => x.type === 'set_field');
+  assert.equal(sf.field, 'closed_date');
+  const sms = assertHasAction(results, 'send_sms', 'CLOSING_DATE→CLOSED');
+  assert.equal(sms.template, 'COE_MINUS_7');
   const reminders = results.filter(x => x.type === 'set_reminder');
   t.diagnostic(`CLOSED reminders: ${reminders.map(x => x.reminder_type).join(', ')}`);
-  const hasTestimonial = reminders.some(x => x.reminder_type?.includes('testimonial'));
-  const hasReferral = reminders.some(x => x.reminder_type?.includes('referral'));
-  const hasCheckIn = reminders.some(x => x.reminder_type?.includes('check'));
-  if (!hasTestimonial) t.diagnostic('GAP: No +7d testimonial reminder.');
-  if (!hasReferral) t.diagnostic('GAP: No +14d referral reminder.');
-  if (!hasCheckIn) t.diagnostic('GAP: No +30d check-in reminder.');
+  assert.ok(reminders.length >= 4, `Expected 4 reminders (coe, testimonial, referral, 30_day_nurture). Got: ${reminders.length}`);
+  const reminderTypes = reminders.map(x => x.reminder_type);
+  assert.ok(reminderTypes.includes('coe'), 'coe reminder should fire');
+  assert.ok(reminderTypes.includes('testimonial'), `testimonial reminder should fire. Got: ${reminderTypes.join(',')}`);
+  assert.ok(reminderTypes.includes('referral'), `referral reminder should fire. Got: ${reminderTypes.join(',')}`);
+  assert.ok(reminderTypes.some(t => t.includes('nurture')), `30-day nurture reminder should fire. Got: ${reminderTypes.join(',')}`);
+  assertNoSilentFailures(results.filter(x => x.type !== 'send_sms'), 'CLOSING_DATE→CLOSED');
+  // DB VERIFICATION
+  const fetched = await getLead(token, lead.id);
+  assert.ok(fetched.body.lead.closed_date, 'closed_date should persist on lead');
   await deleteLead(token, lead.id);
 });
 
