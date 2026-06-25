@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import ScriptPromptModal from '../components/ScriptPromptModal';
 import {
@@ -19,9 +19,28 @@ const FILTER_LABELS = {
   closing_soon: { label: 'Closing Soon', color: '#f59e0b' },
 };
 
+// Read filter from URL hash (HashRouter stores ?filter=... inside #/pipeline?filter=...)
+function readFilterFromHash() {
+  if (typeof window === 'undefined') return 'all';
+  const hash = window.location.hash || '';
+  const qIdx = hash.indexOf('?');
+  if (qIdx === -1) return 'all';
+  const params = new URLSearchParams(hash.substring(qIdx + 1));
+  return params.get('filter') || 'all';
+}
+
 export default function Pipeline() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeFilter = searchParams.get('filter') || 'all';
+  const location = useLocation();
+  const navigate = useNavigate();
+  // HashRouter doesn't put query in window.location.search, so we read from hash instead.
+  // Re-read whenever the location changes so URL changes trigger reload.
+  const activeFilter = readFilterFromHash();
+
+  function setFilter(filterKey) {
+    if (filterKey === 'all') navigate('/pipeline');
+    else navigate(`/pipeline?filter=${filterKey}`);
+  }
+
   const [pipeline, setPipeline] = useState(null);
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +64,7 @@ export default function Pipeline() {
     }
     catch (err) { console.error('Pipeline load error:', err); }
     finally { setLoading(false); }
-  }, [activeFilter]);
+  }, [activeFilter, location.pathname, location.hash]);
 
   useEffect(() => { loadPipeline(); }, [loadPipeline]);
 
@@ -210,10 +229,7 @@ export default function Pipeline() {
             <button
               key={key}
               type="button"
-              onClick={() => {
-                if (key === 'all') setSearchParams({});
-                else setSearchParams({ filter: key });
-              }}
+              onClick={() => setFilter(key)}
               style={{
                 padding: '0.3rem 0.7rem',
                 borderRadius: '999px',
