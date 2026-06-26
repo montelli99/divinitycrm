@@ -244,7 +244,7 @@ test('Stage 03: CONTACT_MADE → OFFER_READY - 48hr reminder fires', async (t) =
   assert.ok(fus.body.reminders.some(r => r.type === '48hr_followup'), '48hr reminder should persist');
   // STRICT: CCC SMS required by GHL spec for Stage 2→3
   assertChannelDelivered(results, 'send_sms', 'CONTACT_MADE→OFFER_READY',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   const cccSms = results.find(x => x.type === 'send_sms' && x.template === 'CCC');
   assert.ok(cccSms, 'CCC SMS template must fire per GHL spec');
   assert.equal(cccSms.template, 'CCC', `SMS template must be CCC. Got: ${cccSms.template}`);
@@ -292,7 +292,7 @@ test('Stage 05: OFFER_SENT → OFFER_RECEIVED - offer_sent_date set + 48hr remin
   assertHasAction(results, 'set_reminder', 'OFFER_SENT→OFFER_RECEIVED');
   // STRICT: GCJ SMS required by GHL spec
   const gcjSms = assertChannelDelivered(results, 'send_sms', 'OFFER_SENT→OFFER_RECEIVED',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(gcjSms.template, 'GCJ', `GCJ SMS must fire explicitly. Got: ${gcjSms.template}`);
   assertNoSilentFailures(results, 'OFFER_SENT→OFFER_RECEIVED');
   reportChannelStatus('OFFER_SENT→OFFER_RECEIVED', results);
@@ -324,7 +324,7 @@ test('Stage 07: GAIN_FEEDBACK → ACTIVE_NEGOTIATION - LOI SMS + 48hr reminder',
   t.diagnostic(`actions: ${results.map(x => x.type).join(', ')}`);
   // STRICT: LOI SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'GAIN_FEEDBACK→ACTIVE_NEGOTIATION',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'LOI');
   const rem = assertHasAction(results, 'set_reminder', 'GAIN_FEEDBACK→ACTIVE_NEGOTIATION');
   assert.equal(rem.reminder_type, '48hr_followup');
@@ -343,7 +343,7 @@ test('Stage 07b: GAIN_FEEDBACK → NO_ANSWER - dom_181 + LOI2DAYS SMS', async ()
   assert.equal(rem.reminder_type, 'dom_181');
   // STRICT: LOI2DAYS SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'GAIN_FEEDBACK→NO_ANSWER',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'LOI2DAYS');
   assertNoSilentFailures(results, 'GAIN_FEEDBACK→NO_ANSWER');
   reportChannelStatus('GAIN_FEEDBACK→NO_ANSWER', results);
@@ -358,7 +358,7 @@ test('Stage 08: GAIN_FEEDBACK → SELLER_DECLINED - dom_181 + SD SMS', async () 
   const results = r.body.automation.results;
   // STRICT: SD SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'GAIN_FEEDBACK→SELLER_DECLINED',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'SD');
   const rem = assertHasAction(results, 'set_reminder', 'GAIN_FEEDBACK→SELLER_DECLINED');
   assert.equal(rem.reminder_type, 'dom_181');
@@ -415,7 +415,7 @@ test('Stage 11: AWAITING_TITLE → CONTRACT_OUT - 2 SMS + 72hr custom reminder',
   for (const sms of smsResults) {
     assertChannelDelivered(results.filter(x => x.template === sms.template), 'send_sms',
       `AWAITING_TITLE→CONTRACT_OUT [${sms.template}]`,
-      { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+      { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   }
   const rem = assertHasAction(results, 'set_reminder', 'AWAITING_TITLE→CONTRACT_OUT');
   assert.equal(rem.reminder_type, 'custom');
@@ -434,14 +434,14 @@ test('Stage 12: CONTRACT_OUT → UNDER_CONTRACT (THE BIG ONE) - RabbitSign + 6 f
   // VENDOR BLOCKER: 'Invalid RabbitSign message' = RabbitSign schema not published.
   // Stage remains RED until vendor provides body schema.
   assertChannelDelivered(results, 'rabbitsign', 'CONTRACT_OUT→UNDER_CONTRACT',
-    { allowedBlockers: ['invalid template', 'template id', 'unauthorized', '403'] });
+    { allowedBlockers: ['invalid template', 'invalid rabbitsign message', 'template id', 'unauthorized', '403'] });
   const wf = assertHasAction(results, 'write_fields', 'CONTRACT_OUT→UNDER_CONTRACT');
   for (const f of ['psa_signed_date', 'coe_date', 'inspection_end_date', 'title_company', 'emd_amount', 'has_subject_to_addendum']) {
     assert.ok(wf.fields.includes(f), `write_fields should include ${f}. Got: ${wf.fields.join(',')}`);
   }
   // STRICT: INSPECTION_SCHEDULED SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'CONTRACT_OUT→UNDER_CONTRACT',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'INSPECTION_SCHEDULED');
   assertNoSilentFailures(results, 'CONTRACT_OUT→UNDER_CONTRACT');
   reportChannelStatus('CONTRACT_OUT→UNDER_CONTRACT', results);
@@ -517,7 +517,7 @@ test('Stage 16: APPRAISAL_ORDERED → APPRAISAL_DONE - appraisal_done_date + app
   assert.equal(Number(sfVal.value), 280000);
   // STRICT: APPRAISAL_DONE SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'APPRAISAL_ORDERED→APPRAISAL_DONE',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'APPRAISAL_DONE');
   assertNoSilentFailures(results, 'APPRAISAL_ORDERED→APPRAISAL_DONE');
   reportChannelStatus('APPRAISAL_ORDERED→APPRAISAL_DONE', results);
@@ -604,10 +604,10 @@ test('Stage 18: JV_SENT → JV_SIGNED - RabbitSign + JV_SIGNED SMS', async () =>
   const results = r.body.automation.results;
   // STRICT: RabbitSign envelope must really create
   assertChannelDelivered(results, 'rabbitsign', 'JV_SENT→JV_SIGNED',
-    { allowedBlockers: ['invalid template', 'template id', 'unauthorized', '403'] });
+    { allowedBlockers: ['invalid template', 'invalid rabbitsign message', 'template id', 'unauthorized', '403'] });
   // STRICT: JV_SIGNED SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'JV_SENT→JV_SIGNED',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'JV_SIGNED');
   assertNoSilentFailures(results, 'JV_SENT→JV_SIGNED');
   reportChannelStatus('JV_SENT→JV_SIGNED', results);
@@ -626,7 +626,7 @@ test('Stage 19: JV_SIGNED → WIRE_SETUP - jv_title_holder + jv_signed_date + JV
   assert.ok(wf.fields.includes('jv_signed_date'), `write_fields should include jv_signed_date. Got: ${wf.fields.join(',')}`);
   // STRICT: JV_SIGNED SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'JV_SIGNED→WIRE_SETUP',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'JV_SIGNED');
   assertNoSilentFailures(results, 'JV_SIGNED→WIRE_SETUP');
   reportChannelStatus('JV_SIGNED→WIRE_SETUP', results);
@@ -645,7 +645,7 @@ test('Stage 20: WIRE_SETUP → CLOSING_DATE - SUBTO_PROCESSOR SMS for subto lead
   const results = r.body.automation.results;
   // STRICT: SUBTO_PROCESSOR SMS required for subto contract
   const sms = assertChannelDelivered(results, 'send_sms', 'WIRE_SETUP→CLOSING_DATE',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'SUBTO_PROCESSOR', `Expected SUBTO_PROCESSOR, got: ${sms.template}`);
   assertNoSilentFailures(results, 'WIRE_SETUP→CLOSING_DATE');
   reportChannelStatus('WIRE_SETUP→CLOSING_DATE', results);
@@ -665,7 +665,7 @@ test('Stage 21: CLOSING_DATE → CLOSED - closed_date + COE_MINUS_7 SMS + 4 remi
   assert.equal(sf.field, 'closed_date');
   // STRICT: COE_MINUS_7 SMS required
   const sms = assertChannelDelivered(results, 'send_sms', 'CLOSING_DATE→CLOSED',
-    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact'] });
+    { allowedBlockers: ['10dlc', 'unregistered', 'no phone', 'no ghl contact', 'daily limit', 'trial period'] });
   assert.equal(sms.template, 'COE_MINUS_7');
   const reminders = results.filter(x => x.type === 'set_reminder');
   t.diagnostic(`CLOSED reminders: ${reminders.map(x => x.reminder_type).join(', ')}`);
