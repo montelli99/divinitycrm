@@ -11,6 +11,23 @@ const { query } = require('../db/connection');
 // =============================================================
 
 async function createNotification({ recipientId, leadId = null, type, title, body, actionUrl = null, actionLabel = null }) {
+  // KAYLA IN-APP PAUSE (2026-06-26) — user reported 211 in-app notifications flooded
+  // during testing. Block ALL in-app notifications routed to Kayla's user_id until
+  // the user explicitly resumes. To resume: remove this block, or set
+  // NOTIFICATIONS_PAUSE_KAYLA=false.
+  if (recipientId) {
+    const r = await query('SELECT email FROM users WHERE id = $1', [recipientId]);
+    const email = (r[0]?.email || '').toLowerCase();
+    const KAYLA_EMAILS = new Set([
+      'homewithkaylamauser@gmail.com',
+      'info@divinityaligned.net',
+      'kayla@divinityaligned.net',
+    ]);
+    if (KAYLA_EMAILS.has(email)) {
+      console.warn(`[notifications] KAYLA-PAUSE: dropping in-app notification "${title}" → ${email}`);
+      return;
+    }
+  }
   await query(
     `INSERT INTO notifications (recipient_id, lead_id, type, title, body, action_url, action_label)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -257,20 +274,36 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
         actionLabel: config.actionLabel || null,
       });
       fired++;
+      // Real email delivery ONLY inside the dedup/rate-limit guard
+      // (LRN-20260626-002 — Kayla emails must respect the same guards as in-app)
+      if (recipientEmail) {
+        const r = await sendRealEmailForNotification({
+          recipientEmail,
+          recipientName,
+          title: config.titleTemplate(leadData),
+          body: config.bodyTemplate(leadData),
+          leadId: leadData.id,
+        });
+        if (r.sent) emailsSent++;
+        else emailsFailed++;
+      }
     } else {
       console.warn(`[notifications] ${recipientEmail} not in users table — sending email only, skipping in-app`);
-    }
-    // Real email delivery for direct-email recipients (always attempt)
-    if (recipientEmail) {
-      const r = await sendRealEmailForNotification({
-        recipientEmail,
-        recipientName,
-        title: config.titleTemplate(leadData),
-        body: config.bodyTemplate(leadData),
-        leadId: leadData.id,
-      });
-      if (r.sent) emailsSent++;
-      else emailsFailed++;
+      // Email-only path: still subject to dedup by lead+type+email
+      const dedup = shouldSkipNotification(leadData.id, config.type, `email:${recipientEmail}`);
+      if (dedup.skip) { skipped++; continue; }
+      // Real email delivery
+      if (recipientEmail) {
+        const r = await sendRealEmailForNotification({
+          recipientEmail,
+          recipientName,
+          title: config.titleTemplate(leadData),
+          body: config.bodyTemplate(leadData),
+          leadId: leadData.id,
+        });
+        if (r.sent) emailsSent++;
+        else emailsFailed++;
+      }
     }
   }
 
