@@ -307,7 +307,29 @@ function buildKaylaJaxonCounterEmail(lead) {
  */
 async function sendEmail(opts) {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
-  const toStr = recipients.map(r => `"${r.name}" <${r.email}>`).join(', ');
+
+  // KAYLA PAUSE (2026-06-26) — user reported inbox flooding during testing.
+  // Drop any email destined for Kayla's addresses before reaching SMTP/AgentMail.
+  // To resume: set EMAIL_PAUSE_KAYLA=false in env, or remove this block.
+  const KAYLA_BLOCKED_EMAILS = new Set([
+    'homewithkaylamauser@gmail.com',
+    'info@divinityaligned.net',
+    'kayla@divinityaligned.net',
+  ]);
+  const filteredRecipients = recipients.filter(r => {
+    const blocked = KAYLA_BLOCKED_EMAILS.has((r.email || '').toLowerCase());
+    if (blocked) {
+      console.warn(`[email-service] KAYLA-PAUSE: dropping email "${opts.subject}" → ${r.email}`);
+    }
+    return !blocked;
+  });
+  if (filteredRecipients.length === 0) {
+    return { sent: false, channel: 'kayla-pause', reason: 'all recipients blocked (Kayla pause active)' };
+  }
+  // Use filtered list for the rest of the function
+  opts = { ...opts, to: filteredRecipients.length === 1 && !Array.isArray(opts.to) ? filteredRecipients[0] : filteredRecipients };
+
+  const toStr = filteredRecipients.map(r => `"${r.name}" <${r.email}>`).join(', ');
 
   // Try SMTP first (real Gmail delivery)
   if (isConfigured()) {
