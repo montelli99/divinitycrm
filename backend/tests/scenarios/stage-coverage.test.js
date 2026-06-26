@@ -431,6 +431,8 @@ test('Stage 12: CONTRACT_OUT → UNDER_CONTRACT (THE BIG ONE) - RabbitSign + 6 f
   assert.equal(r.ok, true);
   const results = r.body.automation.results;
   // STRICT: RabbitSign envelope must really create
+  // VENDOR BLOCKER: 'Invalid RabbitSign message' = RabbitSign schema not published.
+  // Stage remains RED until vendor provides body schema.
   assertChannelDelivered(results, 'rabbitsign', 'CONTRACT_OUT→UNDER_CONTRACT',
     { allowedBlockers: ['invalid template', 'template id', 'unauthorized', '403'] });
   const wf = assertHasAction(results, 'write_fields', 'CONTRACT_OUT→UNDER_CONTRACT');
