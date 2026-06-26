@@ -79,7 +79,17 @@ function rsRequest(method, path, body = null) {
  * POST /api/v1/folderFromTemplate/{templateId}
  */
 async function createFolderFromTemplate(templateId, { title, summary, date, senderFieldValues, roles, ccList = [] }) {
-  const body = { title, summary: summary || '', date, senderFieldValues: senderFieldValues || [], roles, ccList };
+  // Per RabbitSign API docs (vendor-supplied 2026-06-26), the schema is:
+  //   { title, summary, date, senderFieldValues, roles }
+  // Including extra fields like ccList returns 'Invalid RabbitSign message'.
+  // ccList is silently dropped here even if caller passes it.
+  const body = {
+    title,
+    summary: summary || '',
+    date,
+    senderFieldValues: senderFieldValues || [],
+    roles: roles || {},
+  };
   const result = await rsRequest('POST', `/api/v1/folderFromTemplate/${templateId}`, body);
   return result; // { folderId: "..." }
 }
