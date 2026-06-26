@@ -241,39 +241,12 @@ async function createContractEnvelope(lead, contractType) {
   const inspectionDays = lead.inspection_period_days || 14;
   const titleCompany = lead.title_company || 'CLOSE Title';
 
-  // Template selection based on contract type — LRN-20260626-008:
-  // NO silent fallback. Each contract type MUST have its own RabbitSign template ID
-  // configured via env var. If missing, throw a hard error so we don't sign
-  // a Cash deal with SubTo terms.
-  const TEMPLATE_ENV_VARS = {
-    cash: 'RABBITSIGN_TEMPLATE_CASH',
-    subto: 'RABBITSIGN_TEMPLATE_SUBTO',
-    stack50: 'RABBITSIGN_TEMPLATE_STACK50',
-    stack10: 'RABBITSIGN_TEMPLATE_STACK10',
-    'seller-finance': 'RABBITSIGN_TEMPLATE_SELLER_FINANCE',
-    'seller_finance': 'RABBITSIGN_TEMPLATE_SELLER_FINANCE',
-    jv: 'RABBITSIGN_TEMPLATE_JV',
-    commercial: 'RABBITSIGN_TEMPLATE_COMMERCIAL',
-    portfolio: 'RABBITSIGN_TEMPLATE_PORTFOLIO',
-  };
-
-  // Normalize input: contract-generator uses 'seller-finance' but historical
-  // path used 'seller_finance'. Accept both.
-  const normalizedType = String(contractType).toLowerCase().replace(/_/g, '-');
-  const envVar = TEMPLATE_ENV_VARS[normalizedType];
-  if (!envVar) {
-    throw new Error(
-      `Unsupported contract type '${contractType}'. Supported: ${Object.keys(TEMPLATE_ENV_VARS).join(', ')}`
-    );
-  }
-  const templateId = process.env[envVar];
-  if (!templateId) {
-    throw new Error(
-      `No RabbitSign template configured for contract type '${normalizedType}'. ` +
-      `Set ${envVar} env var with the template ID from RabbitSign. ` +
-      `Refusing to send: would otherwise use the wrong template's clauses.`
-    );
-  }
+  // Template selection — LRN-20260626-008 + LRN-20260626-010:
+  // Use contract-library as the single source of truth for which env var
+  // backs each contract type. NO silent fallback. The library also rejects
+  // unsupported types and missing env vars with clear errors.
+  const contractLibrary = require('./contract-library');
+  const templateId = contractLibrary.getRabbitSignTemplateId(contractType);
 
   const senderFieldValues = [
     { name: 'property address', currentValue: address },
@@ -286,7 +259,7 @@ async function createContractEnvelope(lead, contractType) {
     { name: 'today', currentValue: date },
   ];
 
-  if (contractType === 'subto') {
+  if (contractType === 'subto' || contractType === 'seller_finance' || contractType === 'seller-finance') {
     senderFieldValues.push(
       { name: 'existing loan balance', currentValue: lead.existing_loan_balance ? `$${Number(lead.existing_loan_balance).toLocaleString()}` : 'TBD' },
       { name: 'subject to addendum', currentValue: 'Attached' }

@@ -298,3 +298,140 @@ test('createContractEnvelope accepts env var override and uses it', async () => 
   }
   delete process.env.RABBITSIGN_TEMPLATE_SUBTO;
 });
+
+// =============================================================
+// LOCAL TEMPLATE EXTRACTION (LRN-20260626-010)
+// The contract-library reads from ai-rei/kay-exclusive/ as the
+// source of truth for clause content. Tests verify that:
+//   - All 11 contract families have local source files
+//   - Template text loads from disk
+//   - Addenda text loads for SubTo / Seller Finance
+//   - LOI text loads when separate from PSA
+//   - getRabbitSignTemplateId throws hard when env var missing
+//   - fillTemplate substitutes lead fields without breaking formatting
+//   - auditLibrary reports missing files loudly
+// =============================================================
+test('contract-library lists all 11 contract families', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const types = lib.listContractTypes();
+  assert.ok(types.includes('cash'), 'cash family missing');
+  assert.ok(types.includes('subto'), 'subto family missing');
+  assert.ok(types.includes('stack50'), 'stack50 family missing');
+  assert.ok(types.includes('stack10'), 'stack10 family missing');
+  assert.ok(types.includes('stack_interest_only'), 'stack_interest_only missing');
+  assert.ok(types.includes('stack_mfh'), 'stack_mfh missing');
+  assert.ok(types.includes('seller_finance'), 'seller_finance missing');
+  assert.ok(types.includes('commercial'), 'commercial missing');
+  assert.ok(types.includes('portfolio'), 'portfolio missing');
+  assert.ok(types.includes('jv_4party'), 'jv_4party missing');
+  assert.ok(types.includes('jv_5party'), 'jv_5party missing');
+});
+
+test('contract-library reads Cash template from local file', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const text = lib.getTemplateText('cash');
+  assert.ok(text.length > 100, 'Cash template should be substantial content');
+  assert.ok(text.includes('Purchase Price') || text.includes('Approved Offer'),
+    'Cash template should contain standard offer language');
+});
+
+test('contract-library reads SubTo PSA + Subject To Addendum', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const text = lib.getTemplateText('subto');
+  assert.ok(text.includes('PURCHASE CONTRACT') || text.includes('Effective Date'),
+    'SubTo PSA should contain PSA boilerplate');
+  const addenda = lib.getAddendaText('subto');
+  assert.ok(addenda.length >= 1, 'SubTo should have at least one addendum');
+});
+
+test('contract-library reads Commercial PSA from local file', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const text = lib.getTemplateText('commercial');
+  assert.ok(text.length > 100, 'Commercial PSA should be substantial');
+  assert.ok(text.includes('Purchase') || text.includes('Property'),
+    'Commercial PSA should contain purchase language');
+});
+
+test('contract-library reads JV agreements from local files', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const text4 = lib.getTemplateText('jv_4party');
+  assert.ok(text4.includes('JOINT VENTURE') || text4.includes('Joint Venture'),
+    '4-party JV should contain JV boilerplate');
+  const text5 = lib.getTemplateText('jv_5party');
+  assert.ok(text5.length > 100, '5-party JV should load (falls back to 4-party text)');
+});
+
+test('contract-library reads LOI text for SubTo', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const loi = lib.getLoiText('subto');
+  assert.ok(loi, 'SubTo should have a separate LOI template');
+  // SubTo LOI references seller financing + bookkeeper (Kayla's standard SubTo intro)
+  assert.ok(loi.text.includes('Approved Offer') || loi.text.includes('Earnest Money Deposit'),
+    'SubTo LOI should be a standard offer letter');
+  assert.ok(loi.text.includes('bookkeeper') || loi.text.includes('Existing loan') || loi.text.includes('Seller financing'),
+    'SubTo LOI should reference seller financing / existing loan terms');
+});
+
+test('contract-library getRabbitSignTemplateId throws on missing env var', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  // Make sure env vars are unset for this test
+  delete process.env.RABBITSIGN_TEMPLATE_SUBTO;
+  assert.throws(
+    () => lib.getRabbitSignTemplateId('subto'),
+    /No RabbitSign template configured.*RABBITSIGN_TEMPLATE_SUBTO/,
+    'should throw with explicit env var name when template ID missing'
+  );
+});
+
+test('contract-library getRabbitSignTemplateId returns env var value when set', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  process.env.RABBITSIGN_TEMPLATE_SUBTO = 'test-template-id-abc';
+  try {
+    const id = lib.getRabbitSignTemplateId('subto');
+    assert.equal(id, 'test-template-id-abc');
+  } finally {
+    delete process.env.RABBITSIGN_TEMPLATE_SUBTO;
+  }
+});
+
+test('contract-library throws on unsupported contract type (no silent fallback)', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  assert.throws(() => lib.getTemplateText('bitcoin'), /Unsupported contract type/);
+  assert.throws(() => lib.getTemplateText('crypto'), /Unsupported contract type/);
+  assert.throws(() => lib.getRabbitSignTemplateId('nft'), /Unsupported contract type/);
+});
+
+test('contract-library fillTemplate substitutes lead fields', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const template = 'Approved Offer for [PROPERTY_ADDRESS] at [PURCHASE_PRICE] from [BUYER_NAME]';
+  const filled = lib.fillTemplate(template, {
+    address: '123 Main St, Austin, TX 78701',
+    price: 250000,
+    buyer_name: 'Kayla Mauser',
+  });
+  assert.ok(filled.includes('123 Main St, Austin, TX 78701'));
+  assert.ok(filled.includes('$250,000'));
+  assert.ok(filled.includes('Kayla Mauser'));
+});
+
+test('contract-library fillTemplate preserves formatting', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const template = 'Line 1\nLine 2\nLine 3 [PROPERTY_ADDRESS]\nLine 4';
+  const filled = lib.fillTemplate(template, { address: '999 Test St' });
+  assert.equal(filled.split('\n').length, 4, 'should preserve line breaks');
+  assert.ok(filled.includes('Line 3 999 Test St'));
+});
+
+test('contract-library auditLibrary reports all 11 types with status', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const report = lib.auditLibrary();
+  assert.equal(report.total, 11);
+  assert.equal(report.types.length, 11);
+  // All template files should exist locally (we verified this above)
+  for (const entry of report.types) {
+    assert.ok(entry.templateConfigured, `${entry.type} template file should exist`);
+  }
+  // Until RabbitSign template IDs are configured, all should report missing
+  const missingRabbitSign = report.types.filter(t => !t.rabbitsignConfigured);
+  assert.ok(missingRabbitSign.length > 0, 'should report at least one missing RabbitSign template ID');
+});
