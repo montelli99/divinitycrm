@@ -274,15 +274,18 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    // Validate source enum — invalid values return 400 instead of 500
-    // Allowed values: see migrate-source-enum.js. Unknown values get mapped to 'other' with warning.
-    const ALLOWED_SOURCES = ['facebook', 'agent_referred', 'referral', 'other',
-      'kayla_sheet', 'ppc', 'website', 'list_pull', 'cold_call', 'direct_mail',
-      'bandit_sign', 'open_house', 'zillow', 'redfin'];
+    // Normalize source enum — derive allowed values from the live DB enum
+    // (defined in src/db/schema.sql + extended by src/db/migration_lead_engine.sql
+    // + src/db/migrate-source-enum.js). Unknown values map to 'other' instead of
+    // throwing a 500 on insert.
     let normalizedSource = source;
-    if (source && !ALLOWED_SOURCES.includes(source)) {
-      console.warn(`[leads] Invalid source '${source}', mapping to 'other'`);
-      normalizedSource = 'other';
+    if (source) {
+      const { getLeadSourceValues } = require('../scripts/lead-source-values');
+      const allowed = await getLeadSourceValues();
+      if (!allowed.includes(source)) {
+        console.warn(`[leads] Invalid source '${source}', mapping to 'other'`);
+        normalizedSource = 'other';
+      }
     }
 
     const ownerId = await resolveLeadOwner({ currentUser, assignedUserId: assigned_user_id });

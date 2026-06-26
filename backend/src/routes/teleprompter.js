@@ -96,9 +96,10 @@ function leadToTemplateData(lead) {
 // Returns the list of shortcuts applicable to the given stage,
 // with each shortcut's body pre-filled from the lead's data.
 router.get('/shortcuts', async (req, res) => {
-  const { stage: stageParam, lead_id } = req.query;
-  // If no stage provided, return ALL shortcuts across all stages (useful for browsing/listing)
-  const stage = stageParam || '__ALL__';
+  const { stage, lead_id } = req.query;
+  if (!stage) {
+    return res.status(400).json({ error: 'stage query param required' });
+  }
 
   let lead = null;
   if (lead_id) {
@@ -120,7 +121,6 @@ router.get('/shortcuts', async (req, res) => {
 
   const data = leadToTemplateData(lead);
   const stageNum = STAGE_INDEX[stage];
-  const showAllStages = stage === '__ALL__';
   const shortcuts = [];
 
   // 1) Pull from CRM script-prompts.js (OUTREACH_SCRIPTS, CALL_SCRIPTS, PITCH_SCRIPTS)
@@ -130,7 +130,7 @@ router.get('/shortcuts', async (req, res) => {
     ...Object.values(PITCH_SCRIPTS || {}),
   ];
   crmAll.forEach(tpl => {
-    if (!showAllStages && tpl.stage !== stage) return;
+    if (tpl.stage !== stage) return;
     try {
       // getTemplateByShortcut already calls fillTemplate internally
       // Note: returns { filled, unfilled, recipient, actionRequired, ... }
@@ -151,27 +151,7 @@ router.get('/shortcuts', async (req, res) => {
   });
 
   // 2) Pull from local seller-update templates (standalone copy)
-  if (showAllStages) {
-    // Pull from all stages when showing all
-    Object.values(STAGE_NUM_TO_NAME).flat().forEach(key => {
-      try {
-        const filled = fillShortcutBySource ? fillShortcutBySource('sms', key, lead || {}) : null;
-        if (filled && !filled.error) {
-          shortcuts.push({
-            source: 'sms',
-            key,
-            name: filled.name || key,
-            description: 'Seller update SMS — pre-filled with lead data',
-            recipientType: 'seller',
-            body: filled.body,
-            unfilled: filled.unfilled || [],
-          });
-        }
-      } catch (err) {
-        console.warn(`Teleprompter: failed to fill seller update ${key}:`, err.message);
-      }
-    });
-  } else if (stageNum && SELLER_UPDATE_STAGE_NUM) {
+  if (stageNum && SELLER_UPDATE_STAGE_NUM) {
     const sellerKeys = STAGE_NUM_TO_NAME[stageNum] || [];
     sellerKeys.forEach(key => {
       try {
@@ -194,8 +174,8 @@ router.get('/shortcuts', async (req, res) => {
   }
 
   res.json({
-    stage: stage === '__ALL__' ? 'ALL' : stage,
-    stageLabel: stage === '__ALL__' ? 'All Stages' : STAGE_LABELS[stage],
+    stage,
+    stageLabel: STAGE_LABELS[stage],
     stageNumber: stageNum,
     lead: lead ? { id: lead_id, address: lead.address, seller_name: lead.seller_name } : null,
     shortcuts,
