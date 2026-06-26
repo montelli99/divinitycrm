@@ -149,6 +149,9 @@ const SMS_TEMPLATES = {
   // Stage 20→21: CLOSING_CONFIRMED — 7 days before COE
   CLOSING_CONFIRMED: `Hi [their name], we're one week away from closing on [address]! Everything is on track. I'll send final wire instructions shortly. Thank you for trusting us with this transaction.`,
 
+  // Stage 21: COE_MINUS_7 — 7 days before COE (Stage 21 fire)
+  COE_MINUS_7: `Hi [their name], we're one week away from closing on [address]! Everything is on track. I'll send final wire instructions shortly. Thank you for trusting us with this transaction.`,
+
   // Stage 20→21: SUBTO_PROCESSOR — 48hr before COE for SubTo
   SUBTO_PROCESSOR: `Hi [their name], just confirming the third-party processing company is set up for the Subject-To closing on [address]. Everything is on track for [date].`,
 

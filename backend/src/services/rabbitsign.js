@@ -223,7 +223,7 @@ async function createContractEnvelope(lead, contractType) {
     portfolio: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
   };
 
-  const templateId = templateMap[contractType] || 'StackPSA';
+  const templateId = templateMap[contractType] || templateMap.subto;
 
   const senderFieldValues = [
     { name: 'property address', currentValue: address },
