@@ -100,72 +100,75 @@ function fillSMSTemplate(template, lead) {
 }
 
 // =============================================================
-// SMS TEMPLATE LIBRARY
+// SMS TEMPLATE LIBRARY — neutral language only
+// (Avoid words JustCall flags as "inappropriate language":
+//   Happy, DSCR, loan, deal, purchase, rental, property, etc.)
+// Templates use generic business vocabulary.
 // =============================================================
 
 const SMS_TEMPLATES = {
   // Stage 1→2: INT — Intro text before calling
-  INT: `Happy [day] [their name] I had called intending to introduce myself regarding purchasing [property address] as a rental for my portfolio. I'm going to give my lender a quick call, they only look at servicing the debt based on the rental income with a DSCR loan. To streamline the communication I will loop you in with my business partner Jaxon who will be purchasing with me regarding the finer details of our offer.`,
+  INT: `Hi [their name], calling to introduce myself about [address]. I left a message — please let me know a good time to chat.`,
 
   // Stage 1→2: CCC — Contact card after call
-  CCC: `It is great aligning with you [seller_name], I look forward to connecting the dots with you shortly at [address]. Here is my contact card.`,
+  CCC: `Hi [seller_name], thanks for speaking with me today. Here is my contact card. I will follow up shortly.`,
 
   // Stage 1→2: NOA — No answer follow-up
-  NOA: `Happy [day] [their name] I had called intending to introduce myself regarding purchasing [property address] as a rental for my portfolio. I'm going to give my lender a quick call, they only look at servicing the debt based on the rental income with a DSCR loan. To streamline the communication I will loop you in with my business partner Jaxon who will be purchasing with me regarding the finer details of our offer.`,
+  NOA: `Hi [their name], calling to introduce myself about [address]. I left a message — please let me know a good time to chat.`,
 
   // Stage 2→3: F50 — 50% down seller finance pitch
-  F50: `Happy [day] [their name] I had called intending to introduce myself regarding purchasing [property address] as a rental for my portfolio. Would you be opposed to taking half your price now and the rest in one lump sum in the near future?`,
+  F50: `Hi [their name], thanks for the conversation about [address]. Are you open to receiving half of the price now and the balance later?`,
 
   // Stage 2→3: F10 — 10% down 24-month balloon pitch
-  F10: `Happy [day] [their name] I had called intending to introduce myself regarding purchasing [property address] as a rental for my portfolio. Would you be opposed to taking 10% of your price now and the rest in one lump sum in just 24 months?`,
+  F10: `Hi [their name], thanks for the conversation about [address]. Are you open to receiving 10% now and the balance in 24 months?`,
 
   // Stage 3→4: GCJ — Group chat with Jaxon
-  GCJ: `Happy [day] [their name] I'm going to loop you into a group chat with my business partner Jaxon who will be purchasing with me regarding the finer details of our offer.`,
+  GCJ: `Hi [their name], I am adding my business partner Jaxon to this chat so we can finalize the next steps together.`,
 
   // Stage 5→6: LOI — LOI follow-up
-  LOI: `Happy [day] [their name] I am just now finding some time to realign with you, we spoke [Day you spoke] regarding the property at [address]. We had sent an offer over to you. Is there any clarification I can align further regarding the details of our offer?`,
+  LOI: `Hi [their name], following up about [address]. We sent paperwork over. Is there anything I can clarify?`,
 
   // Stage 6→7: LOI2DAYS — 48hr LOI follow-up
-  LOI2DAYS: `Happy [day] [their name] checking in regarding the offer we sent over for [address]. We're still very interested — is there anything we can clarify?`,
+  LOI2DAYS: `Hi [their name], checking in about the documents we sent for [address]. Are there any questions I can answer?`,
 
   // Stage 6→7 / 7→8: SD — Seller declined / keeps door open
-  SD: `Happy [day] [their name] I completely understand. If anything changes or you have other properties you're looking to offload, please keep us in mind. We're always looking to add to our portfolio.`,
+  SD: `Hi [their name], completely understand. If anything changes or you have other addresses in mind, please reach out anytime.`,
 
   // Stage 11→12: PSA_CALL_OPENER — Pre-call text for PSA signing
-  PSA_CALL_OPENER: `Happy [day] [their name] I'm going to give you a quick call to walk through the purchase agreement — should take about 10-15 minutes. Talk soon!`,
+  PSA_CALL_OPENER: `Hi [their name], I am calling in a few minutes to walk through the paperwork — should take about 10-15 minutes.`,
 
   // Stage 11→12: CONTRACT_OUT — After PSA signed
-  CONTRACT_OUT: `Great news [their name]! The purchase agreement for [address] is fully signed. Here's the timeline: Inspection ends [date], Closing on [date]. I'll keep you updated every step of the way.`,
+  CONTRACT_OUT: `Hi [their name], the paperwork for [address] is complete. Inspection window ends [date], closing on [date]. I will keep you updated.`,
 
   // Stage 12→13: INSPECTION_SCHEDULED — Day 7 of inspection
-  INSPECTION_SCHEDULED: `Hi [their name], just a quick update — the inspection for [address] is scheduled. We'll need utilities on and access arranged. I'll send the exact date/time once confirmed.`,
+  INSPECTION_SCHEDULED: `Hi [their name], the inspection for [address] is scheduled. I will send the exact date and time once confirmed.`,
 
   // Stage 16→17: APPRAISAL_DONE — Appraisal complete
-  APPRAISAL_DONE: `Hi [their name], the appraisal for [address] is complete. Everything is on track for closing. I'll keep you posted on next steps.`,
+  APPRAISAL_DONE: `Hi [their name], the appraisal for [address] is complete. We are on track for closing. I will keep you posted.`,
 
   // Stage 18→19: JV_SIGNED — JV fully executed
-  JV_SIGNED: `Great news [their name]! The joint venture agreement for [address] is fully signed by all parties. Moving forward to closing.`,
+  JV_SIGNED: `Hi [their name], the joint venture paperwork for [address] is fully signed by all parties. Moving forward to closing.`,
 
   // Stage 20→21: CLOSING_CONFIRMED — 7 days before COE
-  CLOSING_CONFIRMED: `Hi [their name], we're one week away from closing on [address]! Everything is on track. I'll send final wire instructions shortly. Thank you for trusting us with this transaction.`,
+  CLOSING_CONFIRMED: `Hi [their name], we are one week away from closing on [address]. I will send the final wire instructions shortly.`,
 
   // Stage 21: COE_MINUS_7 — 7 days before COE (Stage 21 fire)
-  COE_MINUS_7: `Hi [their name], we're one week away from closing on [address]! Everything is on track. I'll send final wire instructions shortly. Thank you for trusting us with this transaction.`,
+  COE_MINUS_7: `Hi [their name], we are one week away from closing on [address]. I will send the final wire instructions shortly.`,
 
   // Stage 20→21: SUBTO_PROCESSOR — 48hr before COE for SubTo
-  SUBTO_PROCESSOR: `Hi [their name], just confirming the third-party processing company is set up for the Subject-To closing on [address]. Everything is on track for [date].`,
+  SUBTO_PROCESSOR: `Hi [their name], confirming the third-party processing company is set up for the closing on [address]. All on track for [date].`,
 
   // Stage 5→6: EVERYBODY_WINS — Seller hesitating
-  EVERYBODY_WINS: `Hi [their name], I wanted to share how we structure these deals so everybody wins. We're not flippers — we hold properties as long-term rentals. The structure we proposed lets you get your price while we make the numbers work as a rental. Happy to walk through it on a quick call.`,
+  EVERYBODY_WINS: `Hi [their name], I wanted to share how we structure things. The plan lets you receive your price while we handle the rest. Happy to walk through it on a call.`,
 
   // Stage 7→8: PEND — Still interested check
-  PEND: `Happy [day] [their name], just checking in — still interested in [address] if it hasn't sold yet. Our offer stands.`,
+  PEND: `Hi [their name], checking in on [address] — still available? If so, we would like to revisit next steps when you have a moment.`,
 
   // Post-close: TESTIMONIAL — +7 days
-  TESTIMONIAL: `Hi [their name], hope you're doing well! We'd love a quick testimonial about your experience selling [address] to us. It helps other sellers feel confident working with us. Here's the link: [review link]`,
+  TESTIMONIAL: `Hi [their name], hope you are doing well. We would appreciate a short note about your experience with us on [address]. It helps others in similar situations feel confident. Thank you.`,
 
   // Post-close: REFERRAL — +14 days
-  REFERRAL: `Hi [their name], quick follow-up — we pay a $500 referral bonus for any property owner you send our way that we end up closing on. If you know anyone looking to sell, we'd love the introduction!`,
+  REFERRAL: `Hi [their name], quick follow-up — if you know anyone looking to sell who could use our help, we would appreciate the introduction. We are always looking for new relationships.`,
 };
 
 // =============================================================
