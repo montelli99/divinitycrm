@@ -131,12 +131,56 @@ const STAGE_NOTIFICATION_RECIPIENTS = {
 // Fire notifications for a stage transition
 // =============================================================
 
+// Rate-limit / dedup guard (LRN-20260626-002)
+// Track recent notifications per (lead, type, recipient) to prevent flooding
+// when many leads advance through the same transition in a short window
+// (e.g. during stage-coverage tests).
+const recentNotifications = new Map(); // key: `${leadId}|${type}|${recipientId}` → timestamp
+const RECENT_DEDUP_WINDOW_MS = 30 * 1000; // 30 seconds
+const MAX_NOTIFS_PER_USER_PER_MIN = 20;
+
+const userNotificationTimestamps = new Map(); // userId → [timestamps]
+
+function shouldSkipNotification(leadId, type, recipientId) {
+  // Dedup: skip if same (lead, type, recipient) fired in last 30s
+  const dedupKey = `${leadId}|${type}|${recipientId || 'email-only'}`;
+  const now = Date.now();
+  const last = recentNotifications.get(dedupKey);
+  if (last && (now - last) < RECENT_DEDUP_WINDOW_MS) {
+    return { skip: true, reason: 'dedup' };
+  }
+  recentNotifications.set(dedupKey, now);
+  // Cleanup old entries (older than 5 min)
+  for (const [k, t] of recentNotifications.entries()) {
+    if (now - t > 5 * 60 * 1000) recentNotifications.delete(k);
+  }
+  return { skip: false };
+}
+
+function userIsRateLimited(userId) {
+  if (!userId) return false;
+  const now = Date.now();
+  const windowStart = now - 60 * 1000;
+  const ts = userNotificationTimestamps.get(userId) || [];
+  const recent = ts.filter(t => t > windowStart);
+  userNotificationTimestamps.set(userId, recent);
+  return recent.length >= MAX_NOTIFS_PER_USER_PER_MIN;
+}
+
+function recordNotificationForUser(userId) {
+  if (!userId) return;
+  const ts = userNotificationTimestamps.get(userId) || [];
+  ts.push(Date.now());
+  userNotificationTimestamps.set(userId, ts);
+}
+
 async function fireStageNotifications(fromStage, toStage, leadData) {
   const key = `${fromStage}:${toStage}`;
   const config = STAGE_NOTIFICATION_RECIPIENTS[key];
   if (!config) return { fired: 0 };
 
   let fired = 0;
+  let skipped = 0;
   let emailsSent = 0;
   let emailsFailed = 0;
   for (const recipientSpec of config.recipients) {
@@ -152,6 +196,16 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
     } else if (recipientSpec.type === 'role') {
       const roleIds = await getUsersByRole(recipientSpec.value);
       for (const rid of roleIds) {
+        // Rate-limit / dedup guard (LRN-20260626-002)
+        const dedup = shouldSkipNotification(leadData.id, config.type, rid);
+        if (dedup.skip) { skipped++; continue; }
+        if (userIsRateLimited(rid)) {
+          console.warn(`[notifications] rate-limited: user ${rid} hit ${MAX_NOTIFS_PER_USER_PER_MIN}/min (LRN-20260626-002)`);
+          skipped++;
+          continue;
+        }
+        recordNotificationForUser(rid);
+
         const u = await query('SELECT email, first_name FROM users WHERE id = $1', [rid]);
         recipientEmail = u[0]?.email;
         recipientName = u[0]?.first_name || recipientEmail?.split('@')[0] || 'Team';
@@ -183,6 +237,16 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
 
     // Only create in-app notification if user is in users table
     if (recipientId) {
+      // Rate-limit / dedup guard (LRN-20260626-002)
+      const dedup = shouldSkipNotification(leadData.id, config.type, recipientId);
+      if (dedup.skip) { skipped++; continue; }
+      if (userIsRateLimited(recipientId)) {
+        console.warn(`[notifications] rate-limited: user ${recipientId} hit ${MAX_NOTIFS_PER_USER_PER_MIN}/min`);
+        skipped++;
+        continue;
+      }
+      recordNotificationForUser(recipientId);
+
       await createNotification({
         recipientId,
         leadId: leadData.id,
