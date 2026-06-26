@@ -274,6 +274,17 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
+    // Validate source enum — invalid values return 400 instead of 500
+    // Allowed values: see migrate-source-enum.js. Unknown values get mapped to 'other' with warning.
+    const ALLOWED_SOURCES = ['facebook', 'agent_referred', 'referral', 'other',
+      'kayla_sheet', 'ppc', 'website', 'list_pull', 'cold_call', 'direct_mail',
+      'bandit_sign', 'open_house', 'zillow', 'redfin'];
+    let normalizedSource = source;
+    if (source && !ALLOWED_SOURCES.includes(source)) {
+      console.warn(`[leads] Invalid source '${source}', mapping to 'other'`);
+      normalizedSource = 'other';
+    }
+
     const ownerId = await resolveLeadOwner({ currentUser, assignedUserId: assigned_user_id });
     const lead = await insertLeadRecord({
       creatorUserId: userId,
@@ -284,7 +295,7 @@ router.post('/', async (req, res, next) => {
         state,
         zip,
         price,
-        source,
+        source: normalizedSource,
         beds,
         baths,
         sqft,
@@ -302,7 +313,7 @@ router.post('/', async (req, res, next) => {
       },
     });
 
-    res.status(201).json({ lead });
+    res.status(201).json({ lead, source_was_normalized: source && source !== normalizedSource ? source : undefined });
   } catch (err) {
     next(err);
   }
