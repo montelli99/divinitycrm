@@ -144,4 +144,36 @@ router.get('/dashboard', async (req, res, next) => {
   }
 });
 
+// GET /api/admin/contracts/library-audit — Audit contract library state
+// Surfaces missing source files and missing RabbitSign env vars.
+// Used by morning brief cron to alert operators.
+router.get('/contracts/library-audit', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const currentUser = await query('SELECT role, email FROM users WHERE id = $1', [userId]);
+    if (currentUser.length === 0 || !isTeamViewer(currentUser[0])) {
+      return res.status(403).json({ error: 'Team access required' });
+    }
+    const { auditLibrary } = require('../services/contract-library');
+    const audit = auditLibrary();
+    // Compact summary for human reading (telegram-friendly)
+    const summary = {
+      total: audit.total,
+      sourceDir: audit.sourceDir,
+      liveOverride: audit.liveOverride,
+      okCount: audit.types.filter(t => t.issues.length === 0).length,
+      issueCount: audit.issues.length,
+      issuesByType: audit.issues.map(i => ({
+        type: i.type,
+        rabbitsignMissing: i.issues.some(x => x.includes('RabbitSign template ID')),
+        sourceMissing: i.issues.some(x => x.includes('missing template') || x.includes('missing addendum') || x.includes('missing LOI')),
+        issues: i.issues,
+      })),
+    };
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -31,7 +31,7 @@ const STAGE_LABELS = {
 async function getPipelineForToday() {
   // Today's active leads (not CLOSED, not DEAD) — what Emily should work today
   const r = await query(`
-    SELECT id, address, city, state, zip, stage, owner_email, recommended_strategy,
+    SELECT id, address, city, state, zip, stage, recommended_strategy,
            cash_offer, f50_offer, f10_offer, subto_offer, novation_offer,
            updated_at
     FROM leads
@@ -114,7 +114,40 @@ async function morningBrief() {
     ? '\n\n🎉 <b>CLOSING TODAY</b>\n' + todaysClosings.map(l => `• ${l.address} ${l.city || ''} ${l.state || ''} ($${Number(l.f50_offer || l.cash_offer || 0).toLocaleString()})`).join('\n')
     : '';
 
-  const text = `🌅 <b>CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b>\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}\n\nOpen pipeline: <a href="https://divinitycrm.onrender.com/#/pipeline">divinitycrm.onrender.com</a>`;
+  // Contract library audit (LRN-20260626-011) — surfaces missing source files
+  // and missing RabbitSign template IDs so operators see drift immediately.
+  let contractAuditText = '';
+  try {
+    const { auditLibrary } = require('../services/contract-library');
+    const audit = auditLibrary();
+    if (audit.issues.length > 0) {
+      const rabbitsignMissing = audit.types
+        .filter(t => !t.rabbitsignConfigured)
+        .map(t => t.type);
+      const sourceMissing = audit.types
+        .filter(t => !t.templateConfigured)
+        .map(t => t.type);
+      const lines = [];
+      lines.push('\n\n⚠️ <b>Contract Library Audit</b>');
+      lines.push(`Source dir: ${audit.sourceDir}`);
+      if (audit.liveOverride) lines.push(`Live override: ${audit.liveOverride}`);
+      if (rabbitsignMissing.length > 0) {
+        lines.push(`\nMissing RabbitSign template IDs (${rabbitsignMissing.length}):`);
+        lines.push(rabbitsignMissing.map(t => `• ${t}`).join('\n'));
+      }
+      if (sourceMissing.length > 0) {
+        lines.push(`\nMissing source files (${sourceMissing.length}):`);
+        lines.push(sourceMissing.map(t => `• ${t}`).join('\n'));
+      }
+      contractAuditText = lines.join('\n');
+    } else {
+      contractAuditText = '\n\n✅ Contract library: all OK';
+    }
+  } catch (e) {
+    contractAuditText = `\n\n❌ Contract library audit failed: ${e.message}`;
+  }
+
+  const text = `🌅 <b>CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b>\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}${contractAuditText}\n\nOpen pipeline: <a href="https://divinitycrm.onrender.com/#/pipeline">divinitycrm.onrender.com</a>`;
 
   return await sendTelegram(text);
 }

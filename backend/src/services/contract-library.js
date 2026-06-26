@@ -1,128 +1,140 @@
 /**
  * contract-library.js — Source-of-truth for clause content & draft generation
  *
- * Reads from `ai-rei/kay-exclusive/` (Kayla's private contract library).
- * This is the AUTHORITATIVE source for clause text — RabbitSign is only the
- * signing envelope, never the source of clause language.
+ * Reads from `backend/src/assets/contracts/` (bundled copies). The canonical
+ * source lives outside the deploy boundary (in the workspace at
+ * ai-rei/kay-exclusive/), but Render only ships the backend directory, so we
+ * bundle the contract text files alongside the code.
+ *
+ * Set KAY_EXCLUSIVE_DIR env var to read from the upstream workspace folder
+ * instead (for local dev or when you want live source).
+ *
+ * RabbitSign is only the signing envelope — never the source of clause language.
  *
  * Contract families covered (per LRN-20260626-010):
- *   - cash        — Cash Offer Template (LOI's/Cash Offer LOI/)
- *   - subto       — PSA Creative _ Sub To + Subject to Addendum
- *   - stack50     — Stack PSA (10% DP / 50% wrap) — Stack PSA
- *   - stack10     — Stack 10% DP 2-year balloon variant — Stack LOI's/
- *   - seller_finance — PSA with seller carryback (SubTo with carryback terms)
- *   - commercial  — Real Estate Commercial Purchase Agreement
+ *   - cash        — Cash Offer Template
+ *   - subto       — PSA Creative Sub To + Subject to Addendum
+ *   - stack50     — Stack w Principal (50% wrap variant)
+ *   - stack10     — Stack 10% DP 2-year balloon
+ *   - stack_interest_only — Interest Only Stack
+ *   - stack_mfh   — MFH Stack variant
+ *   - seller_finance — PSA with seller carryback (SubTo with carryback)
+ *   - commercial  — Commercial Purchase Agreement
  *   - portfolio   — Portfolio Stack LOI
  *   - jv_4party   — 4-party JV
  *   - jv_5party   — 5-party JV
  *
- * Field substitution is non-destructive — the original template text is
- * preserved, only `[PLACEHOLDER]` tokens are replaced.
+ * Field substitution is non-destructive — only `[PLACEHOLDER]` tokens are replaced.
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Resolve path to the kay-exclusive folder relative to backend root.
-// This file lives at: divinitycrm/backend/src/services/contract-library.js
-// So we go up 4 levels: services -> src -> backend -> divinitycrm -> prolificcapital
-// Allow override via KAY_EXCLUSIVE_DIR env var (for testing or alternate deployments).
-const KAY_EXCLUSIVE_DIR = process.env.KAY_EXCLUSIVE_DIR || path.resolve(
-  __dirname,
-  '..', '..', '..', '..',
-  'ai-rei', 'kay-exclusive'
-);
+// Production default: bundled source files ship with the backend deploy.
+// Override with KAY_EXCLUSIVE_DIR for live local-dev sync from the upstream folder.
+const BUNDLED_CONTRACTS_DIR = path.resolve(__dirname, '..', 'assets', 'contracts');
+const KAY_EXCLUSIVE_DIR = process.env.KAY_EXCLUSIVE_DIR;
+
+function resolveSourceDir() {
+  if (KAY_EXCLUSIVE_DIR && fs.existsSync(KAY_EXCLUSIVE_DIR)) return KAY_EXCLUSIVE_DIR;
+  return BUNDLED_CONTRACTS_DIR;
+}
+
+function sourceDir() {
+  return resolveSourceDir();
+}
 
 /**
- * CONTRACT_LIBRARY — Maps lowercase contract-type keys (matching CONTRACT_TYPES
- * in contract-generator.js) to local file references.
+ * CONTRACT_LIBRARY — Maps lowercase contract-type keys to:
+ *   - template file (the master contract text)
+ *   - addenda files (appended to the master)
+ *   - LOI file (separate Letter of Intent, if any)
+ *   - rabbitsign template env var (NO fallback — throws if missing)
  *
- * `templateFile`     — Path to the master contract text (.txt extract)
- * `addendaFiles`     — Path(s) to addendum files appended to the master
- * `loiFile`          — Path to the LOI (Letter of Intent) if separate from PSA
- * `clauseFiles`      — Per-clause file references for granular clause extraction
- * `rabbitsignTemplateEnvVar` — Env var name holding the RabbitSign template ID
- *                                (NO fallback — throws if missing per LRN-20260626-009)
- * `family`           — High-level grouping for analytics
+ * Files are looked up via `resolveSourceDir()`, which prefers KAY_EXCLUSIVE_DIR
+ * (live upstream sync) when set + exists, otherwise falls back to the bundled
+ * directory at backend/src/assets/contracts/ (shipped with deploy).
  */
+function f(name) { return name; }  // local helper for readability
+
 const CONTRACT_LIBRARY = {
   cash: {
     family: 'cash',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Cash Offer LOI", "Cash Offer Template _text.txt"),
+    templateFile: f('cash-offer.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Cash Offer LOI", "Cash Offer Template _text.txt"),
+    loiFile: f('cash-offer.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_CASH',
   },
   subto: {
     family: 'subto',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "PSA Creative _ Sub To_text.txt"),
+    templateFile: f('subto-psa.txt'),
     addendaFiles: [
-      path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "Subject to Addendum_text.txt"),
+      f('subto-addendum.txt'),
     ],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Subject To LOI", "Subject To LOI Template.docx_text.txt"),
+    loiFile: f('subto-loi.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_SUBTO',
   },
   stack50: {
     family: 'stack',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Stack w Principal _text.txt"),
+    templateFile: f('stack50.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Stack LOI_text.txt"),
+    loiFile: f('stack-loi.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_STACK50',
   },
   stack10: {
     family: 'stack',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Ai 10% DP 2 year balloon_text.txt"),
+    templateFile: f('stack10.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Stack LOI 5 yr BAL_text.txt"),
+    loiFile: f('stack10-bal.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_STACK10',
   },
   stack_interest_only: {
     family: 'stack',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Interest Only Stack LOI_text.txt"),
+    templateFile: f('stack-io.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Interest Only Stack LOI_text.txt"),
+    loiFile: f('stack-io.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_STACK_IO',
   },
   stack_mfh: {
     family: 'stack',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Ai LOI MFH Stack.docx_text.txt"),
+    templateFile: f('stack-mfh.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Stack LOI's", "Ai LOI MFH Stack.docx_text.txt"),
+    loiFile: f('stack-mfh.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_STACK_MFH',
   },
   seller_finance: {
-    family: 'subto', // Seller finance is a SubTo variant — buyer's carryback
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "PSA Creative _ Sub To_text.txt"),
+    family: 'subto',
+    templateFile: f('subto-psa.txt'),
     addendaFiles: [
-      path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "Subject to Addendum_text.txt"),
+      f('subto-addendum.txt'),
     ],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Subject To LOI", "Subject To LOI Template.docx_text.txt"),
+    loiFile: f('subto-loi.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_SF',
   },
   commercial: {
     family: 'commercial',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "Real Estate Commercial Purchase Agreement.docx_text.txt"),
+    templateFile: f('commercial-psa.txt'),
     addendaFiles: [],
     loiFile: null,
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_COMMERCIAL',
   },
   portfolio: {
     family: 'portfolio',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Portfolio Stack LOI_text.txt"),
+    templateFile: f('portfolio-loi.txt'),
     addendaFiles: [],
-    loiFile: path.join(KAY_EXCLUSIVE_DIR, "LOI's", "Portfolio Stack LOI_text.txt"),
+    loiFile: f('portfolio-loi.txt'),
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_PORTFOLIO',
   },
   jv_4party: {
     family: 'jv',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "4 party JV_text.txt"),
+    templateFile: f('jv-4party.txt'),
     addendaFiles: [],
     loiFile: null,
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_JV',
   },
   jv_5party: {
     family: 'jv',
-    templateFile: path.join(KAY_EXCLUSIVE_DIR, "PSA's + JV", "Copy of 4 party JV_text.txt"), // 5-party is in main folder, fallback to 4-party text
+    templateFile: f('jv-5party.txt'),
     addendaFiles: [],
     loiFile: null,
     rabbitsignTemplateEnvVar: 'RABBITSIGN_TEMPLATE_JV',
@@ -153,19 +165,29 @@ function assertSupported(contractType) {
 }
 
 /**
+ * Resolve a relative filename to an absolute path using the active source dir.
+ * Always uses `sourceDir()` so deployments read from the bundled directory
+ * (or KAY_EXCLUSIVE_DIR override) regardless of cwd.
+ */
+function resolvePath(filename) {
+  return path.join(sourceDir(), filename);
+}
+
+/**
  * Read the raw template text for a given contract type.
  * Throws if the file is missing — surface the broken local source loudly.
  */
 function getTemplateText(contractType) {
   assertSupported(contractType);
   const entry = CONTRACT_LIBRARY[contractType];
-  if (!fs.existsSync(entry.templateFile)) {
+  const filePath = resolvePath(entry.templateFile);
+  if (!fs.existsSync(filePath)) {
     throw new Error(
-      `Template file missing for contract type '${contractType}': ${entry.templateFile}. ` +
-      `Restore from Kayla's library or update CONTRACT_LIBRARY.`
+      `Template file missing for contract type '${contractType}': ${filePath}. ` +
+      `Source dir: ${sourceDir()}. Restore the file or set KAY_EXCLUSIVE_DIR.`
     );
   }
-  return fs.readFileSync(entry.templateFile, 'utf8');
+  return fs.readFileSync(filePath, 'utf8');
 }
 
 /**
@@ -176,6 +198,7 @@ function getAddendaText(contractType) {
   assertSupported(contractType);
   const entry = CONTRACT_LIBRARY[contractType];
   return entry.addendaFiles
+    .map(filename => resolvePath(filename))
     .filter(f => fs.existsSync(f))
     .map(f => ({ file: f, text: fs.readFileSync(f, 'utf8') }));
 }
@@ -186,8 +209,10 @@ function getAddendaText(contractType) {
 function getLoiText(contractType) {
   assertSupported(contractType);
   const entry = CONTRACT_LIBRARY[contractType];
-  if (!entry.loiFile || !fs.existsSync(entry.loiFile)) return null;
-  return { file: entry.loiFile, text: fs.readFileSync(entry.loiFile, 'utf8') };
+  if (!entry.loiFile) return null;
+  const filePath = resolvePath(entry.loiFile);
+  if (!fs.existsSync(filePath)) return null;
+  return { file: filePath, text: fs.readFileSync(filePath, 'utf8') };
 }
 
 /**
@@ -245,14 +270,15 @@ function fillTemplate(templateText, lead) {
 function getEntry(contractType) {
   assertSupported(contractType);
   const entry = CONTRACT_LIBRARY[contractType];
-  // Don't expose absolute paths in API responses
+  // Don't expose absolute paths in API responses — only the source-dir name
   return {
     family: entry.family,
     rabbitsignTemplateEnvVar: entry.rabbitsignTemplateEnvVar,
-    hasTemplate: fs.existsSync(entry.templateFile),
+    hasTemplate: fs.existsSync(resolvePath(entry.templateFile)),
     addendaCount: entry.addendaFiles.length,
-    hasLoi: entry.loiFile && fs.existsSync(entry.loiFile),
+    hasLoi: entry.loiFile && fs.existsSync(resolvePath(entry.loiFile)),
     rabbitsignTemplateConfigured: !!process.env[entry.rabbitsignTemplateEnvVar],
+    sourceDir: path.basename(sourceDir()),
   };
 }
 
@@ -263,20 +289,26 @@ function getEntry(contractType) {
 function auditLibrary() {
   const report = {
     total: listContractTypes().length,
+    sourceDir: sourceDir(),
+    bundledDir: BUNDLED_CONTRACTS_DIR,
+    liveOverride: KAY_EXCLUSIVE_DIR || null,
     types: [],
     issues: [],
   };
   for (const type of listContractTypes()) {
     const entry = CONTRACT_LIBRARY[type];
     const issues = [];
-    if (!fs.existsSync(entry.templateFile)) {
+    const templatePath = resolvePath(entry.templateFile);
+    if (!fs.existsSync(templatePath)) {
       issues.push(`missing template file: ${entry.templateFile}`);
     }
-    entry.addendaFiles.forEach((f, i) => {
-      if (!fs.existsSync(f)) issues.push(`missing addendum[${i}]: ${f}`);
+    entry.addendaFiles.forEach((filename, i) => {
+      const p = resolvePath(filename);
+      if (!fs.existsSync(p)) issues.push(`missing addendum[${i}]: ${filename}`);
     });
-    if (entry.loiFile && !fs.existsSync(entry.loiFile)) {
-      issues.push(`missing LOI file: ${entry.loiFile}`);
+    if (entry.loiFile) {
+      const p = resolvePath(entry.loiFile);
+      if (!fs.existsSync(p)) issues.push(`missing LOI file: ${entry.loiFile}`);
     }
     if (!process.env[entry.rabbitsignTemplateEnvVar]) {
       issues.push(`missing RabbitSign template ID: set ${entry.rabbitsignTemplateEnvVar}`);
@@ -284,7 +316,7 @@ function auditLibrary() {
     report.types.push({
       type,
       family: entry.family,
-      templateConfigured: fs.existsSync(entry.templateFile),
+      templateConfigured: fs.existsSync(templatePath),
       rabbitsignConfigured: !!process.env[entry.rabbitsignTemplateEnvVar],
       issues,
     });
@@ -297,6 +329,9 @@ function auditLibrary() {
 
 module.exports = {
   CONTRACT_LIBRARY,
+  BUNDLED_CONTRACTS_DIR,
+  KAY_EXCLUSIVE_DIR,
+  sourceDir,
   listContractTypes,
   assertSupported,
   getTemplateText,

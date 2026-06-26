@@ -435,3 +435,28 @@ test('contract-library auditLibrary reports all 11 types with status', () => {
   const missingRabbitSign = report.types.filter(t => !t.rabbitsignConfigured);
   assert.ok(missingRabbitSign.length > 0, 'should report at least one missing RabbitSign template ID');
 });
+
+// Production deployment safety (LRN-20260626-011 follow-up)
+test('contract-library defaults to bundled directory (production-safe)', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  const dir = lib.sourceDir();
+  // Should resolve to backend/src/assets/contracts regardless of cwd
+  assert.ok(dir.endsWith(path.join('backend', 'src', 'assets', 'contracts')),
+    `sourceDir should default to bundled backend dir, got: ${dir}`);
+  assert.ok(require('fs').existsSync(dir), 'bundled directory must exist');
+});
+
+test('contract-library BUNDLED_CONTRACTS_DIR is exposed for sync scripts', () => {
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  assert.ok(typeof lib.BUNDLED_CONTRACTS_DIR === 'string');
+  assert.ok(lib.BUNDLED_CONTRACTS_DIR.endsWith(path.join('src', 'assets', 'contracts')),
+    `BUNDLED_CONTRACTS_DIR should point at bundled dir, got: ${lib.BUNDLED_CONTRACTS_DIR}`);
+});
+
+test('contract-library KAY_EXCLUSIVE_DIR is undefined when env var unset', () => {
+  delete process.env.KAY_EXCLUSIVE_DIR;
+  // Re-require to pick up env change (the module captures at load time)
+  delete require.cache[require.resolve(path.join(BACKEND_ROOT, 'src/services/contract-library'))];
+  const lib = require(path.join(BACKEND_ROOT, 'src/services/contract-library'));
+  assert.equal(lib.KAY_EXCLUSIVE_DIR, undefined);
+});
