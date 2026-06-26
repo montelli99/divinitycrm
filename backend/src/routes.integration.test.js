@@ -262,14 +262,18 @@ test('contract routes generate and hand off contracts', async () => {
   assert.equal(templateRes.body.template.id, 'PSA_CREATIVE_SUBTO');
 
   const generateRes = await callRoute(router, 'post', '/generate', {
-    body: { lead_id: 'lead-1', contract_type: 'subto' },
+    body: { lead_id: 'lead-1', contract_type: 'subto', source: 'underwriting-auto' },
   });
   assert.equal(generateRes.body.formatted.includes('123 Main St'), true);
-  assert.equal(generateRes.body.automation.workflow, 'contract');
+  // LRN-20260626-008: contract is now a DRAFT — no automation, no auto-send.
+  // Stage advance only happens after POST /:id/approve + POST /send-rabbitsign.
+  assert.ok(generateRes.body.next_step.includes('/approve'),
+    'response should point to /approve endpoint');
   assert.ok(calls.some(call => call.sql.includes('INSERT INTO contracts')));
 });
 
 test('team viewers can generate shared contracts and RabbitSign envelopes', async () => {
+  let approved = false;  // tracks whether the approve endpoint has been called
   const router = loadRouter('src/routes/contracts.js', {
     '../db/connection': {
       query: async (sql, params) => {
@@ -278,6 +282,12 @@ test('team viewers can generate shared contracts and RabbitSign envelopes', asyn
         if (sql.includes('INSERT INTO contracts')) return [{ id: 'contract-2' }];
         if (sql.includes('UPDATE leads SET')) return [{ id: 'lead-2' }];
         if (sql.includes('INSERT INTO activity_log')) return [];
+        // LRN-20260626-008: SELECT contract by id for /:id/approve
+        if (sql.includes('FROM contracts c') && sql.includes('JOIN leads l')) return [{ id: 'contract-2', lead_id: 'lead-2', lead_owner: 'closer-1', contract_type: 'subto', status: approved ? 'approved' : 'draft' }];
+        if (sql.includes('FROM contracts') && sql.includes("status = 'approved'")) {
+          return approved ? [{ id: 'contract-2', contract_type: 'subto', status: 'approved', lead_id: 'lead-2' }] : [];
+        }
+        if (sql.includes('UPDATE contracts')) { approved = true; return [{ id: 'contract-2', status: 'approved' }]; }
         return [];
       },
     },
@@ -293,6 +303,29 @@ test('team viewers can generate shared contracts and RabbitSign envelopes', asyn
   });
   assert.equal(genRes.statusCode, 200);
   assert.equal(genRes.body.contract.id, 'contract-2');
+
+  // LRN-20260626-008: send-rabbitsign now requires status='approved' contract.
+  // Without approval, it returns 409.
+  const blockedRes = await callRoute(router, 'post', '/send-rabbitsign', {
+    body: { leadId: 'lead-2', contractType: 'SubTo' },
+    user: { userId: 'closer-1' },
+    runtimeMocks: {
+      '../services/rabbitsign': {
+        isConfigured: () => true,
+        createContractEnvelope: async (lead, contractType) => ({ folderId: `folder-${lead.id}`, status: contractType }),
+        getFolderStatus: async () => ({}),
+      },
+    },
+  });
+  assert.equal(blockedRes.statusCode, 409,
+    'send-rabbitsign must require approved contract (no silent auto-send)');
+
+  // Now approve, then send
+  const approveRes = await callRoute(router, 'post', '/:id/approve', {
+    params: { id: 'contract-2' },
+    user: { userId: 'closer-1' },
+  });
+  assert.equal(approveRes.statusCode, 200);
 
   const rsRes = await callRoute(router, 'post', '/send-rabbitsign', {
     body: { leadId: 'lead-2', contractType: 'SubTo' },
@@ -458,6 +491,9 @@ test('rabbit sign route passes normalized contract type and lead record', async 
       query: async (sql, params) => {
         if (sql.includes('SELECT role, email FROM users WHERE id = $1')) return [{ role: 'student', email: 'student@example.com' }];
         if (sql.includes('SELECT * FROM leads WHERE id = $1')) return [{ id: 'lead-1', user_id: 'user-1', stage: 'TERMS_AGREED', address: '123 Main St', city: 'Austin', state: 'TX', zip: '78701', price: 250000, contract_type: 'subto' }];
+        // LRN-20260626-008: return approved contract so send-rabbitsign proceeds
+        if (sql.includes('FROM contracts') && sql.includes('approved')) return [{ id: 'contract-1', contract_type: 'subto', status: 'approved', lead_id: 'lead-1' }];
+        if (sql.includes('UPDATE contracts')) return [{ id: 'contract-1' }];
         return [];
       },
     },
@@ -477,6 +513,7 @@ test('rabbit sign route passes normalized contract type and lead record', async 
     },
   });
 
+  assert.equal(res.statusCode, 200);
   assert.equal(res.body.folderId, 'folder-1');
   assert.equal(calls[0].lead.id, 'lead-1');
   assert.equal(calls[0].contractType, 'subto');

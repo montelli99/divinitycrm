@@ -785,6 +785,62 @@ function generateRabbitSignPayload(pkg, options = {}) {
 // EXPORTS
 // =============================================================
 
+/**
+ * selectContractType(strategy) — bridge between calculator.recommendStrategy()
+ * and the lowercase CONTRACT_TYPES keys used by generateContract().
+ *
+ * calculator returns PascalCase types like 'SubTo', 'Cash', 'Stack', 'Commercial'.
+ * generateContract() expects lowercase keys like 'subto', 'cash', 'stack50', 'stack10', 'commercial'.
+ *
+ * Throws if no valid mapping exists. No silent fallbacks.
+ *
+ * @param {Object} strategy - return value of calculator.recommendStrategy(lead)
+ * @returns {string} - lowercase contract type key, e.g. 'subto'
+ */
+function selectContractType(strategy) {
+  if (!strategy || typeof strategy !== 'object') {
+    throw new Error('selectContractType: strategy is required (use calculator.recommendStrategy)');
+  }
+  const raw = strategy.contractType || strategy.strategy;
+  if (!raw) {
+    throw new Error('selectContractType: strategy must include contractType or strategy');
+  }
+
+  // Normalize to lowercase, strip whitespace
+  const norm = String(raw).trim().toLowerCase();
+
+  // Direct match (lucky case)
+  if (CONTRACT_TYPES[norm]) return norm;
+
+  // Map from calculator's PascalCase types to CONTRACT_TYPES keys
+  const map = {
+    cash: 'cash',
+    subto: 'subto',
+    subjectto: 'subto',
+    'zero-down': 'subto',
+    '0-down': 'subto',
+    '0down': 'subto',
+    stack: 'stack50', // ambiguous: default to stack50 (most common)
+    stack50: 'stack50',
+    stack10: 'stack10',
+    novation: 'commercial',
+    sellerfinance: 'seller-finance',
+    'seller-finance': 'seller-finance',
+    jv: 'jv',
+    commercial: 'commercial',
+    portfolio: 'portfolio',
+  };
+  const mapped = map[norm];
+  if (mapped && CONTRACT_TYPES[mapped]) return mapped;
+
+  // Hard fail — caller should never have asked for an unknown type
+  const supported = [...new Set(Object.values(map).filter(k => CONTRACT_TYPES[k]))];
+  throw new Error(
+    `selectContractType: cannot map '${raw}' to a supported contract type. ` +
+    `Supported: ${supported.join(', ')}`
+  );
+}
+
 module.exports = {
   CONTRACT_TYPES,
   CLAUSES,
@@ -795,4 +851,5 @@ module.exports = {
   getClause,
   formatForTelegram,
   generateRabbitSignPayload,
+  selectContractType, // added 2026-06-26 — bridges calculator.recommendStrategy() to CONTRACT_TYPES keys
 };

@@ -241,19 +241,39 @@ async function createContractEnvelope(lead, contractType) {
   const inspectionDays = lead.inspection_period_days || 14;
   const titleCompany = lead.title_company || 'CLOSE Title';
 
-  // Template selection based on contract type
-  const templateMap = {
-    cash: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
-    subto: process.env.RABBITSIGN_TEMPLATE_PSA || 'w5EC5hnVWRoGVYUTbxuHwz',
-    stack50: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
-    stack10: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
-    seller_finance: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
-    jv: process.env.RABBITSIGN_TEMPLATE_JV || 'rPx7lrG27B1u2pxVzwl21e',
-    commercial: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
-    portfolio: process.env.RABBITSIGN_TEMPLATE_STACK || 'Vf0ahJ1AXi3QWVhXNCBN0C',
+  // Template selection based on contract type — LRN-20260626-008:
+  // NO silent fallback. Each contract type MUST have its own RabbitSign template ID
+  // configured via env var. If missing, throw a hard error so we don't sign
+  // a Cash deal with SubTo terms.
+  const TEMPLATE_ENV_VARS = {
+    cash: 'RABBITSIGN_TEMPLATE_CASH',
+    subto: 'RABBITSIGN_TEMPLATE_SUBTO',
+    stack50: 'RABBITSIGN_TEMPLATE_STACK50',
+    stack10: 'RABBITSIGN_TEMPLATE_STACK10',
+    'seller-finance': 'RABBITSIGN_TEMPLATE_SELLER_FINANCE',
+    'seller_finance': 'RABBITSIGN_TEMPLATE_SELLER_FINANCE',
+    jv: 'RABBITSIGN_TEMPLATE_JV',
+    commercial: 'RABBITSIGN_TEMPLATE_COMMERCIAL',
+    portfolio: 'RABBITSIGN_TEMPLATE_PORTFOLIO',
   };
 
-  const templateId = templateMap[contractType] || templateMap.subto;
+  // Normalize input: contract-generator uses 'seller-finance' but historical
+  // path used 'seller_finance'. Accept both.
+  const normalizedType = String(contractType).toLowerCase().replace(/_/g, '-');
+  const envVar = TEMPLATE_ENV_VARS[normalizedType];
+  if (!envVar) {
+    throw new Error(
+      `Unsupported contract type '${contractType}'. Supported: ${Object.keys(TEMPLATE_ENV_VARS).join(', ')}`
+    );
+  }
+  const templateId = process.env[envVar];
+  if (!templateId) {
+    throw new Error(
+      `No RabbitSign template configured for contract type '${normalizedType}'. ` +
+      `Set ${envVar} env var with the template ID from RabbitSign. ` +
+      `Refusing to send: would otherwise use the wrong template's clauses.`
+    );
+  }
 
   const senderFieldValues = [
     { name: 'property address', currentValue: address },

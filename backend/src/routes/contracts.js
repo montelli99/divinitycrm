@@ -269,7 +269,7 @@ router.post('/generate', async (req, res, next) => {
   try {
     const userId = req.user.userId;
 
-    const { lead_id, contract_type } = req.body;
+    const { lead_id, contract_type, source } = req.body;
     if (!lead_id || !contract_type) {
       return res.status(400).json({ error: 'lead_id and contract_type are required' });
     }
@@ -310,29 +310,31 @@ router.post('/generate', async (req, res, next) => {
     const pkg = generateContract(leadData, contract_type);
     if (pkg.error) return res.status(400).json({ error: pkg.error });
 
-    // Store in contracts table
+    // Store in contracts table — DRAFT only (status='draft'). Human must
+    // approve via POST /api/contracts/:id/approve before RabbitSign send.
+    // LRN-20260626-008: underwriting → strategy → contract → REVIEW → sign.
     const contract = await query(
-      `INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO contracts (id, lead_id, user_id, contract_type, template_name, addenda, clauses, payload, status, selection_reason)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft', $9)
       RETURNING *`,
       [
         uuid(), lead_id, userId, contract_type,
         pkg.template, pkg.addenda, pkg.clauses.map(c => c.id),
-        JSON.stringify(pkg)
+        JSON.stringify(pkg),
+        source ? `source=${source}` : 'manual'
       ]
     );
 
-    // Update lead with contract type
+    // Update lead with contract metadata (but do NOT advance stage yet)
     await query(
-      `UPDATE leads SET 
+      `UPDATE leads SET
         contract = $1,
         psa_signed_date = $2,
         coe_date = $3,
         inspection_end_date = $4,
         inspection_period_days = $5,
         emd_amount = $6,
-        has_subto_addendum = $7,
-        stage = 'UNDER_CONTRACT'
+        has_subto_addendum = $7
       WHERE id = $8`,
       [
         contract_type,
@@ -346,9 +348,7 @@ router.post('/generate', async (req, res, next) => {
       ]
     );
 
-    const automation = getAvailableTransitions(lead[0].stage).includes('UNDER_CONTRACT')
-      ? await executeStageAutomations(lead_id, userId, lead[0].stage, 'UNDER_CONTRACT', lead[0])
-      : null;
+    // NO stage advance until approved. Approve via POST /api/contracts/:id/approve.
 
     // Log activity
     await query(
@@ -360,8 +360,77 @@ router.post('/generate', async (req, res, next) => {
       contract: contract[0],
       package: pkg,
       formatted: formatForTelegram(pkg),
-      automation,
+      next_step: 'POST /api/contracts/' + contract[0].id + '/approve to approve before RabbitSign send',
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/approve — Mark a draft contract as approved.
+// Only approved contracts can be sent to RabbitSign (see /send-rabbitsign).
+router.post('/:id/approve', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+
+    const rows = await query(
+      `SELECT c.*, l.user_id AS lead_owner
+       FROM contracts c
+       JOIN leads l ON l.id = c.lead_id
+       WHERE c.id = $1`,
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Contract not found' });
+    const contract = rows[0];
+    if (contract.lead_owner !== userId) return res.status(403).json({ error: 'Not your contract' });
+
+    if (contract.status === 'approved') return res.json({ ok: true, status: 'approved', already: true });
+    if (contract.status === 'sent') return res.status(409).json({ error: 'Contract already sent to RabbitSign' });
+    if (contract.status !== 'draft') return res.status(409).json({ error: `Cannot approve from status '${contract.status}'` });
+
+    const updated = await query(
+      `UPDATE contracts
+       SET status = 'approved', approved_by = $1, approved_at = now()
+       WHERE id = $2
+       RETURNING *`,
+      [userId, id]
+    );
+    res.json({ ok: true, status: 'approved', contract: updated[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/contracts/:id/decline — Reject a draft contract.
+router.post('/:id/decline', async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const rows = await query(
+      `SELECT c.*, l.user_id AS lead_owner, l.id AS lead_id
+       FROM contracts c
+       JOIN leads l ON l.id = c.lead_id
+       WHERE c.id = $1`,
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Contract not found' });
+    const contract = rows[0];
+    if (contract.lead_owner !== userId) return res.status(403).json({ error: 'Not your contract' });
+    if (contract.status !== 'draft') return res.status(409).json({ error: `Cannot decline from status '${contract.status}'` });
+
+    const updated = await query(
+      `UPDATE contracts SET status = 'declined' WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    await query(
+      `INSERT INTO activity_log (user_id, lead_id, action, details)
+       VALUES ($1, $2, 'contract_declined', $3)`,
+      [userId, contract.lead_id, JSON.stringify({ reason: reason || 'no reason' })]
+    );
+    res.json({ ok: true, status: 'declined', contract: updated[0] });
   } catch (err) {
     next(err);
   }
@@ -401,7 +470,7 @@ router.get('/:id', async (req, res, next) => {
 // POST /api/contracts/send-rabbitsign — Send contract via RabbitSign
 router.post('/send-rabbitsign', async (req, res, next) => {
   try {
-    const { leadId, contractType } = req.body;
+    const { leadId, contractType, contractId } = req.body;
     if (!leadId) return res.status(400).json({ error: 'leadId is required' });
 
     const userId = req.user.userId;
@@ -410,17 +479,52 @@ router.post('/send-rabbitsign', async (req, res, next) => {
     if (access.error) return res.status(access.status).json({ error: access.error });
     const lead = [access.lead];
 
+    // LRN-20260626-008: require an approved contract before send.
+    // Caller must supply contractId OR the latest approved contract for this lead is used.
+    let approvedContract;
+    if (contractId) {
+      const rows = await query(
+        `SELECT * FROM contracts WHERE id = $1 AND lead_id = $2`,
+        [contractId, leadId]
+      );
+      if (rows.length === 0) return res.status(404).json({ error: 'Contract not found' });
+      approvedContract = rows[0];
+    } else {
+      const rows = await query(
+        `SELECT * FROM contracts
+         WHERE lead_id = $1 AND status = 'approved'
+         ORDER BY approved_at DESC LIMIT 1`,
+        [leadId]
+      );
+      approvedContract = rows[0];
+    }
+    if (!approvedContract) {
+      return res.status(409).json({
+        error: 'No approved contract found. Draft a contract, then POST /api/contracts/:id/approve before sending.',
+        hint: 'POST /api/contracts/generate (creates draft) → POST /api/contracts/:id/approve → POST /api/contracts/send-rabbitsign',
+      });
+    }
+    if (approvedContract.status === 'sent') {
+      return res.status(409).json({ error: 'Contract already sent to RabbitSign', folderId: approvedContract.rabbitsign_envelope_id });
+    }
+
     const rs = require('../services/rabbitsign');
     if (!rs.isConfigured()) {
       return res.status(503).json({ error: 'RabbitSign not configured. Set RABBITSIGN_API_KEY in environment.' });
     }
 
-    const result = await rs.createContractEnvelope(
-      lead[0],
-      String(contractType || lead[0].contract_type || 'subto').toLowerCase(),
+    const effectiveType = String(approvedContract.contract_type || contractType || lead[0].contract_type || 'subto').toLowerCase();
+    const result = await rs.createContractEnvelope(lead[0], effectiveType);
+
+    // Mark contract as sent + record folderId
+    await query(
+      `UPDATE contracts
+       SET status = 'sent', sent_at = now(), rabbitsign_envelope_id = $1, rabbitsign_status = $2
+       WHERE id = $3`,
+      [result.folderId, result.status || 'sent', approvedContract.id]
     );
 
-    res.json({ success: true, folderId: result.folderId, status: result.status });
+    res.json({ success: true, folderId: result.folderId, status: result.status, contractId: approvedContract.id });
   } catch (err) {
     next(err);
   }
