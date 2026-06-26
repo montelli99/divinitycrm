@@ -28,6 +28,26 @@ function utcNow() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+// RabbitSign docs (2026-06-26):
+//   "The date's value must be today in the sender's local timezone (not UTC)
+//    in the yyyy-MM-dd format. For an arbitrary date, use a TEXTBOX field."
+//
+// Render runs in UTC. If a sender in EST/EDT signs a contract at 11pm local,
+// UTC date is already tomorrow → RabbitSign rejects with "Invalid RabbitSign message".
+// Use SENDER_TZ env var (defaults to America/New_York = Montelli's TZ).
+function localDateYmd(tz = process.env.SENDER_TZ || 'America/New_York') {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    return fmt.format(new Date()); // en-CA → YYYY-MM-DD
+  } catch (err) {
+    // Fallback: UTC date if tz is invalid
+    console.warn(`[rabbitsign] Invalid SENDER_TZ=${tz}, falling back to UTC`);
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function rsRequest(method, path, body = null) {
   return new Promise((resolve, reject) => {
     const utcTime = utcNow();
@@ -209,7 +229,7 @@ async function cancelFolder(folderId) {
  * Routes to the correct PSA template based on contract type.
  */
 async function createContractEnvelope(lead, contractType) {
-  const date = new Date().toISOString().split('T')[0];
+  const date = localDateYmd();
   const address = lead.address || 'Property Address';
   const price = lead.price ? `$${Number(lead.price).toLocaleString()}` : 'TBD';
   const sellerName = lead.seller_name || lead.agent_name || 'Seller';
@@ -281,7 +301,7 @@ async function createContractEnvelope(lead, contractType) {
  * Create a JV signing envelope for Stage 18.
  */
 async function createJVEnvelope(lead, jvType = '4-party') {
-  const date = new Date().toISOString().split('T')[0];
+  const date = localDateYmd();
   const address = lead.address || 'Property Address';
   const parties = lead.jv_parties ? JSON.parse(lead.jv_parties) : [];
   const percentages = lead.jv_percentages ? JSON.parse(lead.jv_percentages) : [];
