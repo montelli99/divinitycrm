@@ -235,7 +235,12 @@ async function createContractEnvelope(lead, contractType) {
   const sellerName = lead.seller_name || lead.agent_name || 'Seller';
   const sellerEmail = lead.seller_email || lead.agent_email || 'seller@example.com';
   const buyerName = 'Divinity Aligned LLC';
-  const buyerEmail = 'homewithkaylamauser@gmail.com';
+  // 2026-06-26 21:42 EDT: User directive — stop emailing Kayla. Use the entity
+  // inbox (Divinity Aligned) as the buyer email on RabbitSign envelopes instead
+  // of Kayla's personal gmail. The signed envelope still goes to the same legal
+  // entity, but no longer spams Kayla's inbox with signature requests.
+  // To revert: set RABBITSIGN_BUYER_EMAIL_OVERRIDE=<email>.
+  const buyerEmail = process.env.RABBITSIGN_BUYER_EMAIL_OVERRIDE || 'contracts@divinityaligned.net';
   const emd = lead.emd_amount || 500;
   const coeDate = lead.coe_date || date;
   const inspectionDays = lead.inspection_period_days || 14;

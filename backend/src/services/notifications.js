@@ -11,21 +11,27 @@ const { query } = require('../db/connection');
 // =============================================================
 
 async function createNotification({ recipientId, leadId = null, type, title, body, actionUrl = null, actionLabel = null }) {
-  // KAYLA IN-APP PAUSE (2026-06-26) — user reported 211 in-app notifications flooded
-  // during testing. Block ALL in-app notifications routed to Kayla's user_id until
-  // the user explicitly resumes. To resume: remove this block, or set
-  // NOTIFICATIONS_PAUSE_KAYLA=false.
+  // KAYLA + MONIQUE IN-APP PAUSE (2026-06-26 21:42 EDT) — user directive:
+  // "Stop emailing Kayla and Monique. You were supposed to have stopped already."
+  // Block ALL in-app notifications routed to Kayla or Monique user_ids.
+  // Controlled by NOTIFICATIONS_PAUSE_KAYLA_MONIQUE env var (default 'true' = blocked).
+  // To resume: set NOTIFICATIONS_PAUSE_KAYLA_MONIQUE=false.
   if (recipientId) {
-    const r = await query('SELECT email FROM users WHERE id = $1', [recipientId]);
-    const email = (r[0]?.email || '').toLowerCase();
-    const KAYLA_EMAILS = new Set([
-      'homewithkaylamauser@gmail.com',
-      'info@divinityaligned.net',
-      'kayla@divinityaligned.net',
-    ]);
-    if (KAYLA_EMAILS.has(email)) {
-      console.warn(`[notifications] KAYLA-PAUSE: dropping in-app notification "${title}" → ${email}`);
-      return;
+    const pauseActive = process.env.NOTIFICATIONS_PAUSE_KAYLA_MONIQUE !== 'false';
+    if (pauseActive) {
+      const r = await query('SELECT email FROM users WHERE id = $1', [recipientId]);
+      const email = (r[0]?.email || '').toLowerCase();
+      const BLOCKED_EMAILS = new Set([
+        'homewithkaylamauser@gmail.com',
+        'info@divinityaligned.net',
+        'kayla@divinityaligned.net',
+        'monique@sellsmartre.com',
+        'monique@prolificbuyer.com',
+      ]);
+      if (BLOCKED_EMAILS.has(email)) {
+        console.warn(`[notifications] KAYLA-MONIQUE-PAUSE: dropping in-app notification "${title}" → ${email}`);
+        return;
+      }
     }
   }
   await query(
@@ -201,6 +207,17 @@ async function fireStageNotifications(fromStage, toStage, leadData) {
   let emailsSent = 0;
   let emailsFailed = 0;
   for (const recipientSpec of config.recipients) {
+    // KAYLA + MONIQUE PAUSE (2026-06-26 21:42 EDT) — skip notification entirely
+    // if the recipient is Kayla or Monique. Defense-in-depth: also blocked in
+    // email-service.js sendEmail() and createNotification().
+    if (recipientSpec.type === 'email') {
+      const blocked = ['homewithkaylamauser@gmail.com', 'info@divinityaligned.net', 'kayla@divinityaligned.net', 'monique@sellsmartre.com', 'monique@prolificbuyer.com'];
+      if (blocked.includes((recipientSpec.value || '').toLowerCase())) {
+        console.warn(`[notifications] KAYLA-MONIQUE-PAUSE: skipping ${config.type} → ${recipientSpec.value} for ${leadData.address}`);
+        skipped++;
+        continue;
+      }
+    }
     let recipientId = null;
     let recipientEmail = null;
     let recipientName = null;
