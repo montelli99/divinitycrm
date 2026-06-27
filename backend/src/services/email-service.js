@@ -57,6 +57,20 @@ const RECIPIENTS = {
   MONTELLI:{ name: 'Montelli Scott', email: 'montelliscottrei@gmail.com' },
 };
 
+const PAUSED_RECIPIENT_EMAILS = new Set([
+  'claytoninvestmentsolutions@gmail.com',
+  'homewithkaylamauser@gmail.com',
+  'info@divinityaligned.net',
+  'kayla@divinityaligned.net',
+  'monique@sellsmartre.com',
+  'monique@prolificbuyer.com',
+  'bgonzalez@sellsmartre.com',  // BGonzalez (TC_B) — disabled 2026-06-26 21:56 EDT
+]);
+
+function isPausedRecipientEmail(email) {
+  return PAUSED_RECIPIENT_EMAILS.has(String(email || '').toLowerCase());
+}
+
 // =============================================================
 // STAGE-SPECIFIC EMAIL TEMPLATES
 // =============================================================
@@ -308,33 +322,18 @@ function buildKaylaJaxonCounterEmail(lead) {
 async function sendEmail(opts) {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
 
-  // KAYLA + MONIQUE PAUSE (2026-06-26 21:42 EDT) — user directive:
-  // "Stop emailing Kayla and Monique. You were supposed to have stopped already."
-  // Drop any email destined for these addresses before reaching SMTP/AgentMail.
-  // Controlled by EMAIL_PAUSE_KAYLA_MONIQUE env var (default 'true' = blocked).
-  // To resume: set EMAIL_PAUSE_KAYLA_MONIQUE=false.
-  const pauseActive = process.env.EMAIL_PAUSE_KAYLA_MONIQUE !== 'false';
-  const PAUSE_BLOCKED_EMAILS = new Set([
-    'homewithkaylamauser@gmail.com',  // Kayla personal
-    'info@divinityaligned.net',        // Kayla business
-    'kayla@divinityaligned.net',
-    'monique@sellsmartre.com',         // Monique (TC_M)
-    'monique@prolificbuyer.com',
-  ]);
-  const filteredRecipients = pauseActive
-    ? recipients.filter(r => {
-        const blocked = PAUSE_BLOCKED_EMAILS.has((r.email || '').toLowerCase());
-        if (blocked) {
-          console.warn(`[email-service] KAYLA-MONIQUE-PAUSE: dropping email "${opts.subject}" → ${r.email}`);
-        }
-        return !blocked;
-      })
-    : recipients;
-  if (pauseActive && filteredRecipients.length === 0) {
-    return { sent: false, channel: 'kayla-monique-pause', reason: 'all recipients blocked (Kayla + Monique pause active)' };
+  const filteredRecipients = recipients.filter(r => {
+    const blocked = isPausedRecipientEmail(r.email);
+    if (blocked) {
+      console.warn(`[email-service] paused-recipient-block: dropping email "${opts.subject}" → ${r.email}`);
+    }
+    return !blocked;
+  });
+  if (filteredRecipients.length === 0) {
+    return { sent: false, channel: 'paused-recipient-block', reason: 'all recipients blocked (Seth/Kayla/Monique pause active)' };
   }
-  // Use filtered list for the rest of the function
-  opts = { ...opts, to: filteredRecipients.length === 1 && !Array.isArray(opts.to) ? filteredRecipients[0] : filteredRecipients };
+   // Use filtered list for the rest of the function
+   opts = { ...opts, to: filteredRecipients.length === 1 && !Array.isArray(opts.to) ? filteredRecipients[0] : filteredRecipients };
 
   const toStr = filteredRecipients.map(r => `"${r.name}" <${r.email}>`).join(', ');
 
@@ -362,7 +361,7 @@ async function sendEmail(opts) {
     try {
       const https = require('https');
       const body = JSON.stringify({
-        to: recipients.map(r => r.email),
+        to: filteredRecipients.map(r => r.email),
         subject: opts.subject,
         text: opts.body,
       });
@@ -453,4 +452,6 @@ module.exports = {
   buildKaylaJaxonCounterEmail,
   STAGE_EMAIL_KEYS,
   RECIPIENTS,
+  PAUSED_RECIPIENT_EMAILS,
+  isPausedRecipientEmail,
 };
