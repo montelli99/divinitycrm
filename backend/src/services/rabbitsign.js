@@ -194,6 +194,43 @@ function uploadToS3(uploadUrl, file) {
 }
 
 /**
+ * Create a folder directly from a PDF buffer via API (no template needed).
+ * 3-step: upload-url → S3 upload → create folder.
+ * Used for filled PDFs generated on-the-fly by pdf-generator.js.
+ */
+async function createFolderFromPdfBuffer(pdfBuffer, { title, summary, date, signers }) {
+  // Step 1: Get upload URL
+  const { uploadUrl } = await rsRequest('POST', '/api/v1/upload-url');
+
+  // Step 2: Upload PDF to S3
+  await uploadToS3(uploadUrl, { buffer: pdfBuffer });
+
+  // Step 3: Create folder
+  const signerInfo = {};
+  for (const signer of signers) {
+    signerInfo[signer.email] = {
+      name: signer.name,
+      fields: [],
+    };
+  }
+
+  const body = {
+    folder: {
+      title,
+      summary: summary || `Contract document: ${title}`,
+      docInfo: [{
+        url: uploadUrl,
+        docTitle: title,
+      }],
+      signerInfo,
+    },
+    date: date || localDateYmd(),
+  };
+
+  return rsRequest('POST', '/api/v1/folder', body);
+}
+
+/**
  * Create a folder directly from a PDF file via API (no template needed).
  * 3-step: upload-url → S3 upload → create folder.
  * Used as fallback when no RabbitSign template ID is configured.
@@ -332,21 +369,14 @@ async function createContractEnvelope(lead, contractType) {
       roles,
     });
   } else {
-    // Path 2: Direct folder creation from bundled PDF (no pre-placed fields)
-    // The PDF is in backend/src/assets/contracts/pdfs/<file>.pdf
-    const pdfDir = path.resolve(__dirname, '..', 'assets', 'contracts', 'pdfs');
-    const pdfFile = entry.templateFile.replace('.txt', '.pdf');
-    const pdfPath = path.join(pdfDir, pdfFile);
+    // Path 2: Generate a FILLED PDF from the .txt master + lead data
+    // This is the primary scalable architecture — no blank contracts ever sent.
+    const pdfGenerator = require('./pdf-generator');
 
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(
-        `No RabbitSign template configured (${envVarName}) AND no PDF fallback found at ${pdfPath}. ` +
-        `Either set the env var with a template ID, or ensure the PDF exists.`
-      );
-    }
+    console.log(`[rabbitsign] No template ID for ${contractType}, generating filled PDF from .txt master`);
+    const pdfBuffer = pdfGenerator.generateFilledPdf(contractType, lead);
 
-    console.log(`[rabbitsign] No template ID for ${contractType}, using direct PDF: ${pdfFile}`);
-    result = await createFolderFromPdf(pdfPath, {
+    result = await createFolderFromPdfBuffer(pdfBuffer, {
       title: `Purchase Agreement - ${address}`,
       summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
       date,
@@ -409,18 +439,13 @@ async function createJVEnvelope(lead, jvType = '4-party') {
       roles,
     });
   } else {
-    // Fallback: direct folder creation from bundled PDF
-    const pdfDir = path.resolve(__dirname, '..', 'assets', 'contracts', 'pdfs');
-    const pdfFile = jvType === '5-party' ? 'jv-5party.pdf' : 'jv-4party.pdf';
-    const pdfPath = path.join(pdfDir, pdfFile);
+    // Fallback: Generate filled PDF from .txt master
+    const pdfGenerator = require('./pdf-generator');
+    const jvContractType = jvType === '5-party' ? 'jv_5party' : 'jv_4party';
 
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(
-        `No RabbitSign JV template configured (${jvTemplateEnvVar}) AND no PDF fallback found at ${pdfPath}.`
-      );
-    }
+    console.log(`[rabbitsign] No JV template ID, generating filled PDF for ${jvContractType}`);
+    const pdfBuffer = pdfGenerator.generateFilledPdf(jvContractType, lead);
 
-    console.log(`[rabbitsign] No JV template ID, using direct PDF: ${pdfFile}`);
     const signers = parties.map((party, i) => ({
       name: party.name || `Party ${i + 1}`,
       email: party.email || `party${i + 1}@example.com`,
@@ -429,7 +454,7 @@ async function createJVEnvelope(lead, jvType = '4-party') {
       signers.push({ name: 'Montelli Scott', email: 'montelliscottrei@gmail.com' });
     }
 
-    result = await createFolderFromPdf(pdfPath, {
+    result = await createFolderFromPdfBuffer(pdfBuffer, {
       title: `Joint Venture Agreement - ${address}`,
       summary: `${jvType} JV for ${address}`,
       date,
@@ -519,6 +544,7 @@ function isConfigured() {
 module.exports = {
   createFolderFromTemplate,
   createFolderFromPdf,
+  createFolderFromPdfBuffer,
   createFolder,
   getFolderStatus,
   getFolders,
