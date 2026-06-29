@@ -94,6 +94,8 @@ const OPTIONAL_TOKENS = [
   '[TITLE_WEBSITE]', '[PERSONAL_PROPERTY_INCLUDED]', '[OCCUPANCY_STATUS]',
   '[TITLE_HOLDING_INSTRUCTIONS]', '[DEFAULT_INTEREST_RATE]',
   '[PARTY_B_DEFAULT_PERCENT]', '[PARTY_C_DEFAULT_PERCENT]', '[PARTY_D_DEFAULT_PERCENT]',
+  '[TITLE_HOLDING_NAME]', '[PARTY_A_EXPENSE]', '[PARTY_B_EXPENSE]', '[PARTY_C_EXPENSE]', '[PARTY_D_EXPENSE]',
+  '[ADDITIONAL_TERMS]', '[JV_PURPOSE]',
   '[DATE]',
 ];
 
@@ -188,6 +190,13 @@ function buildMergeMap(lead) {
     '[PARTY_B_DEFAULT_PERCENT]': String(lead.party_b_default_percent || 30),
     '[PARTY_C_DEFAULT_PERCENT]': String(lead.party_c_default_percent || 30),
     '[PARTY_D_DEFAULT_PERCENT]': String(lead.party_d_default_percent || 40),
+    '[TITLE_HOLDING_NAME]': lead.title_holding_name || '',
+    '[PARTY_A_EXPENSE]': lead.party_a_expense ? formatCurrency(lead.party_a_expense) : '$0.00',
+    '[PARTY_B_EXPENSE]': lead.party_b_expense ? formatCurrency(lead.party_b_expense) : '$0.00',
+    '[PARTY_C_EXPENSE]': lead.party_c_expense ? formatCurrency(lead.party_c_expense) : '$0.00',
+    '[PARTY_D_EXPENSE]': lead.party_d_expense ? formatCurrency(lead.party_d_expense) : '$0.00',
+    '[ADDITIONAL_TERMS]': lead.additional_terms || 'None',
+    '[JV_PURPOSE]': lead.jv_purpose || 'To acquire, rehabilitate, and sell or hold for investment the Property located at [PROPERTY_ADDRESS]',
     '[DATE]': effectiveDate,
   };
 }
