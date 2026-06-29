@@ -91,6 +91,9 @@ const OPTIONAL_TOKENS = [
   '[CONTACT_PHONE]', '[CONTACT_NAME]',
   '[COMPANY_NAME]', '[COMPANY_WEBSITE]',
   '[INITIAL_CAPITAL]', '[MANAGER_AUTHORITY_THRESHOLD]',
+  '[TITLE_WEBSITE]', '[PERSONAL_PROPERTY_INCLUDED]', '[OCCUPANCY_STATUS]',
+  '[TITLE_HOLDING_INSTRUCTIONS]', '[DEFAULT_INTEREST_RATE]',
+  '[PARTY_B_DEFAULT_PERCENT]', '[PARTY_C_DEFAULT_PERCENT]', '[PARTY_D_DEFAULT_PERCENT]',
   '[DATE]',
 ];
 
@@ -177,6 +180,14 @@ function buildMergeMap(lead) {
     '[COMPANY_WEBSITE]': lead.company_website || '',
     '[INITIAL_CAPITAL]': lead.initial_capital ? formatCurrency(lead.initial_capital) : '$5,000.00',
     '[MANAGER_AUTHORITY_THRESHOLD]': lead.manager_authority_threshold ? formatCurrency(lead.manager_authority_threshold) : '$2,500.00',
+    '[TITLE_WEBSITE]': lead.title_website || '',
+    '[PERSONAL_PROPERTY_INCLUDED]': lead.personal_property || 'All appliances to stay',
+    '[OCCUPANCY_STATUS]': lead.occupancy_status || 'Property is leased and the tenant may continue in possession of the Property after COE unless otherwise agreed in writing.',
+    '[TITLE_HOLDING_INSTRUCTIONS]': lead.title_holding_instructions || 'TBD',
+    '[DEFAULT_INTEREST_RATE]': String(lead.default_interest_rate || 25),
+    '[PARTY_B_DEFAULT_PERCENT]': String(lead.party_b_default_percent || 30),
+    '[PARTY_C_DEFAULT_PERCENT]': String(lead.party_c_default_percent || 30),
+    '[PARTY_D_DEFAULT_PERCENT]': String(lead.party_d_default_percent || 40),
     '[DATE]': effectiveDate,
   };
 }
