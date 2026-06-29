@@ -203,10 +203,7 @@ function formatCurrency(n) {
 function fillTemplate(text, mergeMap) {
   let filled = text;
 
-  // First: apply contract-library's fillTemplate (handles its own token set)
-  filled = contractLibrary.fillTemplate(filled, mergeMap);
-
-  // Then: apply our extended token set
+  // Apply our extended token set (single source of truth — no contract-library.fillTemplate)
   for (const [token, value] of Object.entries(mergeMap)) {
     filled = filled.split(token).join(value);
   }
@@ -393,18 +390,24 @@ function generateFilledPdf(contractType, lead) {
   // 2. Build merge map from lead
   const mergeMap = buildMergeMap(lead);
 
-  // 3. Fill tokens (throws if required fields missing)
-  const filledText = fillTemplate(masterText, mergeMap);
+  // 3. Fill tokens in master (throws if required fields missing)
+  const filledMaster = fillTemplate(masterText, mergeMap);
 
-  // 4. Get addenda and fill those too
-  const addenda = contractLibrary.getAddendaText(contractType);
-  const allText = [filledText, ...addenda.map(a => fillTemplate(a.text, mergeMap))].join('\n\n---\n\n');
+  // 4. Get ALL addenda: fixed (from CONTRACT_LIBRARY) + conditional (from validation rules)
+  const { getAllAddenda } = require('./contract-validation');
+  const allAddenda = getAllAddenda(contractType, lead);
 
-  // 5. Convert to HTML
+  // 5. Fill tokens in each addendum
+  const filledAddenda = allAddenda.map(a => fillTemplate(a.text, mergeMap));
+
+  // 6. Join master + addenda into one document
+  const allText = [filledMaster, ...filledAddenda].join('\n\n---\n\n');
+
+  // 7. Convert to HTML
   const title = `${contractType.toUpperCase().replace(/_/g, ' ')} Contract`;
   const html = textToHtml(allText, title);
 
-  // 6. Render to PDF
+  // 8. Render to PDF
   const edgePath = process.env.BROWSER_PATH || findEdge();
   const pdfBuffer = htmlToPdf(html, edgePath);
 

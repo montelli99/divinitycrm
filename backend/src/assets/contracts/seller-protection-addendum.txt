@@ -1,0 +1,37 @@
+﻿ SELLER PROTECTION ADDENDUM TO PURCHASE AGREEMENT
+
+This Seller Protection Addendum (the "Addendum") is incorporated into and made a part of the Purchase Agreement dated [EFFECTIVE_DATE] by and between [SELLER_NAME] ("Seller") and [BUYER_NAME] ("Buyer") for the property located at [PROPERTY_ADDRESS].
+
+1. LAYERS OF PROTECTION. The Parties acknowledge that the following layers of protection are in place for Seller's benefit:
+
+   Layer 1 — Bookkeeper Auto-Wire: A bookkeeper will be in place to ensure automated wires are sent each month via direct deposit for the existing loan payments and the seller financing portion.
+
+   Layer 2 — Performance Clause: Buyer's failure to make timely payments constitutes a material breach of the Purchase Agreement, entitling Seller to specific remedies as defined herein.
+
+   Layer 3 — Promissory Note: A promissory note ensures the balloon payment of [SELLER_CARRYBACK] is automatically wired at maturity date of [MATURITY_DATE].
+
+   Layer 4 — Deed in Lieu of Foreclosure: Buyer authorizes a deed in lieu of foreclosure to be executed at close of escrow. If Buyer misses a payment for more than 30 days, the Property will be deeded back to Seller within 15 days — bypassing the foreclosure process and preserving the built-in equity and completed renovations.
+
+2. PERFORMANCE CLAUSE DETAILS. If Buyer fails to make any payment due to Seller or to the existing loan servicer within 30 days of the due date:
+   (a) Seller may deliver written notice of default to Buyer;
+   (b) Buyer has 15 days from receipt of notice to cure the default;
+   (c) If Buyer fails to cure within 15 days, Seller may execute the deed in lieu of foreclosure;
+   (d) Seller regains ownership of the Property free and clear of Buyer's interest, subject only to the existing loan(s) and any liens recorded prior to Seller's deed of trust.
+
+3. THIRD-PARTY PROCESSOR. A third-party processing company will be set up within 48 hours of close of escrow. This will automate the monthly payments to the existing loan servicer and to Seller for the seller carryback portion. The processor is bonded and insured.
+
+4. AUTOMATED PAYMENT VERIFICATION. Buyer authorizes Seller or Seller's designated bookkeeper to:
+   (a) Receive monthly statements from the existing loan servicer;
+   (b) Verify that payments have been made on time each month;
+   (c) Receive alerts if any payment is missed or late.
+
+5. SURVIVAL. These protections survive the close of escrow and remain in effect until the seller financing is paid in full or the Property is reconveyed to Seller.
+
+APPROVED AND ACCEPTED BY SELLER:
+SELLER: [SELLER_NAME]
+Signature: _______________________________ Date: ________________
+___________ Seller Initials
+
+APPROVED AND ACCEPTED BY BUYER:
+BUYER: [BUYER_NAME]
+Signature: _______________________________ Date: ________________

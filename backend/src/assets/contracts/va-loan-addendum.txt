@@ -1,0 +1,32 @@
+﻿ VA LOAN ADDENDUM TO PURCHASE AGREEMENT
+
+This VA Loan Addendum (the "Addendum") is incorporated into and made a part of the Purchase Agreement dated [EFFECTIVE_DATE] by and between [SELLER_NAME] ("Seller") and [BUYER_NAME] ("Buyer") for the property located at [PROPERTY_ADDRESS].
+
+1. EXISTING VA LOAN. The Parties acknowledge that the Existing Loan(s) secured by the Property is a loan guaranteed by the United States Department of Veterans Affairs ("VA Loan").
+
+2. VA LOAN ELIGIBILITY IMPACT. Seller understands, acknowledges, and agrees that:
+   (a) The VA Loan will NOT be paid off through closing and will remain as a lien against the Property after close of escrow;
+   (b) The VA Loan remaining outstanding may negatively impact Seller's ability to obtain an additional loan through the VA in the future;
+   (c) Seller's VA entitlement may remain tied up in this Property until the VA Loan is paid in full or assumed by a qualified veteran buyer;
+   (d) Seller should consult with the VA or a VA-approved lender to understand the full impact on future VA loan eligibility.
+
+3. ASSUMPTION POSSIBILITY. Buyer and Seller acknowledge that VA Loans may be assumable by qualified buyers. If the existing lender and VA permit assumption:
+   (a) Buyer may attempt to formally assume the VA Loan, which would release Seller from liability;
+   (b) Seller agrees to cooperate with any assumption process;
+   (c) If assumption is not approved, the VA Loan remains in Seller's name and Seller remains liable.
+
+4. DUE ON SALE RISK. The Parties acknowledge that transferring title to Buyer may trigger the due-on-sale clause in the VA Loan. If the lender calls the loan due:
+   (a) Buyer will need to pay off, refinance, or restructure the loan;
+   (b) Seller is not responsible for any costs associated with lender action;
+   (c) Seller agrees to cooperate with Buyer in any lender negotiations.
+
+5. CERTIFICATION. Seller certifies that Seller has been advised to consult with a VA-approved lender regarding the impact of this transaction on Seller's VA benefits and future loan eligibility.
+
+APPROVED AND ACCEPTED BY SELLER:
+SELLER: [SELLER_NAME]
+Signature: _______________________________ Date: ________________
+___________ Seller Initials
+
+APPROVED AND ACCEPTED BY BUYER:
+BUYER: [BUYER_NAME]
+Signature: _______________________________ Date: ________________

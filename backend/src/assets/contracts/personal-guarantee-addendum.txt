@@ -1,0 +1,33 @@
+﻿ PERSONAL GUARANTEE ADDENDUM TO PURCHASE AGREEMENT
+
+This Personal Guarantee Addendum (the "Guarantee") is incorporated into and made a part of the Purchase Agreement dated [EFFECTIVE_DATE] by and between [SELLER_NAME] ("Seller") and [BUYER_NAME] ("Buyer").
+
+1. GUARANTEE. In consideration for Seller's extension of seller financing to Buyer in the amount of [SELLER_CARRYBACK] (the "Seller Financing"), the undersigned individual ("Guarantor") hereby personally guarantees the full and timely performance and payment of all of Buyer's obligations under the Purchase Agreement and any promissory note executed in connection with the Seller Financing.
+
+2. SCOPE OF GUARANTEE. This Guarantee covers:
+   (a) All monthly payments due to Seller under the Seller Financing terms;
+   (b) The full balloon payment due at maturity ([MATURITY_DATE]);
+   (c) Any default penalties, late fees, or collection costs;
+   (d) Reimbursement of any costs Seller incurs to enforce this Guarantee.
+
+3. DURATION. This Guarantee remains in full force and effect until the Seller Financing is paid in full, whether through regular payments, early payoff, refinancing, or property sale.
+
+4. WAIVER. Guarantor waives:
+   (a) Notice of any default by Buyer;
+   (b) Demand for payment before enforcement;
+   (c) Any right to require Seller to proceed against Buyer or the Property first;
+   (d) Any right to require Seller to exhaust remedies against the Property before pursuing Guarantor.
+
+5. SURVIVAL. This Guarantee survives the close of escrow and remains binding until all obligations under the Seller Financing are fully satisfied.
+
+6. GOVERNING LAW. This Guarantee is governed by the laws of the state where the Property located at [PROPERTY_ADDRESS] is situated.
+
+APPROVED AND ACCEPTED:
+
+GUARANTOR:
+Signature: _______________________________ Date: ________________
+Printed Name: ____________________________
+
+SELLER ACKNOWLEDGES RECEIPT:
+[SELLER_NAME]
+Signature: _______________________________ Date: ________________

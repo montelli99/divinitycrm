@@ -1,0 +1,39 @@
+﻿ DEED IN LIEU OF FORECLOSURE ADDENDUM TO PURCHASE AGREEMENT
+
+This Deed in Lieu of Foreclosure Addendum (the "Addendum") is incorporated into and made a part of the Purchase Agreement dated [EFFECTIVE_DATE] by and between [SELLER_NAME] ("Seller") and [BUYER_NAME] ("Buyer") for the property located at [PROPERTY_ADDRESS].
+
+1. DEED IN LIEU AUTHORIZATION. At close of escrow, Buyer shall execute and deliver to Seller (or Seller's escrow agent) a deed in lieu of foreclosure (the "DIL Deed"), held in escrow. The DIL Deed conveys the Property back to Seller without the need for foreclosure proceedings.
+
+2. TRIGGER CONDITIONS. The DIL Deed shall be released from escrow and recorded by Seller if any of the following occur:
+   (a) Buyer fails to make any payment due to Seller or to the existing loan servicer within 30 days of the due date;
+   (b) Buyer abandons the Property;
+   (c) Buyer files for bankruptcy;
+   (d) Buyer transfers or attempts to transfer the Property in violation of the Purchase Agreement.
+
+3. CURE PERIOD. Before the DIL Deed is recorded:
+   (a) Seller shall deliver written notice of default to Buyer at Buyer's last known address and email;
+   (b) Buyer has 15 days from receipt of notice to cure the default by bringing all payments current, including any late fees;
+   (c) If Buyer cures within 15 days, the DIL Deed remains in escrow and the Purchase Agreement continues in effect;
+   (d) If Buyer fails to cure within 15 days, Seller may record the DIL Deed and regain ownership of the Property.
+
+4. EFFECT OF DIL DEED. Upon recording of the DIL Deed:
+   (a) All of Buyer's interest in the Property terminates;
+   (b) Seller regains ownership of the Property, subject only to the existing loan(s) and liens recorded prior to Buyer's deed of trust;
+   (c) All improvements, renovations, and repairs made by Buyer remain with the Property;
+   (d) Seller is not responsible for reimbursing Buyer for any investments, improvements, or payments made prior to the default.
+
+5. COOPERATION. Buyer agrees to execute any additional documents necessary to effectuate the deed in lieu of foreclosure, including but not limited to:
+   (a) A rescission deed;
+   (b) An affidavit of default;
+   (c) A release of all claims against the Property and Seller.
+
+6. SURVIVAL. This Addendum survives the close of escrow and remains in effect until the seller financing is paid in full or the DIL Deed is recorded.
+
+APPROVED AND ACCEPTED BY SELLER:
+SELLER: [SELLER_NAME]
+Signature: _______________________________ Date: ________________
+___________ Seller Initials
+
+APPROVED AND ACCEPTED BY BUYER:
+BUYER: [BUYER_NAME]
+Signature: _______________________________ Date: ________________
