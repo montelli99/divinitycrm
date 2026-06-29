@@ -89,6 +89,8 @@ const OPTIONAL_TOKENS = [
   '[PARTY_A_PERCENT]', '[PARTY_B_PERCENT]', '[PARTY_C_PERCENT]', '[PARTY_D_PERCENT]',
   '[MANAGING_PARTY]',
   '[CONTACT_PHONE]', '[CONTACT_NAME]',
+  '[COMPANY_NAME]', '[COMPANY_WEBSITE]',
+  '[INITIAL_CAPITAL]', '[MANAGER_AUTHORITY_THRESHOLD]',
   '[DATE]',
 ];
 
@@ -171,6 +173,10 @@ function buildMergeMap(lead) {
     '[MANAGING_PARTY]': lead.managing_party || 'Party A',
     '[CONTACT_PHONE]': lead.contact_phone || '',
     '[CONTACT_NAME]': lead.contact_name || '',
+    '[COMPANY_NAME]': lead.company_name || 'Divinity Aligned LLC',
+    '[COMPANY_WEBSITE]': lead.company_website || '',
+    '[INITIAL_CAPITAL]': lead.initial_capital ? formatCurrency(lead.initial_capital) : '$5,000.00',
+    '[MANAGER_AUTHORITY_THRESHOLD]': lead.manager_authority_threshold ? formatCurrency(lead.manager_authority_threshold) : '$2,500.00',
     '[DATE]': effectiveDate,
   };
 }
