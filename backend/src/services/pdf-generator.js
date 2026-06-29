@@ -84,6 +84,11 @@ const OPTIONAL_TOKENS = [
   '[PARTY_D_NAME]', '[PARTY_D_EMAIL]',
   '[PARTY_A_PAYOUT]', '[PARTY_B_PAYOUT]', '[PARTY_C_PAYOUT]', '[PARTY_D_PAYOUT]',
   '[PARTY_A_SELLER_PAYMENT]', '[PARTY_A_ASSIGNMENT_FEE]',
+  '[PARTY_A_NAME]', '[PARTY_A_EMAIL]', '[PARTY_B_NAME]', '[PARTY_B_EMAIL]',
+  '[PARTY_C_NAME]', '[PARTY_C_EMAIL]',
+  '[PARTY_A_PERCENT]', '[PARTY_B_PERCENT]', '[PARTY_C_PERCENT]', '[PARTY_D_PERCENT]',
+  '[MANAGING_PARTY]',
+  '[CONTACT_PHONE]', '[CONTACT_NAME]',
   '[DATE]',
 ];
 
@@ -151,6 +156,21 @@ function buildMergeMap(lead) {
     '[PARTY_D_PAYOUT]': lead.party_d_payout ? formatCurrency(lead.party_d_payout) : '',
     '[PARTY_A_SELLER_PAYMENT]': lead.party_a_seller_payment ? formatCurrency(lead.party_a_seller_payment) : '',
     '[PARTY_A_ASSIGNMENT_FEE]': lead.party_a_assignment_fee ? formatCurrency(lead.party_a_assignment_fee) : '',
+    '[PARTY_A_NAME]': lead.party_a_name || '',
+    '[PARTY_A_EMAIL]': lead.party_a_email || '',
+    '[PARTY_B_NAME]': lead.party_b_name || '',
+    '[PARTY_B_EMAIL]': lead.party_b_email || '',
+    '[PARTY_C_NAME]': lead.party_c_name || '',
+    '[PARTY_C_EMAIL]': lead.party_c_email || '',
+    '[PARTY_D_NAME]': lead.party_d_name || '',
+    '[PARTY_D_EMAIL]': lead.party_d_email || '',
+    '[PARTY_A_PERCENT]': String(lead.party_a_percent || 25),
+    '[PARTY_B_PERCENT]': String(lead.party_b_percent || 25),
+    '[PARTY_C_PERCENT]': String(lead.party_c_percent || 25),
+    '[PARTY_D_PERCENT]': String(lead.party_d_percent || 25),
+    '[MANAGING_PARTY]': lead.managing_party || 'Party A',
+    '[CONTACT_PHONE]': lead.contact_phone || '',
+    '[CONTACT_NAME]': lead.contact_name || '',
     '[DATE]': effectiveDate,
   };
 }
