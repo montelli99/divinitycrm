@@ -14,6 +14,8 @@
 
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { query } = require('../db/connection');
 
 const RS_KEY_ID = process.env.RABBITSIGN_KEY_ID || 'FdoxIa1tIsnUNmCjfGt4Ns';
@@ -192,6 +194,45 @@ function uploadToS3(uploadUrl, file) {
 }
 
 /**
+ * Create a folder directly from a PDF file via API (no template needed).
+ * 3-step: upload-url → S3 upload → create folder.
+ * Used as fallback when no RabbitSign template ID is configured.
+ */
+async function createFolderFromPdf(pdfPath, { title, summary, date, signers }) {
+  const pdfBuffer = fs.readFileSync(pdfPath);
+
+  // Step 1: Get upload URL
+  const { uploadUrl } = await rsRequest('POST', '/api/v1/upload-url');
+
+  // Step 2: Upload PDF to S3
+  await uploadToS3(uploadUrl, { buffer: pdfBuffer });
+
+  // Step 3: Create folder
+  const signerInfo = {};
+  for (const signer of signers) {
+    signerInfo[signer.email] = {
+      name: signer.name,
+      fields: [],
+    };
+  }
+
+  const body = {
+    folder: {
+      title,
+      summary: summary || `Contract document: ${title}`,
+      docInfo: [{
+        url: uploadUrl,
+        docTitle: title,
+      }],
+      signerInfo,
+    },
+    date: date || localDateYmd(),
+  };
+
+  return rsRequest('POST', '/api/v1/folder', body);
+}
+
+/**
  * Get folder signing status.
  * GET /api/v1/folder/{folderId}
  */
@@ -248,41 +289,73 @@ async function createContractEnvelope(lead, contractType) {
 
   // Template selection — LRN-20260626-008 + LRN-20260626-010:
   // Use contract-library as the single source of truth for which env var
-  // backs each contract type. NO silent fallback. The library also rejects
-  // unsupported types and missing env vars with clear errors.
+  // backs each contract type. If no template ID is configured, fall back
+  // to direct folder creation from the bundled PDF (no pre-placed fields).
   const contractLibrary = require('./contract-library');
-  const templateId = contractLibrary.getRabbitSignTemplateId(contractType);
-
-  const senderFieldValues = [
-    { name: 'property address', currentValue: address },
-    { name: 'purchase price', currentValue: price },
-    { name: 'emd amount', currentValue: `$${emd}` },
-    { name: 'close of escrow date', currentValue: coeDate },
-    { name: 'inspection period days', currentValue: String(inspectionDays) },
-    { name: 'title company', currentValue: titleCompany },
-    { name: 'buyer entity', currentValue: buyerName },
-    { name: 'today', currentValue: date },
-  ];
-
-  if (contractType === 'subto' || contractType === 'seller_finance' || contractType === 'seller-finance') {
-    senderFieldValues.push(
-      { name: 'existing loan balance', currentValue: lead.existing_loan_balance ? `$${Number(lead.existing_loan_balance).toLocaleString()}` : 'TBD' },
-      { name: 'subject to addendum', currentValue: 'Attached' }
-    );
-  }
+  contractLibrary.assertSupported(contractType);
+  const entry = contractLibrary.CONTRACT_LIBRARY[contractType];
+  const envVarName = entry.rabbitsignTemplateEnvVar;
+  const templateId = process.env[envVarName]; // undefined if not set
 
   const roles = {
     'Seller': { name: sellerName, email: sellerEmail },
     'Buyer': { name: buyerName, email: buyerEmail },
   };
 
-  const result = await createFolderFromTemplate(templateId, {
-    title: `Purchase Agreement - ${address}`,
-    summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
-    date,
-    senderFieldValues,
-    roles,
-  });
+  let result;
+
+  if (templateId) {
+    // Path 1: Use template (has pre-placed fields)
+    const senderFieldValues = [
+      { name: 'property address', currentValue: address },
+      { name: 'purchase price', currentValue: price },
+      { name: 'emd amount', currentValue: `$${emd}` },
+      { name: 'close of escrow date', currentValue: coeDate },
+      { name: 'inspection period days', currentValue: String(inspectionDays) },
+      { name: 'title company', currentValue: titleCompany },
+      { name: 'buyer entity', currentValue: buyerName },
+      { name: 'today', currentValue: date },
+    ];
+
+    if (contractType === 'subto' || contractType === 'seller_finance' || contractType === 'seller-finance') {
+      senderFieldValues.push(
+        { name: 'existing loan balance', currentValue: lead.existing_loan_balance ? `$${Number(lead.existing_loan_balance).toLocaleString()}` : 'TBD' },
+        { name: 'subject to addendum', currentValue: 'Attached' }
+      );
+    }
+
+    result = await createFolderFromTemplate(templateId, {
+      title: `Purchase Agreement - ${address}`,
+      summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
+      date,
+      senderFieldValues,
+      roles,
+    });
+  } else {
+    // Path 2: Direct folder creation from bundled PDF (no pre-placed fields)
+    // The PDF is in backend/src/assets/contracts/pdfs/<file>.pdf
+    const pdfDir = path.resolve(__dirname, '..', 'assets', 'contracts', 'pdfs');
+    const pdfFile = entry.templateFile.replace('.txt', '.pdf');
+    const pdfPath = path.join(pdfDir, pdfFile);
+
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error(
+        `No RabbitSign template configured (${envVarName}) AND no PDF fallback found at ${pdfPath}. ` +
+        `Either set the env var with a template ID, or ensure the PDF exists.`
+      );
+    }
+
+    console.log(`[rabbitsign] No template ID for ${contractType}, using direct PDF: ${pdfFile}`);
+    result = await createFolderFromPdf(pdfPath, {
+      title: `Purchase Agreement - ${address}`,
+      summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
+      date,
+      signers: [
+        { name: sellerName, email: sellerEmail },
+        { name: buyerName, email: buyerEmail },
+      ],
+    });
+  }
 
   // Save to DB
   if (result.folderId) {
@@ -312,25 +385,57 @@ async function createJVEnvelope(lead, jvType = '4-party') {
     };
   });
 
-  const senderFieldValues = [
-    { name: 'property address', currentValue: address },
-    { name: 'jv type', currentValue: jvType },
-    { name: 'today', currentValue: date },
-  ];
+  const jvTemplateEnvVar = jvType === '5-party' ? 'RABBITSIGN_TEMPLATE_JV5' : 'RABBITSIGN_TEMPLATE_JV';
+  const templateId = process.env[jvTemplateEnvVar];
 
-  percentages.forEach((pct, i) => {
-    senderFieldValues.push({ name: `party ${i + 1} percentage`, currentValue: `${pct}%` });
-  });
+  let result;
 
-  const templateId = jvType === '3-party' ? 'JV3Party' : 'JV4Party';
+  if (templateId) {
+    const senderFieldValues = [
+      { name: 'property address', currentValue: address },
+      { name: 'jv type', currentValue: jvType },
+      { name: 'today', currentValue: date },
+    ];
 
-  const result = await createFolderFromTemplate(templateId, {
-    title: `Joint Venture Agreement - ${address}`,
-    summary: `${jvType} JV for ${address}`,
-    date,
-    senderFieldValues,
-    roles,
-  });
+    percentages.forEach((pct, i) => {
+      senderFieldValues.push({ name: `party ${i + 1} percentage`, currentValue: `${pct}%` });
+    });
+
+    result = await createFolderFromTemplate(templateId, {
+      title: `Joint Venture Agreement - ${address}`,
+      summary: `${jvType} JV for ${address}`,
+      date,
+      senderFieldValues,
+      roles,
+    });
+  } else {
+    // Fallback: direct folder creation from bundled PDF
+    const pdfDir = path.resolve(__dirname, '..', 'assets', 'contracts', 'pdfs');
+    const pdfFile = jvType === '5-party' ? 'jv-5party.pdf' : 'jv-4party.pdf';
+    const pdfPath = path.join(pdfDir, pdfFile);
+
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error(
+        `No RabbitSign JV template configured (${jvTemplateEnvVar}) AND no PDF fallback found at ${pdfPath}.`
+      );
+    }
+
+    console.log(`[rabbitsign] No JV template ID, using direct PDF: ${pdfFile}`);
+    const signers = parties.map((party, i) => ({
+      name: party.name || `Party ${i + 1}`,
+      email: party.email || `party${i + 1}@example.com`,
+    }));
+    if (signers.length === 0) {
+      signers.push({ name: 'Montelli Scott', email: 'montelliscottrei@gmail.com' });
+    }
+
+    result = await createFolderFromPdf(pdfPath, {
+      title: `Joint Venture Agreement - ${address}`,
+      summary: `${jvType} JV for ${address}`,
+      date,
+      signers,
+    });
+  }
 
   if (result.folderId) {
     await query(
@@ -413,6 +518,7 @@ function isConfigured() {
 
 module.exports = {
   createFolderFromTemplate,
+  createFolderFromPdf,
   createFolder,
   getFolderStatus,
   getFolders,

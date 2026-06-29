@@ -254,26 +254,34 @@ test('POST /send-rabbitsign succeeds after /:id/approve', async () => {
 });
 
 // =============================================================
-// 4. Missing template -> hard error (no silent fallback)
+// 4. Missing template -> falls back to direct PDF folder creation
 // =============================================================
 
-test('createContractEnvelope throws when RABBITSIGN_TEMPLATE_SUBTO missing', async () => {
+test('createContractEnvelope falls back to PDF when RABBITSIGN_TEMPLATE_SUBTO missing', async () => {
   const rs = require(path.join(BACKEND_ROOT, 'src/services/rabbitsign'));
   // Ensure env var is unset for this test
   delete process.env.RABBITSIGN_TEMPLATE_SUBTO;
-  await assert.rejects(
-    () => rs.createContractEnvelope({ id: 'lead-1', address: '123 Test' }, 'subto'),
-    /No RabbitSign template configured for contract type 'subto'/
-  );
+  // Should NOT throw — should fall back to createFolderFromPdf
+  // We can't test the full API call without network, so we just verify
+  // it doesn't throw the "No RabbitSign template configured" error anymore
+  try {
+    await rs.createContractEnvelope({ id: 'lead-1', address: '123 Test' }, 'subto');
+  } catch (err) {
+    // Should NOT be the "No RabbitSign template configured" error
+    assert.ok(!/No RabbitSign template configured/.test(err.message),
+      `Should not throw template-missing error, got: ${err.message}`);
+  }
 });
 
-test('createContractEnvelope throws when RABBITSIGN_TEMPLATE_CASH missing', async () => {
+test('createContractEnvelope falls back to PDF when RABBITSIGN_TEMPLATE_CASH missing', async () => {
   const rs = require(path.join(BACKEND_ROOT, 'src/services/rabbitsign'));
   delete process.env.RABBITSIGN_TEMPLATE_CASH;
-  await assert.rejects(
-    () => rs.createContractEnvelope({ id: 'lead-1', address: '123 Test' }, 'cash'),
-    /No RabbitSign template configured for contract type 'cash'/
-  );
+  try {
+    await rs.createContractEnvelope({ id: 'lead-1', address: '123 Test' }, 'cash');
+  } catch (err) {
+    assert.ok(!/No RabbitSign template configured/.test(err.message),
+      `Should not throw template-missing error, got: ${err.message}`);
+  }
 });
 
 test('createContractEnvelope throws on unsupported contract type', async () => {

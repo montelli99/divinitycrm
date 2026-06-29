@@ -1,0 +1,137 @@
+[
+  {
+    "file": "cash-offer.pdf",
+    "title": "Cash Offer",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "mWhz9ghw960qfTMPHJ0YcH"
+  },
+  {
+    "file": "subto-addendum.pdf",
+    "title": "Subject To Addendum",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "rHY1rasne0ATNeth8QpZrx"
+  },
+  {
+    "file": "subto-loi.pdf",
+    "title": "SubTo LOI",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "edKa8hgEwqb3x7RAkJwcPx"
+  },
+  {
+    "file": "stack-loi.pdf",
+    "title": "Stack LOI",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "id0CwL88nyxU4D6NmVXW5l"
+  },
+  {
+    "file": "stack50.pdf",
+    "title": "Stack 50% Hybrid",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "p6g7L1b1eTjU9J0hpuB10h"
+  },
+  {
+    "file": "stack10.pdf",
+    "title": "Stack 10% DP 2yr Balloon",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "uKSaVWFEN26063NVR7SYAU"
+  },
+  {
+    "file": "stack10-bal.pdf",
+    "title": "Stack 10% Balance",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "W7vcBPdFTYFZIZQxq0JiYT"
+  },
+  {
+    "file": "stack-io.pdf",
+    "title": "Stack Interest Only",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "CUUbyNOw7iWYqSRwQd2zQU"
+  },
+  {
+    "file": "stack-mfh.pdf",
+    "title": "Stack Multi-Family",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "ikfGokwR7mR23u6dwWOOm2"
+  },
+  {
+    "file": "commercial-psa.pdf",
+    "title": "Commercial PSA",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "LVtDFjkvHvNLg1lhbC2KUh"
+  },
+  {
+    "file": "portfolio-loi.pdf",
+    "title": "Portfolio LOI",
+    "roles": [
+      "Seller",
+      "Buyer"
+    ],
+    "status": "created",
+    "folderId": "B1TW0H05UTg4supOhViihZ"
+  },
+  {
+    "file": "jv-4party.pdf",
+    "title": "JV 4-Party",
+    "roles": [
+      "Party 1",
+      "Party 2",
+      "Party 3",
+      "Party 4"
+    ],
+    "status": "created",
+    "folderId": "VScxtyWAypmSx7EOFa4DXc"
+  },
+  {
+    "file": "jv-5party.pdf",
+    "title": "JV 5-Party",
+    "roles": [
+      "Party 1",
+      "Party 2",
+      "Party 3",
+      "Party 4",
+      "Party 5"
+    ],
+    "status": "created",
+    "folderId": "Lh0xV01kqIzcsj50weLmZV"
+  }
+]
