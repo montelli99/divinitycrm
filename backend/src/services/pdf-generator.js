@@ -65,6 +65,29 @@ const REQUIRED_TOKENS = [
 ];
 
 /**
+ * Tokens that are OPTIONAL — if present in template but not in merge map,
+ * they'll be left as [TOKEN] and won't cause an error.
+ * These are contract-type-specific and only required for certain types.
+ */
+const OPTIONAL_TOKENS = [
+  '[APN]', '[CITY_STATE_ZIP]', '[PROPERTY_CITY]', '[PROPERTY_STATE]', '[PROPERTY_ZIP]',
+  '[SELLER_EMAIL]', '[SELLER_PHONE]', '[SELLER_ADDRESS]', '[SELLER_COMPANY]',
+  '[BUYER_EMAIL]', '[BUYER_PHONE]', '[BUYER_ADDRESS]', '[BUYER_COMPANY]',
+  '[EMD_AMOUNT]', '[INSPECTION_DAYS]', '[COE_DAYS]', '[COE_DATE]',
+  '[EXISTING_LOAN_BALANCE]', '[EXISTING_LOAN_LENDER]', '[EXISTING_LOAN_PAYMENT]',
+  '[SELLER_CARRYBACK]', '[SELLER_CARRYBACK_RATE]', '[MONTHLY_PAYMENT]',
+  '[MATURITY_DATE]', '[MATURITY_MONTHS]', '[PAYMENT_START_DATE]',
+  '[CASH_AT_COE]', '[DOWN_PAYMENT]', '[INTEREST_ANNUAL]', '[INTEREST_TOTAL]',
+  '[TITLE_COMPANY]', '[TITLE_EMAIL]', '[TITLE_PHONE]',
+  '[NON_CIRCUMVENTION_PENALTY]',
+  '[PORTFOLIO_PROPERTY_COUNT]', '[PORTFOLIO_TOTAL_PRICE]',
+  '[PARTY_D_NAME]', '[PARTY_D_EMAIL]',
+  '[PARTY_A_PAYOUT]', '[PARTY_B_PAYOUT]', '[PARTY_C_PAYOUT]', '[PARTY_D_PAYOUT]',
+  '[PARTY_A_SELLER_PAYMENT]', '[PARTY_A_ASSIGNMENT_FEE]',
+  '[DATE]',
+];
+
+/**
  * Build the merge map from a lead record.
  * Maps DB lead fields → [PLACEHOLDER] tokens in the .txt master.
  */
@@ -112,6 +135,22 @@ function buildMergeMap(lead) {
     '[MATURITY_MONTHS]': lead.maturity_months ? String(lead.maturity_months) : '72',
     '[PAYMENT_START_DATE]': lead.payment_start_date || effectiveDate,
     '[CASH_AT_COE]': lead.cash_at_coe ? formatCurrency(lead.cash_at_coe) : '$0.00',
+    '[DOWN_PAYMENT]': lead.down_payment ? formatCurrency(lead.down_payment) : '$0.00',
+    '[INTEREST_ANNUAL]': lead.interest_annual ? formatCurrency(lead.interest_annual) : '$0.00',
+    '[INTEREST_TOTAL]': lead.interest_total ? formatCurrency(lead.interest_total) : '$0.00',
+    '[NON_CIRCUMVENTION_PENALTY]': lead.non_circumvention_penalty ? formatCurrency(lead.non_circumvention_penalty) : '$10,000.00',
+    '[PORTFOLIO_PROPERTY_COUNT]': String(lead.portfolio_property_count || 1),
+    '[PORTFOLIO_TOTAL_PRICE]': lead.portfolio_total_price ? formatCurrency(lead.portfolio_total_price) : '',
+    '[SELLER_COMPANY]': lead.seller_company || '',
+    '[BUYER_COMPANY]': lead.buyer_company || 'Divinity Aligned LLC',
+    '[PARTY_D_NAME]': lead.party_d_name || '',
+    '[PARTY_D_EMAIL]': lead.party_d_email || '',
+    '[PARTY_A_PAYOUT]': lead.party_a_payout ? formatCurrency(lead.party_a_payout) : '',
+    '[PARTY_B_PAYOUT]': lead.party_b_payout ? formatCurrency(lead.party_b_payout) : '',
+    '[PARTY_C_PAYOUT]': lead.party_c_payout ? formatCurrency(lead.party_c_payout) : '',
+    '[PARTY_D_PAYOUT]': lead.party_d_payout ? formatCurrency(lead.party_d_payout) : '',
+    '[PARTY_A_SELLER_PAYMENT]': lead.party_a_seller_payment ? formatCurrency(lead.party_a_seller_payment) : '',
+    '[PARTY_A_ASSIGNMENT_FEE]': lead.party_a_assignment_fee ? formatCurrency(lead.party_a_assignment_fee) : '',
     '[DATE]': effectiveDate,
   };
 }
@@ -135,16 +174,27 @@ function fillTemplate(text, mergeMap) {
     filled = filled.split(token).join(value);
   }
 
-  // Validate: no [UPPERCASE] tokens should remain
+  // Validate: check for unresolved [UPPERCASE] tokens
   const unresolved = filled.match(/\[[A-Z_]{3,}\]/g);
   if (unresolved) {
     // Filter out non-merge tokens (like [X] or [ ] checkboxes)
     const realUnresolved = unresolved.filter(t => t.length > 4 && !t.includes(' '));
     if (realUnresolved.length > 0) {
-      throw new Error(
-        `Unresolved merge tokens in contract: ${[...new Set(realUnresolved)].join(', ')}. ` +
-        `All required fields must be filled before sending to RabbitSign.`
-      );
+      // Check which are required vs optional
+      const missingRequired = realUnresolved.filter(t => REQUIRED_TOKENS.includes(t));
+      const missingOptional = realUnresolved.filter(t => OPTIONAL_TOKENS.includes(t));
+      
+      if (missingRequired.length > 0) {
+        throw new Error(
+          `Required merge tokens unresolved: ${[...new Set(missingRequired)].join(', ')}. ` +
+          `Lead data missing — fix the lead record before sending.`
+        );
+      }
+      
+      // Replace optional unresolved tokens with blanks
+      for (const token of [...new Set(missingOptional)]) {
+        filled = filled.split(token).join('________________');
+      }
     }
   }
 
