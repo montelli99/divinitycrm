@@ -111,6 +111,13 @@ function buildMergeMap(lead) {
     ? new Date(lead.coe_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : new Date(Date.now() + (lead.coe_days || 30) * 86400000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
+  // Calculate maturity date if not set: COE date + maturity months
+  const maturityMonths = lead.maturity_months || 72;
+  const maturityDate = lead.maturity_date
+    ? lead.maturity_date
+    : new Date(Date.now() + (lead.coe_days || 30 + Number(maturityMonths) * 30) * 86400000)
+        .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
   const cityStateZip = [lead.city, lead.state, lead.zip].filter(Boolean).join(', ');
 
   return {
@@ -143,7 +150,7 @@ function buildMergeMap(lead) {
     '[SELLER_CARRYBACK]': lead.seller_carryback ? formatCurrency(lead.seller_carryback) : '$0.00',
     '[SELLER_CARRYBACK_RATE]': lead.seller_carryback_rate ? `${(lead.seller_carryback_rate * 100).toFixed(2)}%` : '0%',
     '[MONTHLY_PAYMENT]': lead.monthly_payment ? formatCurrency(lead.monthly_payment) : '$0.00',
-    '[MATURITY_DATE]': lead.maturity_date || '',
+    '[MATURITY_DATE]': maturityDate,
     '[MATURITY_MONTHS]': lead.maturity_months ? String(lead.maturity_months) : '72',
     '[PAYMENT_START_DATE]': lead.payment_start_date || effectiveDate,
     '[CASH_AT_COE]': lead.cash_at_coe ? formatCurrency(lead.cash_at_coe) : '$0.00',
@@ -265,8 +272,15 @@ function textToHtml(text, title) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Convert checkbox markers to HTML checkboxes
-  html = html.replace(/⛾/g, '☑').replace(/☐/g, '☐');
+  // Convert checkbox markers to proper Unicode
+  // .txt files use: [X] = checked, [ ] = unchecked, ? = unchecked (OCR artifact)
+  html = html.replace(/\[X\]/g, '☑');
+  html = html.replace(/\[ \]/g, '☐');
+  html = html.replace(/\[\]/g, '☐');
+  // Replace standalone ? that represent checkboxes (followed by space and capital letter)
+  html = html.replace(/\? (?=[A-Z])/g, '☐ ');
+  // Replace ? at start of option lists
+  html = html.replace(/\? /g, '☐ ');
 
   // Split into paragraphs on double-newlines or section headers
   // The .txt files are essentially run-on text with section numbers
@@ -355,10 +369,11 @@ function htmlToPdf(html, edgePath) {
   try {
     // Headless Edge: print to PDF
     const args = [
-      '--headless',
+      '--headless=new',
       '--disable-gpu',
       '--no-sandbox',
       '--print-to-pdf=' + tmpPdf,
+      '--no-pdf-header-footer',
       '--print-to-pdf-no-header',
       'file:///' + tmpHtml.replace(/\\/g, '/'),
     ];
