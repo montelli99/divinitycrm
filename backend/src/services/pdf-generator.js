@@ -177,9 +177,18 @@ function cleanSourceText(text) {
     .replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&#34;/g, '"');
   c = c.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
     .replace(/\uFFFD/g, "'").replace(/\u2013/g, '-').replace(/\u2014/g, '--').replace(/\u2026/g, '...');
-  // Standardize checkboxes — only normalize, don't change case of surrounding text
+  // Standardize checkboxes
   c = c.replace(/\[X\]/gi, '☑').replace(/\[ \]/g, '☐').replace(/\[\]/g, '☐').replace(/\[\s*\]/g, '☐');
-  c = c.replace(/\? (?=[A-Z])/g, '☐ ');
+  c = c.replace(/\? (?=[A-Z])/g, '☐ ').replace(/\? (?=[a-z])/g, '☐ ');
+  // Normalize merge tokens: convert mixed-case [Token_Name] to [TOKEN_NAME]
+  c = c.replace(/\[([A-Za-z][A-Za-z0-9_]{3,})\]/g, (match, token) => {
+    const upper = token.toUpperCase();
+    // Only convert if it looks like a merge token (has underscore or is known)
+    if (token.includes('_') || token.includes('LOAN') || token.includes('SELLER') || token.includes('BUYER') || token.includes('PROPERTY')) {
+      return '[' + upper + ']';
+    }
+    return match;
+  });
   return c;
 }
 
@@ -257,33 +266,29 @@ function buildCoverPage(lead, contractType, addenda) {
 // ============================================================
 
 function renderDocument(text, docTitle) {
-  // Clean source text (normalize entities, checkboxes, encoding — NEVER change case)
   const cleaned = cleanSourceText(text);
   const escaped = escapeHtml(cleaned);
 
-  // Split into sections: the .txt files may be one long line with numbered sections
-  // Insert newlines before section numbers to create paragraph breaks
+  // Split into sections: insert newlines before section numbers
   let sectioned = escaped;
-  // Insert newline before "1.1", "1.2", "2.1", etc. (but not inside numbers like 1,000.00)
   sectioned = sectioned.replace(/(\d+)\.(\d+)\s+([A-Z][A-Za-z])/g, (match, num, sub, letter) => {
-    // Only split if it looks like a section header (not a decimal number)
     if (parseInt(num) <= 30 && parseInt(sub) <= 30) {
       return '\n' + num + '.' + sub + ' ' + letter;
     }
     return match;
   });
-
-  // Also split before "APPROVED AND ACCEPTED"
   sectioned = sectioned.replace(/APPROVED AND ACCEPTED/g, '\nAPPROVED AND ACCEPTED');
 
-  // Split into lines and wrap in paragraphs
   const lines = sectioned.split('\n');
   const parts = [];
   let para = [];
 
   function flush() {
     if (para.length > 0) {
-      parts.push(`<p class="body">${para.join(' ').trim()}</p>`);
+      // Wrap currency values in nowrap spans
+      let ptext = para.join(' ').trim();
+      ptext = ptext.replace(/\$[\d,]+\.?\d*/g, '<span class="nowrap">$&</span>');
+      parts.push(`<p class="body">${ptext}</p>`);
       para = [];
     }
   }
@@ -292,7 +297,6 @@ function renderDocument(text, docTitle) {
     const trimmed = line.trim();
     if (!trimmed) { flush(); continue; }
 
-    // Detect section headers: numbered like "1.1 Title" or short ALL-CAPS lines under 60 chars
     const isNumberedSection = /^\d+(\.\d+)*\s+/.test(trimmed);
     const isShortAllCaps = /^[A-Z][A-Z\s,.&]+$/.test(trimmed) && trimmed.length < 60 && trimmed.split(' ').length < 10;
 
@@ -342,22 +346,23 @@ function buildPacketHtml(contractType, lead, mergeMap, documents) {
     -webkit-print-color-adjust: exact;
   }
 
-  /* Cover Page — compact */
-  .cover { page-break-after: always; padding-top: 0.3in; }
-  .cover-header { text-align: center; margin-bottom: 16pt; }
-  .cover-title { font-size: 18pt; font-weight: bold; letter-spacing: 1pt; }
-  .cover-strategy { font-size: 13pt; color: #444; margin-top: 4pt; }
-  .cover-grid { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
+  /* Cover Page — professional law firm style */
+  .cover { page-break-after: always; padding-top: 0.2in; }
+  .cover-header { text-align: center; margin-bottom: 18pt; border-bottom: 2px solid #000; padding-bottom: 10pt; }
+  .cover-title { font-size: 20pt; font-weight: bold; letter-spacing: 1.5pt; margin-bottom: 2pt; }
+  .cover-strategy { font-size: 14pt; color: #333; margin-top: 6pt; font-weight: bold; }
+  .cover-grid { width: 100%; border-collapse: collapse; margin-bottom: 14pt; }
   .cover-col { width: 100%; border-collapse: collapse; }
-  .cover-col td { padding: 3pt 6pt; border-bottom: 1px solid #eee; }
-  .ck { font-weight: bold; color: #555; white-space: nowrap; width: 45%; }
+  .cover-col td { padding: 4pt 8pt; border-bottom: 1px solid #e0e0e0; font-size: 11.5pt; }
+  .ck { font-weight: bold; color: #444; white-space: nowrap; width: 48%; }
   .cv { color: #000; }
-  .cover-docs { margin: 8pt 0 12pt 0; }
-  .cover-docs-title { font-weight: bold; margin-bottom: 4pt; }
-  .cover-docs-list { margin-left: 16pt; }
+  .cover-price-row td { font-size: 13pt; font-weight: bold; border-bottom: 2px solid #ccc; padding: 6pt 8pt; }
+  .cover-docs { margin: 6pt 0 10pt 0; border-top: 1px solid #ddd; padding-top: 8pt; }
+  .cover-docs-title { font-weight: bold; margin-bottom: 4pt; font-size: 11pt; }
+  .cover-docs-list { margin-left: 16pt; font-size: 11pt; }
   .cover-docs-list li { margin: 2pt 0; }
   .cond { font-style: italic; color: #888; font-size: 10pt; }
-  .cover-footer { margin-top: 16pt; font-size: 9pt; color: #888; border-top: 1px solid #ddd; padding-top: 6pt; }
+  .cover-footer { margin-top: 14pt; font-size: 9pt; color: #888; border-top: 1px solid #ddd; padding-top: 6pt; text-align: center; }
 
   /* Documents — flow continuously, no page-break-before */
   .doc { margin-top: 20pt; }
@@ -376,6 +381,7 @@ function buildPacketHtml(contractType, lead, mergeMap, documents) {
   .sig { margin: 4pt 0; }
   .appr { margin-top: 14pt; border-top: 1px solid #999; padding-top: 6pt; page-break-inside: avoid; }
   .appr-h { font-weight: bold; margin-bottom: 4pt; text-transform: none; }
+  .nowrap { white-space: nowrap; }
 </style>
 </head>
 <body>
