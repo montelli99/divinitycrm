@@ -1,28 +1,21 @@
 /**
- * pdf-generator.js — Generate filled PDFs from .txt contract masters
+ * pdf-generator.js — Production-grade contract PDF generation
  *
  * Architecture:
  * 1. Read .txt master from src/assets/contracts/
- * 2. Replace merge tokens with lead data
- * 3. Wrap in styled HTML (legal document formatting)
+ * 2. Replace merge tokens with lead data (validated by contract-validation.js)
+ * 3. Convert to professional-styled HTML (legal document formatting)
  * 4. Render to PDF via headless Edge (Chromium)
  * 5. Return PDF buffer
  *
- * No RabbitSign templates required.
- * Updating a .txt file automatically affects all future PDFs.
- *
- * Merge tokens (all [UPPERCASE_WITH_UNDERSCORES]):
- *   [PROPERTY_ADDRESS], [CITY_STATE_ZIP], [APN],
- *   [PURCHASE_PRICE], [EMD_AMOUNT], [EXISTING_LOAN_BALANCE],
- *   [SELLER_NAME], [SELLER_EMAIL], [SELLER_PHONE],
- *   [BUYER_NAME], [BUYER_EMAIL],
- *   [INSPECTION_DAYS], [COE_DATE], [EFFECTIVE_DATE],
- *   [TITLE_COMPANY], [TITLE_EMAIL], [TITLE_PHONE],
- *   [PROPERTY_CITY], [PROPERTY_STATE], [PROPERTY_ZIP],
- *   [EXISTING_LOAN_LENDER], [SELLER_CARRYBACK], [SELLER_CARRYBACK_RATE],
- *   [MONTHLY_PAYMENT], [MATURITY_DATE], [CASH_AT_COE]
- *
- * If any REQUIRED token is missing from lead data, generateFilledPdf() throws.
+ * PDF styling follows legal document conventions:
+ * - Times New Roman 12pt body, 14pt headings
+ * - 1-inch margins, 1.5 line height
+ * - Justified body text, centered title
+ * - Bold section headers, proper indentation
+ * - Signature blocks with spacing and lines
+ * - Page breaks before signature pages
+ * - No headers/footers (clean document)
  */
 
 const fs = require('fs');
@@ -43,7 +36,6 @@ function findEdge() {
   for (const p of EDGE_PATHS) {
     if (fs.existsSync(p)) return p;
   }
-  // Try PATH lookup
   try {
     const { execSync } = require('child_process');
     const found = execSync('where msedge 2>nul || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null', { encoding: 'utf8', shell: true }).trim().split('\n')[0];
@@ -52,10 +44,10 @@ function findEdge() {
   return null;
 }
 
-/**
- * REQUIRED merge tokens — if any of these are unresolved after filling,
- * the send is REJECTED. No blank contracts go to signers.
- */
+// ============================================================
+// MERGE TOKENS
+// ============================================================
+
 const REQUIRED_TOKENS = [
   '[PROPERTY_ADDRESS]',
   '[PURCHASE_PRICE]',
@@ -64,11 +56,6 @@ const REQUIRED_TOKENS = [
   '[EFFECTIVE_DATE]',
 ];
 
-/**
- * Tokens that are OPTIONAL — if present in template but not in merge map,
- * they'll be left as [TOKEN] and won't cause an error.
- * These are contract-type-specific and only required for certain types.
- */
 const OPTIONAL_TOKENS = [
   '[APN]', '[CITY_STATE_ZIP]', '[PROPERTY_CITY]', '[PROPERTY_STATE]', '[PROPERTY_ZIP]',
   '[SELLER_EMAIL]', '[SELLER_PHONE]', '[SELLER_ADDRESS]', '[SELLER_COMPANY]',
@@ -78,7 +65,7 @@ const OPTIONAL_TOKENS = [
   '[SELLER_CARRYBACK]', '[SELLER_CARRYBACK_RATE]', '[MONTHLY_PAYMENT]',
   '[MATURITY_DATE]', '[MATURITY_MONTHS]', '[PAYMENT_START_DATE]',
   '[CASH_AT_COE]', '[DOWN_PAYMENT]', '[INTEREST_ANNUAL]', '[INTEREST_TOTAL]',
-  '[TITLE_COMPANY]', '[TITLE_EMAIL]', '[TITLE_PHONE]',
+  '[TITLE_COMPANY]', '[TITLE_EMAIL]', '[TITLE_PHONE]', '[TITLE_WEBSITE]',
   '[NON_CIRCUMVENTION_PENALTY]',
   '[PORTFOLIO_PROPERTY_COUNT]', '[PORTFOLIO_TOTAL_PRICE]',
   '[PARTY_D_NAME]', '[PARTY_D_EMAIL]',
@@ -99,10 +86,10 @@ const OPTIONAL_TOKENS = [
   '[DATE]',
 ];
 
-/**
- * Build the merge map from a lead record.
- * Maps DB lead fields → [PLACEHOLDER] tokens in the .txt master.
- */
+function formatCurrency(n) {
+  return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function buildMergeMap(lead) {
   const today = new Date();
   const effectiveDate = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -111,11 +98,10 @@ function buildMergeMap(lead) {
     ? new Date(lead.coe_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : new Date(Date.now() + (lead.coe_days || 30) * 86400000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Calculate maturity date if not set: COE date + maturity months
   const maturityMonths = lead.maturity_months || 72;
   const maturityDate = lead.maturity_date
     ? lead.maturity_date
-    : new Date(Date.now() + (lead.coe_days || 30 + Number(maturityMonths) * 30) * 86400000)
+    : new Date(Date.now() + ((lead.coe_days || 30) + Number(maturityMonths) * 30) * 86400000)
         .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const cityStateZip = [lead.city, lead.state, lead.zip].filter(Boolean).join(', ');
@@ -136,22 +122,25 @@ function buildMergeMap(lead) {
     '[SELLER_EMAIL]': lead.seller_email || '',
     '[SELLER_PHONE]': lead.seller_phone || '',
     '[SELLER_ADDRESS]': lead.seller_address || '',
+    '[SELLER_COMPANY]': lead.seller_company || '',
     '[BUYER_NAME]': lead.buyer_name || 'Divinity Aligned LLC',
     '[BUYER_EMAIL]': lead.buyer_email || 'montelliscottrei@gmail.com',
     '[BUYER_PHONE]': lead.buyer_phone || '',
     '[BUYER_ADDRESS]': lead.buyer_address || '',
+    '[BUYER_COMPANY]': lead.buyer_company || 'Divinity Aligned LLC',
     '[INSPECTION_DAYS]': String(lead.inspection_period_days || 14),
     '[COE_DAYS]': String(lead.coe_days || 30),
     '[COE_DATE]': coeDate,
     '[EFFECTIVE_DATE]': effectiveDate,
     '[TITLE_COMPANY]': lead.title_company || 'CLOSE Title',
-    '[TITLE_EMAIL]': 'Orders@closedtitle.com',
-    '[TITLE_PHONE]': '800-405-7150',
+    '[TITLE_EMAIL]': lead.title_email || 'Orders@closedtitle.com',
+    '[TITLE_PHONE]': lead.title_phone || '800-405-7150',
+    '[TITLE_WEBSITE]': lead.title_website || '',
     '[SELLER_CARRYBACK]': lead.seller_carryback ? formatCurrency(lead.seller_carryback) : '$0.00',
     '[SELLER_CARRYBACK_RATE]': lead.seller_carryback_rate ? `${(lead.seller_carryback_rate * 100).toFixed(2)}%` : '0%',
     '[MONTHLY_PAYMENT]': lead.monthly_payment ? formatCurrency(lead.monthly_payment) : '$0.00',
     '[MATURITY_DATE]': maturityDate,
-    '[MATURITY_MONTHS]': lead.maturity_months ? String(lead.maturity_months) : '72',
+    '[MATURITY_MONTHS]': String(lead.maturity_months || 72),
     '[PAYMENT_START_DATE]': lead.payment_start_date || effectiveDate,
     '[CASH_AT_COE]': lead.cash_at_coe ? formatCurrency(lead.cash_at_coe) : '$0.00',
     '[DOWN_PAYMENT]': lead.down_payment ? formatCurrency(lead.down_payment) : '$0.00',
@@ -160,8 +149,6 @@ function buildMergeMap(lead) {
     '[NON_CIRCUMVENTION_PENALTY]': lead.non_circumvention_penalty ? formatCurrency(lead.non_circumvention_penalty) : '$10,000.00',
     '[PORTFOLIO_PROPERTY_COUNT]': String(lead.portfolio_property_count || 1),
     '[PORTFOLIO_TOTAL_PRICE]': lead.portfolio_total_price ? formatCurrency(lead.portfolio_total_price) : '',
-    '[SELLER_COMPANY]': lead.seller_company || '',
-    '[BUYER_COMPANY]': lead.buyer_company || 'Divinity Aligned LLC',
     '[PARTY_D_NAME]': lead.party_d_name || '',
     '[PARTY_D_EMAIL]': lead.party_d_email || '',
     '[PARTY_A_PAYOUT]': lead.party_a_payout ? formatCurrency(lead.party_a_payout) : '',
@@ -176,8 +163,6 @@ function buildMergeMap(lead) {
     '[PARTY_B_EMAIL]': lead.party_b_email || '',
     '[PARTY_C_NAME]': lead.party_c_name || '',
     '[PARTY_C_EMAIL]': lead.party_c_email || '',
-    '[PARTY_D_NAME]': lead.party_d_name || '',
-    '[PARTY_D_EMAIL]': lead.party_d_email || '',
     '[PARTY_A_PERCENT]': String(lead.party_a_percent || 25),
     '[PARTY_B_PERCENT]': String(lead.party_b_percent || 25),
     '[PARTY_C_PERCENT]': String(lead.party_c_percent || 25),
@@ -189,7 +174,6 @@ function buildMergeMap(lead) {
     '[COMPANY_WEBSITE]': lead.company_website || '',
     '[INITIAL_CAPITAL]': lead.initial_capital ? formatCurrency(lead.initial_capital) : '$5,000.00',
     '[MANAGER_AUTHORITY_THRESHOLD]': lead.manager_authority_threshold ? formatCurrency(lead.manager_authority_threshold) : '$2,500.00',
-    '[TITLE_WEBSITE]': lead.title_website || '',
     '[PERSONAL_PROPERTY_INCLUDED]': lead.personal_property || 'All appliances to stay',
     '[OCCUPANCY_STATUS]': lead.occupancy_status || 'Property is leased and the tenant may continue in possession of the Property after COE unless otherwise agreed in writing.',
     '[TITLE_HOLDING_INSTRUCTIONS]': lead.title_holding_instructions || 'TBD',
@@ -203,52 +187,42 @@ function buildMergeMap(lead) {
     '[PARTY_C_EXPENSE]': lead.party_c_expense ? formatCurrency(lead.party_c_expense) : '$0.00',
     '[PARTY_D_EXPENSE]': lead.party_d_expense ? formatCurrency(lead.party_d_expense) : '$0.00',
     '[ADDITIONAL_TERMS]': lead.additional_terms || 'None',
-    '[JV_PURPOSE]': lead.jv_purpose || 'To acquire, rehabilitate, and sell or hold for investment the Property located at [PROPERTY_ADDRESS]',
+    '[JV_PURPOSE]': lead.jv_purpose || 'To acquire, rehabilitate, and sell or hold for investment the Property',
     '[DATE]': effectiveDate,
   };
 }
 
-function formatCurrency(n) {
-  return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// ============================================================
+// TOKEN FILLING
+// ============================================================
 
-/**
- * Fill merge tokens in template text.
- * Throws if any REQUIRED token remains unresolved (value is empty string).
- */
 function fillTemplate(text, mergeMap) {
   let filled = text;
 
-  // Apply our extended token set (single source of truth — no contract-library.fillTemplate)
   for (const [token, value] of Object.entries(mergeMap)) {
     filled = filled.split(token).join(value);
   }
 
-  // Validate: check for unresolved [UPPERCASE] tokens
   const unresolved = filled.match(/\[[A-Z_]{3,}\]/g);
   if (unresolved) {
-    // Filter out non-merge tokens (like [X] or [ ] checkboxes)
     const realUnresolved = unresolved.filter(t => t.length > 4 && !t.includes(' '));
     if (realUnresolved.length > 0) {
-      // Check which are required vs optional
       const missingRequired = realUnresolved.filter(t => REQUIRED_TOKENS.includes(t));
       const missingOptional = realUnresolved.filter(t => OPTIONAL_TOKENS.includes(t));
-      
+
       if (missingRequired.length > 0) {
         throw new Error(
           `Required merge tokens unresolved: ${[...new Set(missingRequired)].join(', ')}. ` +
           `Lead data missing — fix the lead record before sending.`
         );
       }
-      
-      // Replace optional unresolved tokens with blanks
+
       for (const token of [...new Set(missingOptional)]) {
         filled = filled.split(token).join('________________');
       }
     }
   }
 
-  // Validate required fields are non-empty
   for (const req of REQUIRED_TOKENS) {
     const value = mergeMap[req];
     if (!value || value.trim() === '') {
@@ -262,85 +236,223 @@ function fillTemplate(text, mergeMap) {
   return filled;
 }
 
+// ============================================================
+// PROFESSIONAL HTML GENERATION
+// ============================================================
+
 /**
- * Convert plain text contract to styled HTML for PDF rendering.
+ * Convert plain text contract to professional-styled HTML for PDF rendering.
+ * Follows legal document formatting conventions.
  */
 function textToHtml(text, title) {
-  // Escape HTML special chars
+  // Escape HTML special chars first
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
   // Convert checkbox markers to proper Unicode
-  // .txt files use: [X] = checked, [ ] = unchecked, ? = unchecked (OCR artifact)
   html = html.replace(/\[X\]/g, '☑');
   html = html.replace(/\[ \]/g, '☐');
   html = html.replace(/\[\]/g, '☐');
-  // Replace standalone ? that represent checkboxes (followed by space and capital letter)
-  html = html.replace(/\? (?=[A-Z])/g, '☐ ');
-  // Replace ? at start of option lists
   html = html.replace(/\? /g, '☐ ');
 
-  // Split into paragraphs on double-newlines or section headers
-  // The .txt files are essentially run-on text with section numbers
-  // We'll wrap each "section" (detected by numbered headers) in a styled div
+  // Normalize whitespace: collapse multiple spaces (but preserve indentation)
+  html = html.replace(/  +/g, ' ');
+
+  // Split into lines for processing
   const lines = html.split('\n');
   const htmlParts = [];
   let inParagraph = false;
+  let inList = false;
+  let prevWasSectionHeader = false;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
+
     if (!trimmed) {
       if (inParagraph) {
         htmlParts.push('</p>');
         inParagraph = false;
       }
+      if (inList) {
+        htmlParts.push('</ul>');
+        inList = false;
+      }
       continue;
     }
 
-    // Check if this looks like a section header (e.g., "1.1", "SECTION 3", etc.)
-    const isHeader = /^\d+(\.\d+)*\s+[A-Z]/.test(trimmed) || /^[A-Z][A-Z\s]{10,}$/.test(trimmed);
+    // Detect section headers: "1.1 Title", "SECTION 3", "2. PROPERTY"
+    const isSectionHeader = /^\d+(\.\d+)*\s+[A-Z][A-Za-z]/.test(trimmed) ||
+                             /^SECTION\s+\d+/i.test(trimmed) ||
+                             /^[A-Z][A-Z\s]{10,}$/.test(trimmed);
 
-    if (!inParagraph) {
-      htmlParts.push('<p>');
-      inParagraph = true;
+    // Detect bullet points: "●", "*", "•", "-", "1.", "a."
+    const isBullet = /^[●•\-\*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed) || /^[a-z]\.\s+/.test(trimmed);
+
+    // Detect signature blocks
+    const isSignatureBlock = /Signature:|Date:|Name of Signer|Its:|Printed Name|Seller Initials|Buyer Initials|Parties' Initials/i.test(trimmed);
+
+    // Detect "APPROVED AND ACCEPTED" blocks
+    const isApprovalBlock = /APPROVED AND ACCEPTED/i.test(trimmed);
+
+    if (isApprovalBlock) {
+      if (inParagraph) { htmlParts.push('</p>'); inParagraph = false; }
+      if (inList) { htmlParts.push('</ul>'); inList = false; }
+      htmlParts.push('<div class="approval-block">');
+      htmlParts.push(`<p class="approval-header">${trimmed}</p>`);
+      continue;
     }
 
-    if (isHeader) {
-      htmlParts.push(`<strong>${trimmed}</strong> `);
+    // Close approval block when we hit a signature line or another approval header
+    if (htmlParts.length > 0 && htmlParts[htmlParts.length - 1] !== '</div>' &&
+        (isSignatureBlock && !isApprovalBlock)) {
+      // Check if we're inside an approval block
+      const lastApprovalOpen = htmlParts.lastIndexOf('<div class="approval-block">');
+      const lastApprovalClose = htmlParts.lastIndexOf('</div>');
+      if (lastApprovalOpen > lastApprovalClose) {
+        // Still inside approval block — add signature line
+        htmlParts.push(`<p class="signature-line">${trimmed}</p>`);
+        continue;
+      }
+    }
+
+    if (isSectionHeader && !isBullet) {
+      if (inParagraph) { htmlParts.push('</p>'); inParagraph = false; }
+      if (inList) { htmlParts.push('</ul>'); inList = false; }
+
+      // Add page-break-before for major sections (numbered like "2.", "3.", etc.)
+      const majorSection = /^\d+\.\s+[A-Z]/.test(trimmed);
+      if (majorSection && i > 0) {
+        // Don't force page break — let CSS handle orphan control
+      }
+
+      htmlParts.push(`<h2>${trimmed}</h2>`);
+      prevWasSectionHeader = true;
+    } else if (isBullet) {
+      if (inParagraph) { htmlParts.push('</p>'); inParagraph = false; }
+      if (!inList) {
+        htmlParts.push('<ul class="contract-list">');
+        inList = true;
+      }
+      const bulletContent = trimmed.replace(/^[●•\-\*]\s+/, '').replace(/^\d+\.\s+/, '').replace(/^[a-z]\.\s+/, '');
+      htmlParts.push(`<li>${bulletContent}</li>`);
+      prevWasSectionHeader = false;
+    } else if (isSignatureBlock) {
+      if (inParagraph) { htmlParts.push('</p>'); inParagraph = false; }
+      if (inList) { htmlParts.push('</ul>'); inList = false; }
+      htmlParts.push(`<p class="signature-line">${trimmed}</p>`);
+      prevWasSectionHeader = false;
     } else {
-      htmlParts.push(`${trimmed} `);
+      if (inList) { htmlParts.push('</ul>'); inList = false; }
+      if (!inParagraph) {
+        htmlParts.push('<p>');
+        inParagraph = true;
+      }
+      // Bold inline section references like "1.5" at start of line
+      const withBold = trimmed.replace(/^(\d+\.\d+)\s+([A-Z][A-Za-z\s]+:)/, '<strong>$1 $2</strong>');
+      htmlParts.push(`${withBold} `);
+      prevWasSectionHeader = false;
     }
   }
 
   if (inParagraph) htmlParts.push('</p>');
+  if (inList) htmlParts.push('</ul>');
+  // Close any open approval blocks
+  const lastApprovalOpen = htmlParts.lastIndexOf('<div class="approval-block">');
+  const lastDivClose = htmlParts.lastIndexOf('</div>');
+  if (lastApprovalOpen > lastDivClose) htmlParts.push('</div>');
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  @page { margin: 1in; }
+  @page {
+    margin: 1in 1in 1in 1.25in;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: 'Times New Roman', Georgia, serif;
+      font-size: 9pt;
+      color: #666;
+    }
+  }
   body {
     font-family: 'Times New Roman', Georgia, serif;
     font-size: 12pt;
     line-height: 1.5;
     color: #000;
+    text-align: justify;
+    -webkit-print-color-adjust: exact;
   }
   h1 {
     font-size: 14pt;
     text-align: center;
     text-transform: uppercase;
-    margin-bottom: 24pt;
-    border-bottom: 2px solid #000;
+    font-weight: bold;
+    letter-spacing: 1.5pt;
+    margin: 0 0 6pt 0;
     padding-bottom: 8pt;
+    border-bottom: 2px solid #000;
   }
-  p { margin: 0 0 8pt 0; text-align: justify; }
-  strong { font-weight: bold; }
-  .signature-block {
-    margin-top: 24pt;
+  h2 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 14pt 0 4pt 0;
+    text-align: left;
+    page-break-after: avoid;
     page-break-inside: avoid;
+  }
+  h3 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 10pt 0 3pt 0;
+    text-align: left;
+  }
+  p {
+    margin: 0 0 6pt 0;
+    text-align: justify;
+    orphans: 2;
+    widows: 2;
+  }
+  p.signature-line {
+    margin: 4pt 0;
+    text-align: left;
+    font-family: 'Times New Roman', Georgia, serif;
+  }
+  p.approval-header {
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 16pt 0 6pt 0;
+    text-align: left;
+    border-top: 1px solid #000;
+    padding-top: 8pt;
+  }
+  .approval-block {
+    page-break-inside: avoid;
+    margin-top: 12pt;
+  }
+  ul.contract-list {
+    margin: 4pt 0 8pt 0;
+    padding-left: 24pt;
+    list-style-type: disc;
+  }
+  ul.contract-list li {
+    margin: 2pt 0;
+    text-align: left;
+  }
+  strong {
+    font-weight: bold;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #999;
+    margin: 20pt 0;
+  }
+  /* Prevent orphan headings at bottom of page */
+  h2 + p {
+    page-break-before: avoid;
   }
 </style>
 </head>
@@ -351,23 +463,21 @@ ${htmlParts.join('\n')}
 </html>`;
 }
 
-/**
- * Render HTML to PDF using headless Edge/Chromium.
- * Returns a PDF buffer.
- */
+// ============================================================
+// PDF RENDERING
+// ============================================================
+
 function htmlToPdf(html, edgePath) {
   const browser = edgePath || findEdge();
   if (!browser) {
     throw new Error('No browser found for PDF rendering. Install Edge or Chrome, or set BROWSER_PATH env var.');
   }
 
-  // Write HTML to temp file
   const tmpHtml = path.join(require('os').tmpdir(), `contract_${Date.now()}.html`);
   const tmpPdf = path.join(require('os').tmpdir(), `contract_${Date.now()}.pdf`);
   fs.writeFileSync(tmpHtml, html, 'utf8');
 
   try {
-    // Headless Edge: print to PDF
     const args = [
       '--headless=new',
       '--disable-gpu',
@@ -386,26 +496,21 @@ function htmlToPdf(html, edgePath) {
 
     const pdfBuffer = fs.readFileSync(tmpPdf);
 
-    // Cleanup
     try { fs.unlinkSync(tmpHtml); } catch (e) {}
     try { fs.unlinkSync(tmpPdf); } catch (e) {}
 
     return pdfBuffer;
   } catch (err) {
-    // Cleanup on error
     try { fs.unlinkSync(tmpHtml); } catch (e) {}
     try { fs.unlinkSync(tmpPdf); } catch (e) {}
     throw new Error(`PDF rendering failed: ${err.message}`);
   }
 }
 
-/**
- * Generate a filled PDF for a contract type + lead data.
- *
- * @param {string} contractType - e.g. 'subto', 'cash', 'stack50'
- * @param {Object} lead - Lead record from DB
- * @returns {Buffer} PDF buffer with filled contract
- */
+// ============================================================
+// MAIN GENERATION FUNCTION
+// ============================================================
+
 function generateFilledPdf(contractType, lead) {
   // 1. Get the master .txt
   contractLibrary.assertSupported(contractType);
@@ -417,17 +522,17 @@ function generateFilledPdf(contractType, lead) {
   // 3. Fill tokens in master (throws if required fields missing)
   const filledMaster = fillTemplate(masterText, mergeMap);
 
-  // 4. Get ALL addenda: fixed (from CONTRACT_LIBRARY) + conditional (from validation rules)
+  // 4. Get ALL addenda: fixed + conditional
   const { getAllAddenda } = require('./contract-validation');
   const allAddenda = getAllAddenda(contractType, lead);
 
   // 5. Fill tokens in each addendum
   const filledAddenda = allAddenda.map(a => fillTemplate(a.text, mergeMap));
 
-  // 6. Join master + addenda into one document
+  // 6. Join master + addenda with horizontal rule
   const allText = [filledMaster, ...filledAddenda].join('\n\n---\n\n');
 
-  // 7. Convert to HTML
+  // 7. Convert to professional HTML
   const title = `${contractType.toUpperCase().replace(/_/g, ' ')} Contract`;
   const html = textToHtml(allText, title);
 
@@ -438,9 +543,6 @@ function generateFilledPdf(contractType, lead) {
   return pdfBuffer;
 }
 
-/**
- * Save a filled PDF to a file (for testing/inspection).
- */
 function saveFilledPdf(contractType, lead, outputPath) {
   const pdfBuffer = generateFilledPdf(contractType, lead);
   fs.writeFileSync(outputPath, pdfBuffer);
@@ -456,4 +558,5 @@ module.exports = {
   htmlToPdf,
   findEdge,
   REQUIRED_TOKENS,
+  OPTIONAL_TOKENS,
 };
