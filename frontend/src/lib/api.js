@@ -1,6 +1,5 @@
 // API helper — local JWT auth
-const API_BASE =
-  import.meta.env.VITE_API_BASE || '/api';
+const API_BASE = 'https://divinitycrm-ggi5.onrender.com/api';
 
 function getToken() {
   try {
