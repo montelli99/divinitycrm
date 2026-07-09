@@ -31,13 +31,13 @@
  *   cd backend && node --test tests/scenarios/index.test.js
  *
  * Requires the CRM backend to be reachable at $TEST_API_BASE_URL
- * (defaults to https://divinitycrm-api.onrender.com).
+ * (defaults to https://divinitycrm-ggi5.onrender.com/api).
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const API = process.env.TEST_API_BASE_URL || 'https://divinitycrm-api.onrender.com';
+const API = process.env.TEST_API_BASE_URL || 'https://divinitycrm-ggi5.onrender.com/api';
 const EMAIL = process.env.TEST_USER_EMAIL || 'montelliscottrei@gmail.com';
 const PASSWORD = process.env.TEST_USER_PASSWORD || 'Prolific2026!';
 

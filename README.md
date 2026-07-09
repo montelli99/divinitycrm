@@ -50,10 +50,10 @@ Standalone hosted CRM for AI REI students. No Telegram, no GHL, no JustCall.
    - `RABBITSIGN_API_KEY` (when you have it)
    - `PORT=3001`
    - `NODE_ENV=production`
-   - `FRONTEND_URL=https://divinitycrm.onrender.com`
+   - `FRONTEND_URL=https://divinitycrm-ggi5.onrender.com`
 5. Click **Deploy Web Service**
-6. Copy the deployed URL (e.g. `https://divinitycrm-api.onrender.com`)
-7. Go to [Clerk Dashboard → Webhooks](https://dashboard.clerk.com) → update the webhook URL to `https://divinitycrm-api.onrender.com/api/webhooks/clerk`
+6. Copy the deployed URL (e.g. `https://divinitycrm-ggi5.onrender.com/api`)
+7. Go to [Clerk Dashboard → Webhooks](https://dashboard.clerk.com) → update the webhook URL to `https://divinitycrm-ggi5.onrender.com/api/api/webhooks/clerk`
 
 ### Step 2: Frontend (Static Site)
 1. Go to [dashboard.render.com](https://dashboard.render.com) → New → Static Site
@@ -69,7 +69,7 @@ Standalone hosted CRM for AI REI students. No Telegram, no GHL, no JustCall.
 4. Add environment variable:
    - `VITE_CLERK_PUBLISHABLE_KEY` (same as backend)
 5. Click **Deploy Static Site**
-6. The frontend will be live at `https://divinitycrm.onrender.com`
+6. The frontend will be live at `https://divinitycrm-ggi5.onrender.com`
 
 ### Step 3: Update Frontend .env
 1. In the backend Render dashboard → Settings → Environment Variables

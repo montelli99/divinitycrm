@@ -38,7 +38,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https://divinitycrm-api.onrender.com"],
+      connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https://divinitycrm-ggi5.onrender.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],

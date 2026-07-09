@@ -9,7 +9,7 @@
  *
  * Key ID: FdoxIa1tIsnUNmCjfGt4Ns
  * Key Secret: dHwqVS4Gr9liQ9WJWIJ0DvD5fT7S51rXOUE7fFT8WFx7
- * Webhook URL: https://divinitycrm-api.onrender.com/api/webhooks/rabbitsign
+ * Webhook URL: https://divinitycrm-ggi5.onrender.com/api/webhooks/rabbitsign
  */
 
 const https = require('https');
@@ -18,9 +18,46 @@ const fs = require('fs');
 const path = require('path');
 const { query } = require('../db/connection');
 
-const RS_KEY_ID = process.env.RABBITSIGN_KEY_ID || 'FdoxIa1tIsnUNmCjfGt4Ns';
-const RS_KEY_SECRET = process.env.RABBITSIGN_API_KEY || 'dHwqVS4Gr9liQ9WJWIJ0DvD5fT7S51rXOUE7fFT8WFx7';
+const RS_KEY_ID = process.env.RABBITSIGN_KEY_ID || '';
+const RS_KEY_SECRET = process.env.RABBITSIGN_API_KEY || '';
 const RS_BASE = 'www.rabbitsign.com';
+
+function isSendEnabled() {
+  return process.env.RABBITSIGN_SEND_ENABLED === '1';
+}
+
+function assertSendEnabled() {
+  if (!isSendEnabled()) {
+    throw new Error('RabbitSign sending is disabled. Set RABBITSIGN_SEND_ENABLED=1 only when you intentionally want RabbitSign to email signers.');
+  }
+}
+
+function isUnsafeSignerEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value) return true;
+  if (value.endsWith('@example.com') || value.endsWith('@test.com')) return true;
+  if (value.includes('example') || value.includes('test')) return true;
+  return false;
+}
+
+function assertValidSigners(signers) {
+  if (!Array.isArray(signers) || signers.length === 0) {
+    throw new Error('At least one signer is required before sending to RabbitSign.');
+  }
+  const missingSigner = signers.find(s => !s.name || !s.email);
+  if (missingSigner) {
+    throw new Error('Every RabbitSign signer must have both name and email. No fallback emails are allowed.');
+  }
+  const unsafeSigner = signers.find(s => isUnsafeSignerEmail(s.email));
+  if (unsafeSigner) {
+    throw new Error(`Refusing to send RabbitSign envelope to unsafe/fabricated signer email: ${unsafeSigner.email}`);
+  }
+}
+
+function assertValidRoleMap(roles) {
+  const signers = Object.values(roles || {}).map(role => ({ name: role.name, email: role.email }));
+  assertValidSigners(signers);
+}
 
 function sha512(input) {
   return crypto.createHash('sha512').update(input, 'utf8').digest('hex').toUpperCase();
@@ -101,6 +138,8 @@ function rsRequest(method, path, body = null) {
  * POST /api/v1/folderFromTemplate/{templateId}
  */
 async function createFolderFromTemplate(templateId, { title, summary, date, senderFieldValues, roles, ccList = [] }) {
+  assertSendEnabled();
+  assertValidRoleMap(roles);
   // Per RabbitSign API docs (vendor-supplied 2026-06-26), the schema is:
   //   { title, summary, date, senderFieldValues, roles }
   // Including extra fields like ccList returns 'Invalid RabbitSign message'.
@@ -121,6 +160,8 @@ async function createFolderFromTemplate(templateId, { title, summary, date, send
  * Step 1: Get upload URL → Step 2: Upload file → Step 3: Create folder
  */
 async function createFolder({ title, summary, date, files, signers, ccList = [] }) {
+  assertSendEnabled();
+  assertValidSigners(signers);
   // Step 1: Get upload URLs for each file
   const uploadUrls = [];
   for (const file of files) {
@@ -199,6 +240,15 @@ function uploadToS3(uploadUrl, file) {
  * Used for filled PDFs generated on-the-fly by pdf-generator.js.
  */
 async function createFolderFromPdfBuffer(pdfBuffer, { title, summary, date, signers }) {
+  assertSendEnabled();
+  if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length < 1000) {
+    throw new Error('Refusing to upload invalid or empty PDF buffer to RabbitSign.');
+  }
+  if (pdfBuffer.subarray(0, 4).toString('utf8') !== '%PDF') {
+    throw new Error('Refusing to upload non-PDF content to RabbitSign.');
+  }
+  assertValidSigners(signers);
+
   // Step 1: Get upload URL
   const { uploadUrl } = await rsRequest('POST', '/api/v1/upload-url');
 
@@ -220,7 +270,7 @@ async function createFolderFromPdfBuffer(pdfBuffer, { title, summary, date, sign
       summary: summary || `Contract document: ${title}`,
       docInfo: [{
         url: uploadUrl,
-        docTitle: title,
+        docTitle: title.endsWith('.pdf') ? title : `${title}.pdf`,
       }],
       signerInfo,
     },
@@ -237,36 +287,7 @@ async function createFolderFromPdfBuffer(pdfBuffer, { title, summary, date, sign
  */
 async function createFolderFromPdf(pdfPath, { title, summary, date, signers }) {
   const pdfBuffer = fs.readFileSync(pdfPath);
-
-  // Step 1: Get upload URL
-  const { uploadUrl } = await rsRequest('POST', '/api/v1/upload-url');
-
-  // Step 2: Upload PDF to S3
-  await uploadToS3(uploadUrl, { buffer: pdfBuffer });
-
-  // Step 3: Create folder
-  const signerInfo = {};
-  for (const signer of signers) {
-    signerInfo[signer.email] = {
-      name: signer.name,
-      fields: [],
-    };
-  }
-
-  const body = {
-    folder: {
-      title,
-      summary: summary || `Contract document: ${title}`,
-      docInfo: [{
-        url: uploadUrl,
-        docTitle: title,
-      }],
-      signerInfo,
-    },
-    date: date || localDateYmd(),
-  };
-
-  return rsRequest('POST', '/api/v1/folder', body);
+  return createFolderFromPdfBuffer(pdfBuffer, { title, summary, date, signers });
 }
 
 /**
@@ -307,50 +328,45 @@ async function cancelFolder(folderId) {
  * Routes to the correct PSA template based on contract type.
  */
 async function createContractEnvelope(lead, contractType) {
-  const date = localDateYmd();
-  const address = lead.address || 'Property Address';
-  const price = lead.price ? `$${Number(lead.price).toLocaleString()}` : 'TBD';
-  const sellerName = lead.seller_name || lead.agent_name || 'Seller';
-  const sellerEmail = lead.seller_email || lead.agent_email || 'seller@example.com';
-  const buyerName = 'Divinity Aligned LLC';
-  // 2026-06-26 21:42 EDT: User directive — stop emailing Kayla. Use the entity
-  // inbox (Divinity Aligned) as the buyer email on RabbitSign envelopes instead
-  // of Kayla's personal gmail. The signed envelope still goes to the same legal
-  // entity, but no longer spams Kayla's inbox with signature requests.
-  // To revert: set RABBITSIGN_BUYER_EMAIL_OVERRIDE=<email>.
-  const buyerEmail = process.env.RABBITSIGN_BUYER_EMAIL_OVERRIDE || 'contracts@divinityaligned.net';
-  const emd = lead.emd_amount || 500;
-  const coeDate = lead.coe_date || date;
-  const inspectionDays = lead.inspection_period_days || 14;
-  const titleCompany = lead.title_company || 'CLOSE Title';
-
-  // Template selection — LRN-20260626-008 + LRN-20260626-010:
-  // Use contract-library as the single source of truth for which env var
-  // backs each contract type. If no template ID is configured, fall back
-  // to direct folder creation from the bundled PDF (no pre-placed fields).
   const contractLibrary = require('./contract-library');
+  contractType = contractLibrary.normalizeContractType(contractType);
+  const date = localDateYmd();
+  const pdfGenerator = require('./pdf-generator');
+  const context = pdfGenerator.buildContractContext(contractType, lead);
+  const address = context.address;
+  const price = context.price;
+  const seller = context.signers.find(s => s.role === 'Seller');
+  const buyer = context.signers.find(s => s.role === 'Buyer');
+  const emd = context.mergeMap['[EMD_AMOUNT]'];
+  const coeDate = context.mergeMap['[COE_DATE]'];
+  const inspectionDays = context.mergeMap['[INSPECTION_DAYS]'];
+  const titleCompany = context.mergeMap['[TITLE_COMPANY]'];
+
+  // TXT masters are the primary source of truth. RabbitSign templates are an
+  // optional compatibility path only, gated behind RABBITSIGN_USE_TEMPLATES=1.
   contractLibrary.assertSupported(contractType);
   const entry = contractLibrary.CONTRACT_LIBRARY[contractType];
   const envVarName = entry.rabbitsignTemplateEnvVar;
   const templateId = process.env[envVarName]; // undefined if not set
+  const useTemplate = process.env.RABBITSIGN_USE_TEMPLATES === '1' && !!templateId;
 
   const roles = {
-    'Seller': { name: sellerName, email: sellerEmail },
-    'Buyer': { name: buyerName, email: buyerEmail },
+    'Seller': { name: seller.name, email: seller.email },
+    'Buyer': { name: buyer.name, email: buyer.email },
   };
 
   let result;
 
-  if (templateId) {
-    // Path 1: Use template (has pre-placed fields)
+  if (useTemplate) {
+    // Optional compatibility path. Default production path is generated PDF.
     const senderFieldValues = [
       { name: 'property address', currentValue: address },
       { name: 'purchase price', currentValue: price },
-      { name: 'emd amount', currentValue: `$${emd}` },
+      { name: 'emd amount', currentValue: emd },
       { name: 'close of escrow date', currentValue: coeDate },
       { name: 'inspection period days', currentValue: String(inspectionDays) },
       { name: 'title company', currentValue: titleCompany },
-      { name: 'buyer entity', currentValue: buyerName },
+      { name: 'buyer entity', currentValue: buyer.name },
       { name: 'today', currentValue: date },
     ];
 
@@ -369,21 +385,17 @@ async function createContractEnvelope(lead, contractType) {
       roles,
     });
   } else {
-    // Path 2: Generate a FILLED PDF from the .txt master + lead data
-    // This is the primary scalable architecture — no blank contracts ever sent.
-    const pdfGenerator = require('./pdf-generator');
-
-    console.log(`[rabbitsign] No template ID for ${contractType}, generating filled PDF from .txt master`);
-    const pdfBuffer = pdfGenerator.generateFilledPdf(contractType, lead);
+    // Primary path: generate a FILLED PDF from the .txt master + lead data.
+    // If any required merge field is missing, generateFilledPdf throws before
+    // anything reaches RabbitSign.
+    console.log(`[rabbitsign] Generating filled PDF for ${contractType} from .txt master`);
+    const pdfBuffer = pdfGenerator.generatePdfFromContext(context);
 
     result = await createFolderFromPdfBuffer(pdfBuffer, {
-      title: `Purchase Agreement - ${address}`,
-      summary: `${contractType.toUpperCase()} contract for ${address} at ${price}`,
+      title: context.title,
+      summary: context.summary,
       date,
-      signers: [
-        { name: sellerName, email: sellerEmail },
-        { name: buyerName, email: buyerEmail },
-      ],
+      signers: context.signers.map(s => ({ name: s.name, email: s.email })),
     });
   }
 
@@ -410,17 +422,18 @@ async function createJVEnvelope(lead, jvType = '4-party') {
   const roles = {};
   parties.forEach((party, i) => {
     roles[`Party ${i + 1}`] = {
-      name: party.name || `Party ${i + 1}`,
-      email: party.email || `party${i + 1}@example.com`,
+      name: party.name,
+      email: party.email,
     };
   });
 
   const jvTemplateEnvVar = jvType === '5-party' ? 'RABBITSIGN_TEMPLATE_JV5' : 'RABBITSIGN_TEMPLATE_JV';
   const templateId = process.env[jvTemplateEnvVar];
+  const useTemplate = process.env.RABBITSIGN_USE_TEMPLATES === '1' && !!templateId;
 
   let result;
 
-  if (templateId) {
+  if (useTemplate) {
     const senderFieldValues = [
       { name: 'property address', currentValue: address },
       { name: 'jv type', currentValue: jvType },
@@ -439,20 +452,15 @@ async function createJVEnvelope(lead, jvType = '4-party') {
       roles,
     });
   } else {
-    // Fallback: Generate filled PDF from .txt master
+    // Primary path: Generate filled PDF from .txt master
     const pdfGenerator = require('./pdf-generator');
     const jvContractType = jvType === '5-party' ? 'jv_5party' : 'jv_4party';
 
     console.log(`[rabbitsign] No JV template ID, generating filled PDF for ${jvContractType}`);
     const pdfBuffer = pdfGenerator.generateFilledPdf(jvContractType, lead);
 
-    const signers = parties.map((party, i) => ({
-      name: party.name || `Party ${i + 1}`,
-      email: party.email || `party${i + 1}@example.com`,
-    }));
-    if (signers.length === 0) {
-      signers.push({ name: 'Montelli Scott', email: 'montelliscottrei@gmail.com' });
-    }
+    const signers = parties.map(party => ({ name: party.name, email: party.email }));
+    assertValidSigners(signers);
 
     result = await createFolderFromPdfBuffer(pdfBuffer, {
       title: `Joint Venture Agreement - ${address}`,
@@ -538,7 +546,7 @@ async function handleWebhook(headers, body) {
  * Check if RabbitSign is configured.
  */
 function isConfigured() {
-  return !!(RS_KEY_ID && RS_KEY_SECRET);
+  return !!(RS_KEY_ID && RS_KEY_SECRET && isSendEnabled());
 }
 
 module.exports = {
@@ -554,6 +562,9 @@ module.exports = {
   createJVEnvelope,
   handleWebhook,
   isConfigured,
+  isSendEnabled,
+  assertValidSigners,
+  assertValidRoleMap,
   sha512,
   utcNow,
 };

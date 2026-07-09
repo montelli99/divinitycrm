@@ -107,7 +107,7 @@ Two surfaces to monitor drift:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  https://divinitycrm-api.onrender.com/api/admin/contracts/library-audit
+  https://divinitycrm-ggi5.onrender.com/api/api/admin/contracts/library-audit
 ```
 
 Returns:

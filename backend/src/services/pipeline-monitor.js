@@ -301,14 +301,14 @@ function formatReport(scanResult) {
     if (bySeverity.red.length > 0) {
       lines.push(`  🔴 CRITICAL (${bySeverity.red.length}):`);
       bySeverity.red.forEach(a => {
-        const url = a.leadId ? ` — https://divinitycrm.onrender.com/#/leads/${a.leadId}` : '';
+        const url = a.leadId ? ` — https://divinitycrm-ggi5.onrender.com/#/leads/${a.leadId}` : '';
         lines.push(`    - ${a.address}: ${a.detail}${url}`);
       });
     }
     if (bySeverity.yellow.length > 0) {
       lines.push(`  🟡 WARNING (${bySeverity.yellow.length}):`);
       bySeverity.yellow.forEach(a => {
-        const url = a.leadId ? ` — https://divinitycrm.onrender.com/#/leads/${a.leadId}` : '';
+        const url = a.leadId ? ` — https://divinitycrm-ggi5.onrender.com/#/leads/${a.leadId}` : '';
         lines.push(`    - ${a.address}: ${a.detail}${url}`);
       });
     }
@@ -320,7 +320,7 @@ function formatReport(scanResult) {
   if (remindersDue.length > 0) {
     lines.push('');
     lines.push(`📅 ${remindersDue.length} REMINDERS DUE TODAY:`);
-    remindersDue.forEach(r => lines.push(`  - ${r.address}: ${r.type} (due ${new Date(r.due_date).toLocaleDateString()}) — https://divinitycrm.onrender.com/#/leads/${r.lead_id || ''}`));
+    remindersDue.forEach(r => lines.push(`  - ${r.address}: ${r.type} (due ${new Date(r.due_date).toLocaleDateString()}) — https://divinitycrm-ggi5.onrender.com/#/leads/${r.lead_id || ''}`));
   }
 
   return lines.join('\n');

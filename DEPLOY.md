@@ -18,12 +18,12 @@ CLERK_PUBLISHABLE_KEY=pk_test_bHVja3ktZG9lLTY4LmNsZXJrLmFjY291bnRzLmRldiQ
 CLERK_WEBHOOK_SECRET=whsec_nv8gVceMoP+2zvO9Q9J85eRQYUyGsx2a
 PORT=3001
 NODE_ENV=production
-FRONTEND_URL=https://divinitycrm.onrender.com
+FRONTEND_URL=https://divinitycrm-ggi5.onrender.com
 ```
 
 5. Click **Deploy Web Service**
-6. Wait for deploy (~5 min), then copy the URL (e.g. `https://divinitycrm-api.onrender.com`)
-7. Go to Clerk Dashboard → Webhooks → update endpoint to `https://divinitycrm-api.onrender.com/api/webhooks/clerk`
+6. Wait for deploy (~5 min), then copy the URL (e.g. `https://divinitycrm-ggi5.onrender.com/api`)
+7. Go to Clerk Dashboard → Webhooks → update endpoint to `https://divinitycrm-ggi5.onrender.com/api/api/webhooks/clerk`
 
 ## Frontend (Static Site)
 1. Render → New → Static Site
@@ -36,13 +36,13 @@ FRONTEND_URL=https://divinitycrm.onrender.com
    - Instance Type: **Free**
 4. Add environment variable:
    - VITE_CLERK_PUBLISHABLE_KEY: **pk_test_bHVja3ktZG9lLTY4LmNsZXJrLmFjY291bnRzLmRldiQ**
-   - VITE_API_BASE: **https://divinitycrm-api.onrender.com/api**
+   - VITE_API_BASE: **https://divinitycrm-ggi5.onrender.com/api/api**
 5. Click **Deploy Static Site**
 
 ## After Deploy
-- Frontend URL: https://divinitycrm.onrender.com
+- Frontend URL: https://divinitycrm-ggi5.onrender.com
 - Sign in with: montelliscottrei@gmail.com
-- Backend health check: https://divinitycrm-api.onrender.com/api/health
+- Backend health check: https://divinitycrm-ggi5.onrender.com/api/api/health
 
 ## Cost
 - $0/month (all free tiers)

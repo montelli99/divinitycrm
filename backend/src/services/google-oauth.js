@@ -12,8 +12,8 @@
  * Required Google Cloud Console setup (Montelli does once):
  *   - Enable Gmail API + Google Calendar API
  *   - Create OAuth 2.0 Web Application credentials
- *   - Add redirect URI: https://divinitycrm-api.onrender.com/api/auth/google/callback
- *     (and http://localhost:3001/api/auth/google/callback for dev)
+ *   - Add redirect URI: https://divinitycrm-ggi5.onrender.com/api/api/auth/google/callback
+ *     (and https://divinitycrm-ggi5.onrender.com/api/auth/google/callback for dev)
  *   - Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env
  *
  * Scopes requested:

@@ -1,8 +1,6 @@
-// 7 AM cron — post today's pipeline to Telegram topic 7220
-// 7 PM cron — post today's stage transitions + activities to Telegram topic 7220
-const https = require('https');
 const { query } = require('../db/connection');
-const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TOPIC_DIVINITY_CRM } = require('../config/telegram');
+const { createNotification } = require('../services/notifications');
+const { TEAM_VIEW_ROLES, TEAM_VIEW_EMAILS } = require('../services/access');
 
 const STAGE_LABELS = {
   LEAD_ENTERED: '🎯 NEW LEAD',
@@ -70,34 +68,30 @@ async function getTodaysActivity() {
   return r;
 }
 
-function sendTelegram(text) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn('Telegram not configured — would have sent:', text.substring(0, 200));
-    return Promise.resolve(null);
+async function getCronRecipients() {
+  const roles = Array.from(TEAM_VIEW_ROLES);
+  const emails = Array.from(TEAM_VIEW_EMAILS);
+  return query(
+    `SELECT id FROM users WHERE role = ANY($1::text[]) OR email = ANY($2::text[])`,
+    [roles, emails]
+  );
+}
+
+async function deliverInboxSummary(title, text) {
+  const recipients = await getCronRecipients();
+  const results = [];
+  for (const recipient of recipients) {
+    const result = await createNotification({
+      recipientId: recipient.id,
+      type: 'cron_summary',
+      title,
+      body: text,
+      actionUrl: '/notifications',
+      actionLabel: 'Open Inbox',
+    });
+    results.push(result);
   }
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      message_thread_id: TOPIC_DIVINITY_CRM,
-      text,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    });
-    const opts = {
-      hostname: 'api.telegram.org',
-      path: `/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    };
-    const req = https.request(opts, (res) => {
-      let buf = '';
-      res.on('data', (c) => (buf += c));
-      res.on('end', () => resolve(buf));
-    });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
-  });
+  return results;
 }
 
 async function morningBrief() {
@@ -147,9 +141,8 @@ async function morningBrief() {
     contractAuditText = `\n\n❌ Contract library audit failed: ${e.message}`;
   }
 
-  const text = `🌅 <b>CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b>\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}${contractAuditText}\n\nOpen pipeline: <a href="https://divinitycrm.onrender.com/#/pipeline">divinitycrm.onrender.com</a>`;
-
-  return await sendTelegram(text);
+  const text = `CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}${contractAuditText}\n\nOpen pipeline: divinitycrm-ggi5.onrender.com/#/pipeline`;
+  return await deliverInboxSummary('CRM Morning Brief', text);
 }
 
 async function eveningDigest() {
@@ -176,12 +169,11 @@ async function eveningDigest() {
     return `• ${actor}: ${a.action}${lead}`;
   }).join('\n') || 'No other activity';
 
-  const text = `🌆 <b>CRM Evening Digest — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b>\n\n<b>Stage moves today:</b>\n${stageSummary}\n\n<b>Recent activity:</b>\n${recentActions}`;
-
-  return await sendTelegram(text);
+  const text = `CRM Evening Digest — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\nStage moves today:\n${stageSummary}\n\nRecent activity:\n${recentActions}`;
+  return await deliverInboxSummary('CRM Evening Digest', text);
 }
 
-module.exports = { morningBrief, eveningDigest, sendTelegram };
+module.exports = { morningBrief, eveningDigest, deliverInboxSummary };
 
 if (require.main === module) {
   const arg = process.argv[2];

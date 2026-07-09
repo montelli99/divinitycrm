@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Divinity CRM System Architecture",
+    "subtitle": "Student-Facing CRM REPLACES GHL — Render + Neon + Clerk + RabbitSign",
+    "output": "divinitycrm-architecture.html",
+    "viewBox": [1280, 820]
+  },
+  "components": [
+    { "id": "student-browser", "type": "frontend", "label": "Student Browser", "sublabel": "React SPA", "pos": [40, 200], "size": [140, 60] },
+    { "id": "telegram-mgmt", "type": "external", "label": "Telegram (Mgmt)", "sublabel": "Ai Rei Topic 7220", "pos": [40, 320], "size": [140, 60], "tag": "Operator" },
+
+    { "id": "frontend-host", "type": "frontend", "label": "Frontend (Static)", "sublabel": "Render Static", "pos": [280, 200], "size": [160, 60], "tag": "Vite" },
+
+    { "id": "backend-api", "type": "backend", "label": "Backend API", "sublabel": "Express / Node.js", "pos": [540, 200], "size": [180, 70], "tag": "Orchestrator" },
+
+    { "id": "clerk", "type": "external", "label": "Clerk", "sublabel": "Auth + Webhooks", "pos": [800, 80], "size": [160, 60], "tag": "JWT" },
+    { "id": "google-oauth", "type": "external", "label": "Google OAuth", "sublabel": "Gmail / Calendar / Meet", "pos": [1000, 80], "size": [160, 60], "tag": "Student" },
+    { "id": "neon", "type": "database", "label": "Neon Postgres", "sublabel": "leads / contracts / users", "pos": [1000, 320], "size": [160, 80], "tag": "Serverless" },
+
+    { "id": "rabbitsign", "type": "external", "label": "RabbitSign", "sublabel": "11 Contract Templates", "pos": [280, 520], "size": [160, 60], "tag": "Sign" },
+    { "id": "justcall", "type": "external", "label": "JustCall", "sublabel": "SMS v2.1 API", "pos": [540, 520], "size": [160, 60], "tag": "10DLC Pending" },
+    { "id": "agentmail", "type": "external", "label": "AgentMail", "sublabel": "airei@agentmail.to", "pos": [800, 520], "size": [160, 60], "tag": "Email" },
+
+    { "id": "calculator", "type": "backend", "label": "Calculator", "sublabel": "DSCR / Stack / Buy Box", "pos": [280, 400], "size": [160, 60] },
+    { "id": "contract-lib", "type": "backend", "label": "Contract Library", "sublabel": "11 Families", "pos": [540, 400], "size": [160, 60] },
+    { "id": "stage-auto", "type": "backend", "label": "Stage Automations", "sublabel": "21 Transitions", "pos": [800, 400], "size": [160, 60] },
+    { "id": "lead-engine", "type": "backend", "label": "Lead Engine", "sublabel": "Parcels / Portfolio", "pos": [1000, 480], "size": [160, 60], "tag": "Atlas Deals" },
+    { "id": "teleprompter", "type": "backend", "label": "Teleprompter", "sublabel": "Scripts", "pos": [280, 660], "size": [160, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Render: Frontend (Static Site)", "wraps": ["frontend-host"] },
+    { "kind": "region", "label": "Render: Backend (Web Service) — divinitycrm-ggi5.onrender.com/api", "wraps": ["backend-api", "calculator", "contract-lib", "stage-auto", "lead-engine", "teleprompter"] },
+    { "kind": "region", "label": "Neon Postgres (Serverless DB)", "wraps": ["neon"] },
+    { "kind": "region", "label": "External Channels (PAUSED 2026-06-26)", "wraps": ["rabbitsign", "justcall", "agentmail"] },
+    { "kind": "region", "label": "Auth Providers", "wraps": ["clerk", "google-oauth"] },
+    { "kind": "security-group", "label": "Operator Surface", "wraps": ["telegram-mgmt"] }
+  ],
+  "connections": [
+    { "from": "student-browser", "to": "frontend-host", "label": "HTTPS / SPA", "variant": "emphasis" },
+    { "from": "frontend-host", "to": "backend-api", "label": "REST /api/*", "variant": "emphasis" },
+    { "from": "backend-api", "to": "clerk", "label": "verifyToken" },
+    { "from": "backend-api", "to": "neon", "label": "SQL", "variant": "emphasis" },
+    { "from": "backend-api", "to": "google-oauth", "label": "Gmail/Calendar" },
+    { "from": "backend-api", "to": "rabbitsign", "label": "POST /api/v1/folderFromTemplate", "variant": "emphasis" },
+    { "from": "backend-api", "to": "justcall", "label": "POST /v2.1/texts/new" },
+    { "from": "backend-api", "to": "agentmail", "label": "POST /v0/inboxes/.../messages/send" },
+    { "from": "backend-api", "to": "calculator", "label": "calculate()" },
+    { "from": "backend-api", "to": "contract-lib", "label": "selectContractType()", "variant": "emphasis" },
+    { "from": "backend-api", "to": "stage-auto", "label": "fireTransition()" },
+    { "from": "backend-api", "to": "lead-engine", "label": "importParcel()" },
+    { "from": "backend-api", "to": "teleprompter", "label": "getScript()" },
+    { "from": "stage-auto", "to": "contract-lib", "label": "draft", "variant": "dashed" },
+    { "from": "telegram-mgmt", "to": "backend-api", "label": "Cron DISABLED", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Student Surface", "items": ["React SPA at divinitycrm-ggi5.onrender.com", "Clerk handles all auth (no GHL)", "HashRouter (legacy static site)", "Google OAuth for Gmail/Calendar/Meet"] },
+    { "dot": "emerald", "title": "Backend (divinitycrm-ggi5.onrender.com/api)", "items": ["Express + Node.js on Render Web Service", "11 services: stage-automations, contract-library, teleprompter, calculator, sms, email, rabbitsign, lead-engine, notifications, comps, access", "21-stage pipeline engine", "91+ tests passing"] },
+    { "dot": "amber", "title": "Data + Channels", "items": ["Neon Postgres: leads, users, contracts, activity_log, notifications, reminders", "RabbitSign: 11 contract templates (3 active, 8 pending upload)", "JustCall: SMS via v2.1 API (10DLC vetting pending)", "AgentMail: airei@agentmail.to fallback"] },
+    { "dot": "rose", "title": "Pause Status (2026-06-26)", "items": ["Kayla / Monique / BGonzalez emails BLOCKED", "Seth emails BLOCKED", "All cron jobs DISABLED (morning brief, evening digest, faith post)", "Defence-in-depth: 4 layers (email-service, notifications, stage-automations, rabbitsign buyer email)"] }
+  ]
+}

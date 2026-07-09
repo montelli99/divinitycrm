@@ -19,7 +19,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const API = process.env.TEST_API_BASE_URL || 'https://divinitycrm-api.onrender.com';
+const API = process.env.TEST_API_BASE_URL || 'https://divinitycrm-ggi5.onrender.com/api';
 const EMAIL = process.env.TEST_USER_EMAIL || 'montelliscottrei@gmail.com';
 const PASSWORD = process.env.TEST_USER_PASSWORD || 'Prolific2026!';
 

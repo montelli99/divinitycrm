@@ -17,7 +17,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const API = process.env.API_BASE || 'https://divinitycrm-api.onrender.com';
+const API = process.env.API_BASE || 'https://divinitycrm-ggi5.onrender.com/api';
 const EMAIL = 'montelliscottrei@gmail.com';
 const PWD = 'Prolific2026!';
 

@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const API = process.env.API_BASE || 'https://divinitycrm-api.onrender.com';
+const API = process.env.API_BASE || 'https://divinitycrm-ggi5.onrender.com/api';
 const EMAIL = 'montelliscottrei@gmail.com';
 const PWD = 'Prolific2026!';
 

@@ -14,33 +14,12 @@
  *   Title: order@closedtitle.com
  */
 
-const nodemailer = require('nodemailer');
-
-// SMTP config — Gmail with app password
-const SMTP = {
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER || 'montelliscottrei@gmail.com',
-    pass: process.env.SMTP_PASS || '',
-  },
-};
-
-let transporter = null;
-
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport(SMTP);
-  }
-  return transporter;
-}
-
 /**
- * Check if email service is configured (SMTP_PASS set).
+ * Email delivery is disabled for internal CRM workflow.
+ * Keep this hard-off during the inbox-only phase.
  */
 function isConfigured() {
-  return !!process.env.SMTP_PASS;
+  return false;
 }
 
 // =============================================================
@@ -150,7 +129,7 @@ function buildKaylaOfferReadyEmail(lead) {
       `Seller: ${lead.seller_name || 'Unknown'}`,
       `Agent: ${lead.agent_name || 'N/A'}`,
       ``,
-      `All details are in the CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `All details are in the CRM: https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `Please prepare the LOI and send to the seller.`,
       ``,
@@ -179,7 +158,7 @@ function buildKaylaContractDraftEmail(lead) {
       `Purchase Price: ${lead.price ? '$' + Number(lead.price).toLocaleString() : 'TBD'}`,
       ``,
       `Please review and authorize the contract in the CRM:`,
-      `https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `— Atlas (auto-sent from Divinity CRM)`,
     ].join('\n'),
@@ -219,7 +198,7 @@ function buildTCHandshakeEmail(lead) {
       `COE Date: ${coe}`,
       `Title Company: ${title}`,
       ``,
-      `Full details in CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `Full details in CRM: https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `Please confirm receipt and begin coordination.`,
       ``,
@@ -248,7 +227,7 @@ function buildTCUnderContractEmail(lead) {
       `[ ] EMD confirmed`,
       `[ ] Consulting/JV agreement signed`,
       ``,
-      `CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `CRM: https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `— Atlas (auto-sent from Divinity CRM)`,
     ].join('\n'),
@@ -275,7 +254,7 @@ function buildKaylaGainFeedbackEmail(lead) {
       ``,
       `Please run the 48hr realignment call and log the outcome in CRM.`,
       ``,
-      `CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `CRM: https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `— Atlas (auto-sent from Divinity CRM)`,
     ].join('\n'),
@@ -303,7 +282,7 @@ function buildKaylaJaxonCounterEmail(lead) {
       ``,
       `Please review and determine next steps.`,
       ``,
-      `CRM: https://divinitycrm-api.onrender.com/#/leads/${lead.id}`,
+      `CRM: https://divinitycrm-ggi5.onrender.com/api/#/leads/${lead.id}`,
       ``,
       `— Atlas (auto-sent from Divinity CRM)`,
     ].join('\n'),
@@ -321,86 +300,11 @@ function buildKaylaJaxonCounterEmail(lead) {
  */
 async function sendEmail(opts) {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
-
-  const filteredRecipients = recipients.filter(r => {
-    const blocked = isPausedRecipientEmail(r.email);
-    if (blocked) {
-      console.warn(`[email-service] paused-recipient-block: dropping email "${opts.subject}" → ${r.email}`);
-    }
-    return !blocked;
-  });
-  if (filteredRecipients.length === 0) {
-    return { sent: false, channel: 'paused-recipient-block', reason: 'all recipients blocked (Seth/Kayla/Monique pause active)' };
+  const addresses = recipients.map(r => r?.email).filter(Boolean).join(', ');
+  if (recipients.some(r => isPausedRecipientEmail(r?.email))) {
+    console.warn(`[email-service] paused-recipient-block: dropping email "${opts.subject}" → ${addresses}`);
   }
-   // Use filtered list for the rest of the function
-   opts = { ...opts, to: filteredRecipients.length === 1 && !Array.isArray(opts.to) ? filteredRecipients[0] : filteredRecipients };
-
-  const toStr = filteredRecipients.map(r => `"${r.name}" <${r.email}>`).join(', ');
-
-  // Try SMTP first (real Gmail delivery)
-  if (isConfigured()) {
-    try {
-      const info = await getTransporter().sendMail({
-        from: `"Divinity CRM" <${SMTP.auth.user}>`,
-        to: toStr,
-        subject: opts.subject,
-        text: opts.body,
-      });
-      console.log(`[email-service] SMTP sent: "${opts.subject}" → ${toStr} (${info.messageId})`);
-      return { sent: true, channel: 'smtp', messageId: info.messageId };
-    } catch (err) {
-      console.error(`[email-service] SMTP FAILED: "${opts.subject}" → ${toStr}: ${err.message}`);
-      // Fall through to AgentMail fallback
-    }
-  }
-
-  // Fallback to AgentMail API (already configured for AI REI / Atlas inbox)
-  const agentMailKey = process.env.AGENTMAIL_AIREI_KEY;
-  const agentMailFrom = process.env.AGENTMAIL_AIREI_EMAIL;
-  if (agentMailKey && agentMailFrom) {
-    try {
-      const https = require('https');
-      const body = JSON.stringify({
-        to: filteredRecipients.map(r => r.email),
-        subject: opts.subject,
-        text: opts.body,
-      });
-      // URL-encode the inbox_id (e.g. airei@agentmail.to → airei%40agentmail.to)
-      const encodedInbox = encodeURIComponent(agentMailFrom);
-      const result = await new Promise((resolve, reject) => {
-        const req = https.request({
-          hostname: 'api.agentmail.to',
-          path: `/v0/inboxes/${encodedInbox}/messages/send`,
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${agentMailKey}`,
-            'Content-Type': 'application/json',
-          },
-        }, (res) => {
-          let d = '';
-          res.on('data', c => d += c);
-          res.on('end', () => {
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); }
-            } else {
-              reject(new Error(`AgentMail ${res.statusCode}: ${d.substring(0, 200)}`));
-            }
-          });
-        });
-        req.on('error', reject);
-        req.write(body);
-        req.end();
-      });
-      console.log(`[email-service] AgentMail sent: "${opts.subject}" → ${toStr} (${result.message_id || result.id || 'no id'})`);
-      return { sent: true, channel: 'agentmail', messageId: result.message_id || result.id || 'sent', response: result };
-    } catch (err) {
-      console.error(`[email-service] AgentMail FAILED: "${opts.subject}" → ${toStr}: ${err.message}`);
-      return { sent: false, channel: 'agentmail_failed', error: err.message };
-    }
-  }
-
-  // No channel available — fail loudly
-  return { sent: false, reason: 'No email channel: SMTP_PASS and AGENTMAIL_AIREI_KEY both missing' };
+  return { sent: false, channel: 'disabled', reason: 'email delivery disabled; app inbox only' };
 }
 
 // =============================================================
@@ -423,20 +327,12 @@ const STAGE_EMAIL_KEYS = new Set([
  */
 async function sendStageEmail(fromStage, toStage, lead) {
   const key = `${fromStage}→${toStage}`;
-  const senders = {
-    'CONTACT_MADE→OFFER_READY':       () => sendEmail(buildSethUnderwritingEmail(lead)),
-    'OFFER_READY→OFFER_SENT':          () => sendEmail(buildKaylaOfferReadyEmail(lead)),
-    'OFFER_RECEIVED→GAIN_FEEDBACK':    () => sendEmail(buildKaylaGainFeedbackEmail(lead)),
-    'ACTIVE_NEGOTIATION→TERMS_AGREED': () => sendEmail(buildKaylaContractDraftEmail(lead)),
-    'SELLER_DECLINED→ACTIVE_NEGOTIATION': () => sendEmail(buildKaylaJaxonCounterEmail(lead)),
-    'AWAITING_TITLE→CONTRACT_OUT':     () => sendEmail(buildTCHandshakeEmail(lead)),
-    'CONTRACT_OUT→UNDER_CONTRACT':     () => sendEmail(buildTCUnderContractEmail(lead)),
+  const known = STAGE_EMAIL_KEYS.has(key);
+  return {
+    sent: false,
+    skipped: true,
+    reason: known ? 'App inbox only policy' : `No email template for ${key}`,
   };
-
-  const sender = senders[key];
-  if (!sender) return { sent: false, skipped: true, reason: `No email template for ${key}` };
-
-  return sender();
 }
 
 module.exports = {
