@@ -322,7 +322,7 @@ async function sendRealEmailForNotification({ recipientEmail, recipientName, tit
   const result = await sendEmail({
     to: { email: recipientEmail, name: recipientName },
     subject: title,
-    body: `${body}\n\n---\nOpen in CRM: https://divinitycrm.onrender.com/leads/${leadId}\n\nAtlas (Divinity CRM)`,
+    body: `${body}\n\n---\nOpen in CRM: https://divinitycrm-ggi5.onrender.com/leads/${leadId}\n\nAtlas (Divinity CRM)`,
   });
   if (result.sent) {
     console.log(`[notifications] Real email sent via ${result.channel}: ${title} → ${recipientEmail}`);
