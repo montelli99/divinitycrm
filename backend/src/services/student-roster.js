@@ -186,10 +186,8 @@ async function createMenteeRecord({
 async function getStudentRoster() {
   const students = await query(
     `SELECT 
-      u.id, u.email, u.first_name, u.last_name, u.role, u.payment_tier,
-      u.square_customer_id, u.start_date, u.assigned_markets, u.offer_type,
-      u.closer_payout_percent, u.student_status, u.vacation_mode,
-      u.substitute_id, u.coverage_start, u.coverage_end, u.created_at,
+      u.id, u.email, u.first_name, u.last_name, u.role,
+      u.created_at,
       COUNT(l.id) AS total_leads,
       COUNT(l.id) FILTER (WHERE l.stage NOT IN ('ARCHIVED', 'CLOSED', 'DEAD')) AS active_leads,
       COUNT(l.id) FILTER (WHERE l.stage IN ('OFFER_SENT', 'ACTIVE_NEGOTIATION', 'TERMS_AGREED', 'AWAITING_TITLE', 'CONTRACT_OUT', 'UNDER_CONTRACT')) AS offers_sent,
@@ -209,7 +207,8 @@ async function getStudentRoster() {
 
   return students.map(s => ({
     ...s,
-    payment_tier_details: PAYMENT_TIERS[s.payment_tier] || null,
+    payment_tier: null,
+    payment_tier_details: null,
     permissions: s.role === 'closer' ? CLOSER_PERMISSIONS : STUDENT_PERMISSIONS,
     conversion_rate: (s.deals_closed + s.deals_lost) > 0
       ? Math.round((s.deals_closed / (s.deals_closed + s.deals_lost)) * 100)
@@ -226,10 +225,7 @@ async function getStudentRoster() {
 
 async function getStudentDetails(studentId) {
   const student = await query(
-    `SELECT id, email, first_name, last_name, role, payment_tier,
-      square_customer_id, start_date, assigned_markets, offer_type,
-      closer_payout_percent, student_status, vacation_mode,
-      substitute_id, coverage_start, coverage_end, created_at
+    `SELECT id, email, first_name, last_name, role, created_at
     FROM users WHERE id = $1 AND role IN ('student', 'closer')`,
     [studentId]
   );
@@ -290,7 +286,8 @@ async function getStudentDetails(studentId) {
   return {
     student: {
       ...student[0],
-      payment_tier_details: PAYMENT_TIERS[student[0].payment_tier] || null,
+      payment_tier: null,
+      payment_tier_details: null,
       permissions: student[0].role === 'closer' ? CLOSER_PERMISSIONS : STUDENT_PERMISSIONS,
     },
     stats: {

@@ -1,21 +1,36 @@
 // API helper — local JWT auth
 const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? '/api'
-    : 'https://divinitycrm-api.onrender.com/api');
+  import.meta.env.VITE_API_BASE || '/api';
 
 function getToken() {
-  return localStorage.getItem('divinity_token');
+  try {
+    return localStorage.getItem('divinity_token');
+  } catch (e) {
+    return null;
+  }
 }
 
 function setToken(token) {
-  localStorage.setItem('divinity_token', token);
+  try {
+    localStorage.setItem('divinity_token', token);
+  } catch (e) {
+    console.warn('localStorage write failed', e.message);
+  }
+}
+
+function setUser(user) {
+  try {
+    localStorage.setItem('divinity_user', JSON.stringify(user));
+  } catch (e) {
+    console.warn('localStorage write failed', e.message);
+  }
 }
 
 function clearToken() {
-  localStorage.removeItem('divinity_token');
-  localStorage.removeItem('divinity_user');
+  try {
+    localStorage.removeItem('divinity_token');
+    localStorage.removeItem('divinity_user');
+  } catch (e) {}
 }
 
 async function request(path, options = {}) {
@@ -44,7 +59,12 @@ async function request(path, options = {}) {
 
 export const api = {
   // Auth
-  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: async (email, password) => {
+    const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    setToken(result.token);
+    setUser(result.user);
+    return result;
+  },
 
   // Leads
   getLeads: (params) => {

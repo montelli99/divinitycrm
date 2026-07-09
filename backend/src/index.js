@@ -34,7 +34,18 @@ try { teleprompterRouter = require('./routes/teleprompter'); console.log('telepr
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https://divinitycrm-api.onrender.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      fontSrc: ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(morgan('dev'));
 app.use(express.json({
@@ -46,6 +57,13 @@ app.use(express.json({
 // Serve frontend static files from backend/public/
 const path = require('path');
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Disable CSP for local dev so frontend can reach API across localhost/127.0.0.1
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "");
+  res.setHeader('X-Content-Security-Policy', "");
+  next();
+});
 
 // Health check (no auth)
 app.get('/api/health', async (req, res) => {
