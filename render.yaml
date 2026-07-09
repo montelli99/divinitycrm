@@ -24,9 +24,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: BACKEND_URL
-        value: https://divinitycrm-api.onrender.com
+        value: https://divinitycrm-ggi5.onrender.com/api
       - key: FRONTEND_URL
-        value: https://divinitycrm.onrender.com
+        value: https://divinitycrm-ggi5.onrender.com
 
   # Frontend Static Site
   - type: static_site
@@ -41,4 +41,11 @@ services:
       - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
       - key: VITE_API_BASE
-        value: https://divinitycrm-api.onrender.com/api
+        value: https://divinitycrm-ggi5.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://divinitycrm-ggi5.onrender.com/api/$1
+      - type: rewrite
+        source: /*
+        destination: /index.html
