@@ -177,7 +177,7 @@ async function getInboxCount(userId, dbQuery = defaultQuery) {
   const rows = await dbQuery(
     `SELECT COUNT(*)::int AS count
      FROM communications
-     WHERE user_id = $1 AND archived_at IS NULL`,
+     WHERE user_id = $1 AND archived_at IS NULL AND read_at IS NULL`,
     [userId]
   );
   return rows[0]?.count || 0;
