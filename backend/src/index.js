@@ -14,7 +14,7 @@ const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
 // Lazy-load routes
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter, emilyRouter;
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter, emilyRouter, communicationsRouter;
 
 try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
@@ -31,6 +31,7 @@ try { notificationsRouter = require('./routes/notifications'); console.log('noti
 try { trainingDocsRouter = require('./routes/training-docs'); console.log('training-docs route OK'); } catch(e) { console.error('training-docs route FAIL:', e.message); }
 try { teleprompterRouter = require('./routes/teleprompter'); console.log('teleprompter route OK'); } catch(e) { console.error('teleprompter route FAIL:', e.message); }
 try { emilyRouter = require('./routes/emily'); console.log('emily route OK'); } catch(e) { console.error('emily route FAIL:', e.message); }
+try { communicationsRouter = require('./routes/communications'); console.log('communications route OK'); } catch(e) { console.error('communications route FAIL:', e.message); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -112,6 +113,7 @@ if (notificationsRouter) app.use('/api/notifications', authMiddleware, notificat
 if (trainingDocsRouter) app.use('/api/training-docs', authMiddleware, trainingDocsRouter);
 if (teleprompterRouter) app.use('/api/teleprompter', authMiddleware, teleprompterRouter);
 if (emilyRouter) app.use('/api/emily', authMiddleware, emilyRouter);
+if (communicationsRouter) app.use('/api/communications', authMiddleware, communicationsRouter);
 
 // Error handler
 app.use((err, req, res, next) => {

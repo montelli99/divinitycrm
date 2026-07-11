@@ -1,21 +1,14 @@
 /**
  * SMS Service — Divinity CRM
  * =============================================================
- * Sends automated SMS for stage transitions.
- * Uses GHL Conversations API (already authenticated via LOCATION_ID + TOKEN).
- *
- * Templates mapped from sms-templates.js and script-prompts.js.
- * Each stage transition has specific SMS triggers.
+ * Outbound SMS is disabled during the inbox-only phase.
+ * Keep every entry point as a hard no-op so Atlas cannot send.
  */
 
-const https = require('https');
-
-const TOKEN = process.env.GHL_API_TOKEN || 'pit-b8e79120-be2e-46c9-9615-336385d15315';
-const LOCATION_ID = process.env.GHL_LOCATION_ID || '61XPzSqRy7UKMwW9DeB8';
-const BASE = 'services.leadconnectorhq.com';
+const { createCommunication } = require('./communications-service');
 
 function isConfigured() {
-  return !!(TOKEN && LOCATION_ID);
+  return false;
 }
 
 /**
@@ -24,52 +17,37 @@ function isConfigured() {
  * @param {string} message - SMS body
  * @returns {Object} { sent, messageId?, error? }
  */
-async function sendSMS(contactId, message) {
-  if (!isConfigured()) {
-    console.warn('[sms-service] GHL not configured — skipping SMS');
-    return { sent: false, reason: 'GHL not configured' };
+async function sendSMS() {
+  console.warn('[sms-service] outbound SMS disabled — skipping delivery');
+  return { sent: false, channel: 'disabled', reason: 'sms delivery disabled; app inbox only' };
+}
+
+async function maybeRecordDisabledSms({ lead, templateKey, messageBody, contactId, stage }) {
+  if (!process.env.DATABASE_URL) return null;
+
+  const userId = lead?.user_id || lead?.userId || null;
+  if (!userId) return null;
+
+  try {
+    return await createCommunication({
+      userId,
+      leadId: lead?.id || null,
+      type: 'sms',
+      direction: 'outbound',
+      status: 'scheduled',
+      phoneNumber: lead?.phone_normalized || lead?.phone || null,
+      senderName: 'Divinity CRM',
+      recipientName: lead?.seller_name || lead?.agent_name || null,
+      messageBody,
+      externalStatus: 'disabled',
+      templateKey,
+      stage,
+      createdBy: null,
+    });
+  } catch (err) {
+    console.warn('[sms-service] communication log skipped:', err.message);
+    return null;
   }
-
-  return new Promise((resolve) => {
-    const body = JSON.stringify({
-      type: 'SMS',
-      contactId,
-      message,
-    });
-
-    const req = https.request({
-      hostname: BASE,
-      path: `/conversations/v1/conversations/message`,
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${TOKEN}`,
-        'Content-Type': 'application/json',
-        'Version': '2021-04-15',
-        'locationId': LOCATION_ID,
-      },
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          console.log(`[sms-service] Sent SMS → contactId=${contactId} (${parsed.id || 'ok'})`);
-          resolve({ sent: true, messageId: parsed.id });
-        } catch (e) {
-          console.error(`[sms-service] Parse error: ${e.message}`);
-          resolve({ sent: false, error: e.message });
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      console.error(`[sms-service] Request error: ${err.message}`);
-      resolve({ sent: false, error: err.message });
-    });
-
-    req.write(body);
-    req.end();
-  });
 }
 
 // =============================================================
@@ -184,41 +162,9 @@ const SMS_TEMPLATES = {
  * @param {string} contactId - GHL contact ID (optional, falls back to lead.ghl_contact_id)
  * @returns {Object} { sent, template?, messageId?, error? }
  */
-async function sendStageSMS(fromStage, toStage, lead, contactId) {
-  const cid = contactId || lead.ghl_contact_id;
-  if (!cid) return { sent: false, reason: 'No GHL contact ID' };
-
+async function sendStageSMS(fromStage, toStage) {
   const key = `${fromStage}→${toStage}`;
-  const templateMap = {
-    'LEAD_ENTERED→CONTACT_MADE':       ['INT', 'CCC'],
-    'CONTACT_MADE→OFFER_READY':        [], // F50/F10 sent manually based on condition
-    'OFFER_READY→OFFER_SENT':          ['GCJ'],
-    'OFFER_RECEIVED→GAIN_FEEDBACK':    ['LOI'],
-    'GAIN_FEEDBACK→NO_ANSWER':         ['LOI2DAYS', 'SD'],
-    'NO_ANSWER→SELLER_DECLINED':       ['SD'],
-    'AWAITING_TITLE→CONTRACT_OUT':     ['PSA_CALL_OPENER', 'CONTRACT_OUT'],
-    'CONTRACT_OUT→UNDER_CONTRACT':     ['INSPECTION_SCHEDULED'],
-    'APPRAISAL_ORDERED→APPRAISAL_DONE':['APPRAISAL_DONE'],
-    'JV_SENT→JV_SIGNED':               ['JV_SIGNED'],
-    'WIRE_SETUP→CLOSING_DATE':         ['CLOSING_CONFIRMED'],
-  };
-
-  const templates = templateMap[key];
-  if (!templates || templates.length === 0) {
-    return { sent: false, reason: `No SMS templates for ${key}` };
-  }
-
-  const results = [];
-  for (const tplKey of templates) {
-    const template = SMS_TEMPLATES[tplKey];
-    if (!template) { results.push({ template: tplKey, sent: false, error: 'Template not found' }); continue; }
-
-    const message = fillSMSTemplate(template, lead);
-    const result = await sendSMS(cid, message);
-    results.push({ template: tplKey, ...result });
-  }
-
-  return { sent: results.some(r => r.sent), templates: results };
+  return { sent: false, reason: `sms delivery disabled; app inbox only (${key})` };
 }
 
 /**
@@ -228,110 +174,8 @@ async function sendStageSMS(fromStage, toStage, lead, contactId) {
  *
  * Docs: https://developer.justcall.io/reference/send-sms-text
  */
-async function sendSMSViaJustCall(phone, message) {
-  const API_KEY = process.env.JUSTCALL_API_KEY;
-  const API_SECRET = process.env.JUSTCALL_API_SECRET;
-  let FROM = process.env.JUSTCALL_FROM_NUMBER;
-  if (!API_KEY || !API_SECRET) {
-    return { sent: false, reason: 'JustCall not configured (missing JUSTCALL_API_KEY/JUSTCALL_API_SECRET)' };
-  }
-  if (!phone) {
-    return { sent: false, reason: 'No recipient phone number' };
-  }
-  // JustCall requires the from number WITHOUT the leading + (e.g. "15716012619" not "+15716012619")
-  if (FROM && FROM.startsWith('+')) {
-    FROM = FROM.slice(1);
-  }
-  // If FROM is missing or invalid, fetch the first available number from account
-  if (!FROM) {
-    try {
-      const list = await new Promise((resolve, reject) => {
-        const req = https.request({
-          hostname: 'api.justcall.io',
-          path: '/v2.1/phone-numbers',
-          method: 'GET',
-          headers: { 'Authorization': `${API_KEY}:${API_SECRET}` },
-        }, (res) => {
-          let d = '';
-          res.on('data', c => d += c);
-          res.on('end', () => {
-            try {
-              const parsed = JSON.parse(d);
-              const first = parsed.data?.[0]?.justcall_number;
-              resolve(first || null);
-            } catch { resolve(null); }
-          });
-        });
-        req.on('error', reject);
-        req.end();
-      });
-      if (!list) return { sent: false, reason: 'No JustCall numbers available on this account' };
-      FROM = list;
-      console.log(`[sms-service] Auto-selected JustCall number: ${FROM}`);
-    } catch (e) {
-      return { sent: false, reason: `Cannot fetch JustCall numbers: ${e.message}` };
-    }
-  }
-  // JustCall v2.1 API uses `Authorization: API_KEY:API_SECRET` (not Basic auth)
-  // POST /v2.1/texts/new with { justcall_number, contact_number, body, media }
-  const body = JSON.stringify({
-    justcall_number: FROM,
-    contact_number: phone,
-    body: message,
-    media: [],
-  });
-  return new Promise((resolve) => {
-    const req = https.request({
-      hostname: 'api.justcall.io',
-      path: '/v2.1/texts/new',
-      method: 'POST',
-      headers: {
-        'Authorization': `${API_KEY}:${API_SECRET}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(d);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            // JustCall returns { status: "success", id: <message_id>, ... }
-            if (parsed.status === 'success') {
-              console.log(`[sms-service] JustCall sent: ${FROM} → ${phone} (${parsed.id || 'no id'})`);
-              resolve({ sent: true, channel: 'justcall', messageId: parsed.id || 'sent', response: parsed });
-            } else {
-              console.error(`[sms-service] JustCall refused: ${JSON.stringify(parsed)}`);
-              resolve({ sent: false, channel: 'justcall', reason: parsed.message || parsed.error || 'unknown refusal', response: parsed });
-            }
-          } else {
-            console.error(`[sms-service] JustCall HTTP ${res.statusCode}: ${d.substring(0, 200)}`);
-            // Try to extract a clearer error message from the response body
-            let clearReason = `HTTP ${res.statusCode}`;
-            try {
-              const parsedErr = JSON.parse(d);
-              if (parsedErr.message) {
-                clearReason = typeof parsedErr.message === 'string'
-                  ? parsedErr.message
-                  : parsedErr.message.join(', ');
-              }
-            } catch {}
-            resolve({ sent: false, channel: 'justcall', reason: clearReason, response: d.substring(0, 500) });
-          }
-        } catch (e) {
-          console.error(`[sms-service] JustCall parse error: ${e.message}`);
-          resolve({ sent: false, channel: 'justcall', reason: `parse error: ${e.message}` });
-        }
-      });
-    });
-    req.on('error', (e) => {
-      console.error(`[sms-service] JustCall network error: ${e.message}`);
-      resolve({ sent: false, channel: 'justcall', reason: `network: ${e.message}` });
-    });
-    req.write(body);
-    req.end();
-  });
+async function sendSMSViaJustCall() {
+  return { sent: false, channel: 'disabled', reason: 'sms delivery disabled; app inbox only' };
 }
 
 /**
@@ -342,28 +186,18 @@ async function sendSMSViaJustCall(phone, message) {
  *   2. Else if lead.phone present + JustCall configured -> JustCall direct SMS
  *   3. Else fail loudly (no silent no-op)
  */
-async function sendTemplate(lead, templateKey, contactId) {
-  const template = SMS_TEMPLATES[templateKey];
-  if (!template) return { sent: false, reason: `Unknown template: ${templateKey}` };
+async function sendTemplate(lead = {}, templateKey = null, contactId = null) {
+  const messageBody = templateKey ? fillSMSTemplate(SMS_TEMPLATES[templateKey] || '', lead) : '';
+  const communication = await maybeRecordDisabledSms({ lead, templateKey, messageBody, contactId, stage: lead?.stage || null });
 
-  const message = fillSMSTemplate(template, lead);
-
-  // Path 1: GHL contactId if available
-  const cid = contactId || lead.ghl_contact_id;
-  if (cid) {
-    const r = await sendSMS(cid, message);
-    if (r.sent) return { ...r, channel: 'ghl' };
-    // GHL failed but we still might be able to try JustCall as backup
-    console.warn(`[sms-service] GHL send failed (${r.reason || r.error}); trying JustCall fallback`);
-  }
-
-  // Path 2: JustCall direct from lead phone
-  const phone = lead.seller_phone || lead.agent_phone || lead.phone;
-  if (phone) {
-    return await sendSMSViaJustCall(phone, message);
-  }
-
-  return { sent: false, reason: 'No GHL contactId and no lead phone — cannot determine recipient' };
+  return {
+    sent: false,
+    channel: 'disabled',
+    reason: 'sms delivery disabled; app inbox only',
+    templateKey,
+    messageBody,
+    communicationId: communication?.id || null,
+  };
 }
 
 module.exports = {
