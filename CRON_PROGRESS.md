@@ -29,6 +29,7 @@
 - (Runs 12–15) Verified the pushed state remains green; no further code changes required.
 - (Run 16) Added communications persistence service + `/api/communications` route; SMS templates now log to `communications` while outbound delivery stays disabled.
 - (Run 17) Added communications inbox state (read/archive columns + counts), repointed the inbox UI/API to `communications`, and added migration `003_communications_inbox.sql`.
+- (Run 18) Fixed communications unread-count semantics so the inbox badge counts only unread items.
 
 ## Blockers
 - None.
@@ -40,13 +41,13 @@
   - Consider the cron job complete. Future cron pings should be no-ops unless new work is requested.
 
 ## Current Run — Saturday, July 11th, 2026 — 3:37 PM
-- Status check: inbox-state phase was committed as `0de73b6` and the working tree was re-verified.
-- Action: added read/archive state to communications and wired the inbox UI to the communications route.
+- Status check: unread-count fix was committed as `a1a9e52` and the working tree was re-verified.
+- Action: corrected communications unread count semantics.
 - Verification suite re-ran successfully after the code change.
-- Note: outbound SMS is still blocked by policy; the new path records messages and now supports inbox state.
+- Note: outbound SMS is still blocked by policy; the inbox now tracks read/archive state and unread counts correctly.
 
 ## Verification
-- `git log --oneline -3` → HEAD is `0de73b6 CRM: add communications inbox state`; prior commits include `fbee1d0` and `ce88ce5`.
+- `git log --oneline -3` → HEAD is `a1a9e52 CRM: fix communications unread count`; prior commits include `0de73b6` and `fbee1d0`.
 - `npm test` (backend) → 38 pass / 0 fail.
 - `npm run build -- --outDir dist` (frontend) → 54 modules transformed, green.
 - `git status --short` → `CRON_PROGRESS.md` modified; only untracked temp files otherwise remain; no other tracked work uncommitted.
