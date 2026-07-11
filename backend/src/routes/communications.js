@@ -1,5 +1,12 @@
 const express = require('express');
-const { createCommunication, listCommunications } = require('../services/communications-service');
+const {
+  createCommunication,
+  listCommunications,
+  markRead,
+  markAllRead,
+  archive,
+  getInboxCount,
+} = require('../services/communications-service');
 const { sendTemplate } = require('../services/sms-service');
 
 function createCommunicationsRouter({
@@ -17,9 +24,48 @@ function createCommunicationsRouter({
         direction: req.query.direction,
         status: req.query.status,
         limit: req.query.limit,
+        includeArchived: req.query.filter === 'all',
       }, dbQuery);
 
-      res.json({ communications: rows, count: rows.length });
+      const unreadCount = await getInboxCount(req.user?.userId || req.query.userId, dbQuery);
+      const unreadRows = rows.filter(row => !row.read_at);
+      res.json({ notifications: rows, communications: rows, unreadCount, count: rows.length, unread: unreadRows.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/unread-count', authenticate, async (req, res, next) => {
+    try {
+      const count = await getInboxCount(req.user?.userId || req.query.userId, dbQuery);
+      res.json({ count });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/:id/read', authenticate, async (req, res, next) => {
+    try {
+      await markRead(req.params.id, req.user?.userId, dbQuery);
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/read-all', authenticate, async (req, res, next) => {
+    try {
+      await markAllRead(req.user?.userId, dbQuery);
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/:id/archive', authenticate, async (req, res, next) => {
+    try {
+      await archive(req.params.id, req.user?.userId, dbQuery);
+      res.json({ success: true });
     } catch (err) {
       next(err);
     }

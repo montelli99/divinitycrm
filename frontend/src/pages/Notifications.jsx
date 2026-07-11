@@ -10,6 +10,11 @@ const TYPE_ICONS = {
   contract_draft: '📝',
   tc_handoff: '🤝',
   under_contract: '🔒',
+  sms: '💬',
+  email: '✉️',
+  call: '📱',
+  note: '🗒️',
+  transcript: '🧾',
   default: '🔔',
 };
 
@@ -21,6 +26,11 @@ const TYPE_LABELS = {
   contract_draft: 'Contract Draft',
   tc_handoff: 'TC Handoff',
   under_contract: 'Under Contract',
+  sms: 'SMS',
+  email: 'Email',
+  call: 'Call',
+  note: 'Note',
+  transcript: 'Transcript',
 };
 
 const QUICK_LINKS = [

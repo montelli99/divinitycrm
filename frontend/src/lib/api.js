@@ -156,11 +156,19 @@ export const api = {
   getTeamDashboard: () => request('/admin/dashboard'),
 
   // Notifications
-  getNotifications: (filter = 'all') => request(`/notifications?filter=${filter}`),
-  getUnreadCount: () => request('/notifications/unread-count'),
-  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
-  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
-  archiveNotification: (id) => request(`/notifications/${id}/archive`, { method: 'POST' }),
+  getNotifications: (filter = 'all') => request(`/communications?filter=${filter}`),
+  getUnreadCount: () => request('/communications/unread-count'),
+  markNotificationRead: (id) => request(`/communications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/communications/read-all', { method: 'POST' }),
+  archiveNotification: (id) => request(`/communications/${id}/archive`, { method: 'POST' }),
+
+  // Communications
+  getCommunications: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/communications${qs ? '?' + qs : ''}`);
+  },
+  createCommunication: (data) => request('/communications/sms', { method: 'POST', body: JSON.stringify(data) }),
+  sendSmsTemplate: (data) => request('/communications/sms/template', { method: 'POST', body: JSON.stringify(data) }),
 
   // Training Docs (underwriting, handoff, stages)
   getUnderwritingDocs: () => request('/training-docs/underwriting'),

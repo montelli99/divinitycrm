@@ -29,8 +29,8 @@ test('GET /api/communications returns inbox rows', async () => {
 
   assert.equal(res.status, 200);
   assert.equal(res.body.count, 1);
-  assert.equal(res.body.communications[0].id, 'comm-1');
-  assert.equal(calls.length, 1);
+  assert.equal(res.body.notifications[0].id, 'comm-1');
+  assert.equal(calls.length, 2);
 });
 
 test('POST /api/communications/sms stores an outbound message', async () => {
@@ -53,6 +53,48 @@ test('POST /api/communications/sms stores an outbound message', async () => {
   assert.equal(res.body.communication.id, 'comm-2');
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /INSERT INTO communications/);
+});
+
+test('POST /api/communications/:id/read marks a row read', async () => {
+  const calls = [];
+  const app = buildApp(async (sql, params) => {
+    calls.push({ sql, params });
+    return [{ id: 'comm-2' }];
+  });
+
+  const res = await request(app).post('/api/communications/comm-2/read');
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.match(calls[0].sql, /UPDATE communications/);
+});
+
+test('POST /api/communications/read-all marks everything read', async () => {
+  const calls = [];
+  const app = buildApp(async (sql, params) => {
+    calls.push({ sql, params });
+    return [{ id: 'comm-1' }];
+  });
+
+  const res = await request(app).post('/api/communications/read-all');
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.match(calls[0].sql, /UPDATE communications/);
+});
+
+test('POST /api/communications/:id/archive archives a row', async () => {
+  const calls = [];
+  const app = buildApp(async (sql, params) => {
+    calls.push({ sql, params });
+    return [{ id: 'comm-3' }];
+  });
+
+  const res = await request(app).post('/api/communications/comm-3/archive');
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.match(calls[0].sql, /UPDATE communications/);
 });
 
 test('POST /api/communications/sms/template validates templateKey', async () => {
