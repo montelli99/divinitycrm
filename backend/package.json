@@ -9,7 +9,8 @@
     "start:skip-check": "node src/index.js",
     "db:migrate": "node src/db/migrate.js",
     "env:check": "node src/scripts/env-validator.js",
-    "smoke:stage5": "node --test src/services/email-service.test.js"
+    "smoke:stage5": "node --test src/services/email-service.test.js",
+    "test": "node --test src/services/*.test.js src/scripts/*.test.js src/routes/*.test.js"
   },
   "dependencies": {
     "@clerk/express": "1.7.81",
@@ -26,5 +27,8 @@
     "nodemailer": "^9.0.1",
     "pdfkit": "^0.19.1",
     "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.0"
   }
 }

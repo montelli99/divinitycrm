@@ -19,7 +19,8 @@ const STACK_LTV = 0.70;
 const STACK_RATE = 0.08;          // 8% fixed
 const STACK_AMORT_MONTHS = 360;    // 30-year amortization
 const STACK_DSCR_TARGET = 1.25;
-const STACK_CASH_FLOW_MIN = 200;
+const STACK_CASH_FLOW_MIN = 250;       // Kayla's live process: $250/mo minimum to qualify for offer
+const STACK_CASH_FLOW_SOFT = 200;      // Soft gate — deal may still be worth tracking but not offer-worthy
 const STACK_DEFAULT_TAX_MONTHLY = 350;
 const STACK_4PCT_NOTE_PER_100K = 125;  // $125/mo per $100K financed @ 4%
 
@@ -63,19 +64,23 @@ function buildDecisionMatrix(meta) {
   const onePercent = meta.percPass;
   const dscr = (meta.dscr || 0) >= STACK_DSCR_TARGET;
   const cashFlow = (meta.cashFlow || 0) >= STACK_CASH_FLOW_MIN;
+  const cashFlowSoft = (meta.cashFlow || 0) >= STACK_CASH_FLOW_SOFT;
   const buyBox = meta.buyBoxPass;
   const kill = [];
   if (!onePercent) kill.push('1% rule fails — property under-rents for price');
   if (!dscr) kill.push(`DSCR ${meta.dscr} < ${STACK_DSCR_TARGET} — lender won't finance`);
-  if (!cashFlow) kill.push(`Cash flow $${Math.round(meta.cashFlow)} < $${STACK_CASH_FLOW_MIN}/mo — negative carry`);
+  if (!cashFlow) kill.push(`Cash flow $${Math.round(meta.cashFlow)} < $${STACK_CASH_FLOW_MIN}/mo — does not qualify for offer`);
   if (!buyBox) kill.push('Buy box fails (red state / HOA / flood / pool / population)');
   return {
     onePercent,
     dscr,
     cashFlow,
+    cashFlowSoft,
     buyBox,
-    pass: onePercent && dscr && cashFlow && buyBox,
+    qualifiesForOffer: onePercent && dscr && cashFlow && buyBox,
+    pass: onePercent && dscr && cashFlowSoft && buyBox,
     kill,
+    action: (!cashFlow && !cashFlowSoft) ? 'Email Seth — deal does not meet minimum cash flow' : null,
   };
 }
 
@@ -91,6 +96,18 @@ function calculate(params) {
     existingLoanBalance = 0, existingLoanRate = 0,
     sqft, beds, baths, condition
   } = params;
+
+  // ---- Guard invalid inputs ----
+  if (!arv || arv <= 0 || !askingPrice || askingPrice <= 0 || monthlyRent === undefined || monthlyRent === null || monthlyRent < 0) {
+    return {
+      error: 'Invalid input: arv, askingPrice must be positive numbers and monthlyRent must be non-negative.',
+      metadata: { arv, askingPrice, monthlyRent },
+      structures: [],
+      recommended: null,
+      midTermPivot: { pivot: false, reason: 'Invalid input data' },
+      decisionMatrix: { onePercent: false, dscr: false, cashFlow: false, buyBox: false, pass: false, kill: ['Invalid input: arv, askingPrice must be positive and monthlyRent non-negative.'] },
+    };
+  }
 
   // ---- 1% Rule ----
   const onePercentThreshold = askingPrice * 0.01;
@@ -392,6 +409,7 @@ module.exports = {
   STACK_AMORT_MONTHS,
   STACK_DSCR_TARGET,
   STACK_CASH_FLOW_MIN,
+  STACK_CASH_FLOW_SOFT,
   STACK_DEFAULT_TAX_MONTHLY,
   STACK_4PCT_NOTE_PER_100K,
   REPAIR_TIER_PSF,

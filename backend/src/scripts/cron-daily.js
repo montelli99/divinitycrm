@@ -1,6 +1,7 @@
 const { query } = require('../db/connection');
 const { createNotification } = require('../services/notifications');
 const { TEAM_VIEW_ROLES, TEAM_VIEW_EMAILS } = require('../services/access');
+const { getTodaysQueue, formatQueueForText } = require('../services/emily');
 
 const STAGE_LABELS = {
   LEAD_ENTERED: '🎯 NEW LEAD',
@@ -27,30 +28,24 @@ const STAGE_LABELS = {
 };
 
 async function getPipelineForToday() {
-  // Today's active leads (not CLOSED, not DEAD) — what Emily should work today
-  const r = await query(`
-    SELECT id, address, city, state, zip, stage, recommended_strategy,
-           cash_offer, f50_offer, f10_offer, subto_offer, novation_offer,
-           updated_at
-    FROM leads
-    WHERE stage NOT IN ('CLOSED')
-      AND stage IS NOT NULL
-    ORDER BY
-      CASE stage
-        WHEN 'LEAD_ENTERED' THEN 1
-        WHEN 'CONTACT_MADE' THEN 2
-        WHEN 'OFFER_SENT' THEN 3
-        WHEN 'OFFER_RECEIVED' THEN 4
-        WHEN 'ACTIVE_NEGOTIATION' THEN 5
-        WHEN 'TERMS_AGREED' THEN 6
-        WHEN 'UNDER_CONTRACT' THEN 7
-        WHEN 'CLOSING_DATE' THEN 8
-        ELSE 9
-      END,
-      updated_at DESC
-    LIMIT 50
-  `);
-  return r;
+  // Today's active leads (not CLOSED, not DEAD) — what Emily should work today.
+  // Prefer the Emily engine for consistent priority + next-action metadata.
+  const queue = await getTodaysQueue(50);
+  return queue.map(l => ({
+    id: l.id,
+    address: l.address,
+    city: l.city,
+    state: l.state,
+    zip: l.zip,
+    stage: l.stage,
+    recommended_strategy: l.recommended_strategy,
+    cash_offer: l.cash_offer,
+    f50_offer: l.f50_offer,
+    f10_offer: l.f10_offer,
+    subto_offer: l.subto_offer,
+    novation_offer: l.novation_offer,
+    updated_at: l.updated_at,
+  }));
 }
 
 async function getTodaysActivity() {
@@ -141,7 +136,14 @@ async function morningBrief() {
     contractAuditText = `\n\n❌ Contract library audit failed: ${e.message}`;
   }
 
-  const text = `CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}${contractAuditText}\n\nOpen pipeline: divinitycrm-ggi5.onrender.com/#/pipeline`;
+  // Emily top-lead next-action list makes the brief actionable.
+  const emilyQueue = await getTodaysQueue(50);
+  const { top: emilyTop } = formatQueueForText(emilyQueue);
+  const emilyText = emilyTop
+    ? `\n\n<b>Emily's Top Picks</b>\n${emilyTop}`
+    : '';
+
+  const text = `CRM Morning Brief — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n${leads.length} active leads\n\n${stageSummary}${closingsText}${emilyText}${contractAuditText}\n\nOpen pipeline: divinitycrm-ggi5.onrender.com/#/pipeline`;
   return await deliverInboxSummary('CRM Morning Brief', text);
 }
 

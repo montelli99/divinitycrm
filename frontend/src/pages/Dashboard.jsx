@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { STAGE_LABELS, STAGES, getOwnerForStage } from '../lib/pipeline-stages';
 import { canAssignLeads, canViewTeam } from '../lib/access';
+import EmilyWidget from '../components/EmilyWidget';
 
 // Bulk import moved to its own page: /bulk-import (see pages/BulkImport.jsx)
 // CSV utility functions and BULK_IMPORT_FIELDS removed from this file.
@@ -265,6 +266,9 @@ export default function Dashboard() {
           </div>
         </form>
       )}
+
+      {/* Emily Daily Queue Widget */}
+      <EmilyWidget />
 
       {stats && (
         <div className="stats-grid">

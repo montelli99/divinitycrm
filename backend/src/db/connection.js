@@ -8,16 +8,22 @@ require('dotenv').config();
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL not set. Copy .env.example to .env and fill in your Neon connection string.');
-  process.exit(1);
+// Lazily create the pool so modules can be loaded in tests without a live DB.
+// The pool is only instantiated on the first query attempt.
+let pool = null;
+function getPool() {
+  if (!pool) {
+    if (!DATABASE_URL) {
+      throw new Error('DATABASE_URL not set. Copy .env.example to .env and fill in your Neon connection string.');
+    }
+    pool = new Pool({ connectionString: DATABASE_URL });
+  }
+  return pool;
 }
-
-const pool = new Pool({ connectionString: DATABASE_URL });
 
 // Query helper — standard pg parameterized queries
 async function query(text, params) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const result = await client.query(text, params);
     return result.rows;
@@ -44,4 +50,4 @@ async function testConnection() {
   }
 }
 
-module.exports = { pool, query, queryOne, testConnection };
+module.exports = { getPool, query, queryOne, testConnection };

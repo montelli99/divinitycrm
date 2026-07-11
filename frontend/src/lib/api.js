@@ -169,6 +169,9 @@ export const api = {
 
   // Teleprompter
   markTeleprompterSent: (data) => request('/teleprompter/mark-sent', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Emily daily queue
+  getEmilyQueue: (limit) => request(`/emily/queue${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
 };
 
 export { getToken, setToken, clearToken };
