@@ -28,6 +28,7 @@
 - (Run 11) Refined calculator decision matrix with `qualifiesForOffer` vs soft-pass cash-flow gates (`STACK_CASH_FLOW_MIN = 250`, `STACK_CASH_FLOW_SOFT = 200`), added a test, and amended/pushed the commit.
 - (Runs 12–15) Verified the pushed state remains green; no further code changes required.
 - (Run 16) Added communications persistence service + `/api/communications` route; SMS templates now log to `communications` while outbound delivery stays disabled.
+- (Run 17) Added communications inbox state (read/archive columns + counts), repointed the inbox UI/API to `communications`, and added migration `003_communications_inbox.sql`.
 
 ## Blockers
 - None.
@@ -38,15 +39,15 @@
   - Deploy the backend/frontend to Render/Vercel.
   - Consider the cron job complete. Future cron pings should be no-ops unless new work is requested.
 
-## Current Run — Saturday, July 11th, 2026 — 5:12 AM
-- Status check: phase 2 code was committed as `ce88ce5` and the working tree was re-verified.
-- Action: added communications persistence + route wiring.
+## Current Run — Saturday, July 11th, 2026 — 3:37 PM
+- Status check: inbox-state phase was committed as `0de73b6` and the working tree was re-verified.
+- Action: added read/archive state to communications and wired the inbox UI to the communications route.
 - Verification suite re-ran successfully after the code change.
-- Note: outbound SMS is still blocked by policy; the new path only records messages into the inbox table.
+- Note: outbound SMS is still blocked by policy; the new path records messages and now supports inbox state.
 
 ## Verification
-- `git log --oneline -3` → HEAD is `ce88ce5 CRM: add communications inbox and SMS logging`; prior commits include `7390d19` and `4d9d79e`.
-- `npm test` (backend) → 31 pass / 0 fail.
+- `git log --oneline -3` → HEAD is `0de73b6 CRM: add communications inbox state`; prior commits include `fbee1d0` and `ce88ce5`.
+- `npm test` (backend) → 38 pass / 0 fail.
 - `npm run build -- --outDir dist` (frontend) → 54 modules transformed, green.
 - `git status --short` → `CRON_PROGRESS.md` modified; only untracked temp files otherwise remain; no other tracked work uncommitted.
 - Next run: continue Phase 2 follow-on work unless the operator pauses the cron.
