@@ -5,10 +5,109 @@
  * Keep every entry point as a hard no-op so Atlas cannot send.
  */
 
-const { createCommunication } = require('./communications-service');
+const { createCommunication, updateCommunicationStatus } = require('./communications-service');
+const { spawn } = require('child_process');
+const { query } = require('../db/connection');
+const path = require('path');
 
 function isConfigured() {
-  return false;
+  // Only true if both VoIP.ms creds AND master SMS kill switch are present
+  const masterEnabled = process.env.SMS_ENABLED === 'true';
+  const voipEnabled = process.env.VOIPMS_ENABLED === 'true';
+  const hasCreds = Boolean(process.env.VOIPMS_USERNAME && process.env.VOIPMS_API_PASSWORD && process.env.VOIPMS_DID);
+  const hasScript = Boolean(process.env.VOIPMS_SENDER_SCRIPT_PATH);
+  return Boolean((masterEnabled || voipEnabled) && hasCreds && hasScript);
+}
+
+function normalizePhone(number) {
+  if (!number) return null;
+  const cleaned = String(number).replace(/\D/g, '');
+  if (cleaned.length === 11 && cleaned.startsWith('1')) return cleaned.slice(1);
+  if (cleaned.length === 10) return cleaned;
+  return null;
+}
+
+const SAFE_TEST_NUMBER = '5718140891'; // Montelli's phone — only destination allowed for SMS testing
+
+async function getDailyCount(did) {
+  if (!did) return 0;
+  const r = await query(
+    'SELECT count FROM sms_daily_log WHERE did = $1 AND log_date = CURRENT_DATE',
+    [did]
+  );
+  return r[0]?.count || 0;
+}
+
+async function incrementDailyCount(did) {
+  await query(
+    `INSERT INTO sms_daily_log (did, log_date, count)
+     VALUES ($1, CURRENT_DATE, 1)
+     ON CONFLICT (did, log_date)
+     DO UPDATE SET count = sms_daily_log.count + 1`,
+    [did]
+  );
+}
+
+async function sendSMSViaVoIPMS({ to, message }) {
+  if (!isConfigured()) {
+    return { sent: false, channel: 'disabled', reason: 'VoIP.ms not configured or SMS_ENABLED=false' };
+  }
+
+  const scriptPath = process.env.VOIPMS_SENDER_SCRIPT_PATH;
+  const args = [to, message];
+
+  return new Promise((resolve) => {
+    const child = spawn('node', [scriptPath, ...args], {
+      env: { ...process.env, NO_PROXY: '*' },
+      windowsHide: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+      const ok = code === 0 && !stdout.includes('\"status\":\"error\"') && !stdout.includes('<error');
+      resolve({
+        sent: ok,
+        channel: 'voipms',
+        code,
+        stdout: stdout.slice(0, 500),
+        stderr: stderr.slice(0, 500),
+      });
+    });
+
+    child.on('error', (err) => {
+      resolve({ sent: false, channel: 'voipms', error: err.message });
+    });
+  });
+}
+
+async function maybeRecordSms({ userId, leadId, type, direction, status, phoneNumber, messageBody, externalId, externalStatus, templateKey, stage, createdBy }) {
+  if (!process.env.DATABASE_URL) return null;
+  try {
+    return await createCommunication({
+      userId,
+      leadId,
+      type,
+      direction,
+      status,
+      phoneNumber,
+      senderName: 'Divinity CRM',
+      recipientName: null,
+      messageBody,
+      externalId,
+      externalStatus,
+      templateKey,
+      stage,
+      createdBy,
+    });
+  } catch (err) {
+    console.warn('[sms-service] communication log skipped:', err.message);
+    return null;
+  }
 }
 
 /**
@@ -162,9 +261,30 @@ const SMS_TEMPLATES = {
  * @param {string} contactId - GHL contact ID (optional, falls back to lead.ghl_contact_id)
  * @returns {Object} { sent, template?, messageId?, error? }
  */
-async function sendStageSMS(fromStage, toStage) {
+const STAGE_SMS_MAP = {
+  'CONTACT_MADE→OFFER_READY': 'CCC',
+  'OFFER_READY→OFFER_SENT': 'GCJ',
+  'OFFER_SENT→OFFER_RECEIVED': 'GCJ',
+  'OFFER_RECEIVED→GAIN_FEEDBACK': 'LOI',
+  'GAIN_FEEDBACK→ACTIVE_NEGOTIATION': 'LOI',
+  'GAIN_FEEDBACK→NO_ANSWER': 'LOI2DAYS',
+  'GAIN_FEEDBACK→SELLER_DECLINED': 'SD',
+  'NO_ANSWER→SELLER_DECLINED': 'SD',
+  'SELLER_DECLINED→LEAD_ENTERED': 'PEND',
+  'CONTRACT_OUT→UNDER_CONTRACT': 'CONTRACT_OUT',
+  'INSPECTION_PERIOD→INSPECTION_COMPLETE': 'INSPECTION_SCHEDULED',
+  'APPRAISAL_ORDERED→APPRAISAL_DONE': 'APPRAISAL_DONE',
+  'JV_SENT→JV_SIGNED': 'JV_SIGNED',
+  'WIRE_SETUP→CLOSING_DATE': 'CLOSING_CONFIRMED',
+};
+
+async function sendStageSMS(fromStage, toStage, lead = {}, { userId = null, dryRun = false } = {}) {
   const key = `${fromStage}→${toStage}`;
-  return { sent: false, reason: `sms delivery disabled; app inbox only (${key})` };
+  const templateKey = STAGE_SMS_MAP[key];
+  if (!templateKey) {
+    return { sent: false, reason: `no SMS template mapped for ${key}`, stageKey: key };
+  }
+  return sendTemplate(lead, templateKey, null, { userId, stage: toStage, dryRun });
 }
 
 /**
@@ -186,17 +306,77 @@ async function sendSMSViaJustCall() {
  *   2. Else if lead.phone present + JustCall configured -> JustCall direct SMS
  *   3. Else fail loudly (no silent no-op)
  */
-async function sendTemplate(lead = {}, templateKey = null, contactId = null) {
+async function sendTemplate(lead = {}, templateKey = null, contactId = null, { userId = null, stage = null, dryRun = false } = {}) {
   const messageBody = templateKey ? fillSMSTemplate(SMS_TEMPLATES[templateKey] || '', lead) : '';
-  const communication = await maybeRecordDisabledSms({ lead, templateKey, messageBody, contactId, stage: lead?.stage || null });
+  if (!messageBody) {
+    return { sent: false, reason: 'template not found', templateKey };
+  }
+
+  const ownerId = userId || lead?.user_id || lead?.userId || null;
+  let phone = normalizePhone(lead?.phone_normalized || lead?.seller_phone || lead?.agent_phone);
+
+  // Safety: unless this is a real production run with delivery enabled,
+  // route all test SMS to the operator's safe number.
+  const realRun = process.env.SMS_ENABLED === 'true';
+  if (!realRun && phone !== SAFE_TEST_NUMBER) {
+    phone = SAFE_TEST_NUMBER;
+  }
+  const did = process.env.VOIPMS_DID;
+  const limit = Number(process.env.VOIPMS_SMS_DAILY_LIMIT) || 100;
+
+  // Always log the intended communication first
+  const communication = await maybeRecordSms({
+    userId: ownerId,
+    leadId: lead?.id || null,
+    type: 'sms',
+    direction: 'outbound',
+    status: dryRun ? 'scheduled' : 'pending',
+    phoneNumber: phone,
+    recipientName: lead?.seller_name || lead?.agent_name || null,
+    messageBody,
+    templateKey,
+    stage: stage || lead?.stage || null,
+    createdBy: ownerId,
+  });
+
+  if (dryRun || !isConfigured()) {
+    return {
+      sent: false,
+      channel: dryRun ? 'dry_run' : 'disabled',
+      reason: dryRun ? 'dry run — no message sent' : 'sms delivery disabled; app inbox only',
+      templateKey,
+      messageBody,
+      communicationId: communication?.id || null,
+    };
+  }
+
+  if (!phone) {
+    await updateCommunicationStatus(communication.id, 'failed', 'no recipient phone');
+    return { sent: false, reason: 'no recipient phone', templateKey, communicationId: communication.id };
+  }
+
+  const dailyCount = await getDailyCount(did);
+  if (dailyCount >= limit) {
+    await updateCommunicationStatus(communication.id, 'failed', 'daily SMS limit reached');
+    return { sent: false, reason: `daily SMS limit reached (${limit})`, templateKey, communicationId: communication.id };
+  }
+
+  const result = await sendSMSViaVoIPMS({ to: phone, message: messageBody });
+  await incrementDailyCount(did);
+  await updateCommunicationStatus(
+    communication.id,
+    result.sent ? 'sent' : 'failed',
+    result.sent ? null : (result.stderr || result.stdout || 'voip.ms error')
+  );
 
   return {
-    sent: false,
-    channel: 'disabled',
-    reason: 'sms delivery disabled; app inbox only',
+    sent: result.sent,
+    channel: result.channel,
+    reason: result.sent ? null : (result.error || result.stderr || result.stdout || 'send failed'),
     templateKey,
     messageBody,
     communicationId: communication?.id || null,
+    voipMsResult: { code: result.code, stdout: result.stdout, stderr: result.stderr },
   };
 }
 

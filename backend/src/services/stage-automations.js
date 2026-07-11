@@ -89,7 +89,7 @@ function getOwnerForStage(stage) {
 const STAGE_TRANSITIONS = {
   // 21-stage pipeline per GHL_WORKFLOWS_SPEC.md Section A.
   // Each transition: stageNumber, workflow, owner, name, description, automations, ghl_actions.
-  'LEAD_ENTERED→CONTACT_MADE': { stageNumber: 1, workflow: 'wf_lead_entered_buybox', owner: 'Montelli', name: 'Lead Entered → Contact Made', description: 'Buy-box check. Pre-screen Zillow. Daily AM lead queue.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/lead-entered' }, { type: 'quick_buybox' }, { type: 'log', message: 'Stage 1: Buy-box check passed.' }], ghl_actions: ['Wait', 'Add Note'] },
+  'LEAD_ENTERED→CONTACT_MADE': { stageNumber: 1, workflow: 'wf_lead_entered_buybox', owner: 'Montelli', name: 'Lead Entered → Contact Made', description: 'Buy-box check. Pre-screen. Daily AM lead queue.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/lead-entered' }, { type: 'buybox_check' }, { type: 'log', message: 'Stage 1: Buy-box check complete.' }], ghl_actions: ['Wait', 'Add Note'] },
   'CONTACT_MADE→OFFER_READY': { stageNumber: 2, workflow: 'wf_contact_made_ccc', owner: 'Montelli', name: 'Contact Made → Offer Ready', description: 'Send CCC SMS. Set 48hr nurture timer. PPC AM workflow if PPC.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'send_sms', template: 'CCC' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'log', message: 'Stage 2: CCC prepared. 48hr timer set.' }], ghl_actions: ['Send SMS (CCC)', 'Write Custom Field', 'Internal Notification'] },
   'OFFER_READY→OFFER_SENT': { stageNumber: 3, workflow: 'wf_offer_ready_run_underwriter', owner: 'Montelli', name: 'Offer Ready → Offer Sent', description: 'Run 5-strategy underwriting. Pick recommended. Generate LOI doc. Email Seth.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/offer-ready' }, { type: 'run_doc_analysis' }, { type: 'run_comps' }, { type: 'run_underwriting' }, { type: 'loi_request' }, { type: 'send_sms', template: 'GCJ' }, { type: 'log', message: 'Stage 3: Underwriting complete. LOI generated.' }], ghl_actions: ['Generate Document', 'Send Email', 'Internal Notification', 'Wait', 'Write Custom Field'] },
   'OFFER_SENT→OFFER_RECEIVED': { stageNumber: 4, workflow: 'wf_offer_sent_48hr_timer', owner: 'Montelli', name: 'Offer Sent → Offer Received', description: 'Log Offer Sent At. Schedule 48hr timer. Send GCJ SMS.', automations: [{ type: 'webhook', endpoint: '/webhook/ghl/stage-transition' }, { type: 'set_field', field: 'offer_sent_date', value: 'now' }, { type: 'set_reminder', reminder_type: '48hr_followup', offset_hours: 48 }, { type: 'send_sms', template: 'GCJ' }, { type: 'log', message: 'Stage 4: Offer Sent. 48hr timer scheduled. GCJ SMS fired.' }], ghl_actions: ['Send SMS (GCJ)', 'Wait', 'Write Custom Field'] },
@@ -373,6 +373,17 @@ async function executeStageAutomations(leadId, userId, fromStage, toStage, leadD
           case 'run_doc_analysis': {
             const docResult = await runDocAnalysis(leadId);
             results.push({ type: 'run_doc_analysis', ok: true, data: docResult });
+            break;
+          }
+          case 'buybox_check': {
+            const { autoBuyBoxCheck, autoPreScreen } = require('./lead-buybox');
+            try {
+              const bbResult = await autoBuyBoxCheck(leadId);
+              const psResult = await autoPreScreen(leadId);
+              results.push({ type: 'buybox_check', ok: true, data: { buyBox: bbResult, preScreen: psResult } });
+            } catch (e) {
+              results.push({ type: 'buybox_check', ok: false, error: e.message });
+            }
             break;
           }
           case 'quick_buybox': {

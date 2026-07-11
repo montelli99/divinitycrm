@@ -183,6 +183,20 @@ async function getInboxCount(userId, dbQuery = defaultQuery) {
   return rows[0]?.count || 0;
 }
 
+async function updateCommunicationStatus(communicationId, status, failedReason = null, dbQuery = defaultQuery) {
+  const rows = await dbQuery(
+    `UPDATE communications
+     SET status = $1,
+         failed_reason = COALESCE($2, failed_reason),
+         sent_at = CASE WHEN $1 IN ('sent','delivered') THEN COALESCE(sent_at, now()) ELSE sent_at END,
+         delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, now()) ELSE delivered_at END
+     WHERE id = $3
+     RETURNING id, status`,
+    [status, failedReason, communicationId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   createCommunication,
   listCommunications,
@@ -191,4 +205,5 @@ module.exports = {
   archive,
   getInboxCount,
   normalizeLimit,
+  updateCommunicationStatus,
 };

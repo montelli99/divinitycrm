@@ -7,6 +7,7 @@ const { query } = require('../db/connection');
 const { v4: uuid } = require('uuid');
 const { executeStageAutomations, getAvailableTransitions } = require('../services/stage-automations');
 const { canAssignLeads, canManageTeam, isTeamViewer } = require('../services/access');
+const { autoBuyBoxCheck, autoPreScreen } = require('../services/lead-buybox');
 
 const router = Router();
 
@@ -316,7 +317,17 @@ router.post('/', async (req, res, next) => {
       },
     });
 
-    res.status(201).json({ lead, source_was_normalized: source && source !== normalizedSource ? source : undefined });
+    // Auto buy-box + pre-screen
+    let buyBoxResult = null;
+    let preScreenResult = null;
+    try {
+      buyBoxResult = await autoBuyBoxCheck(lead.id);
+      preScreenResult = await autoPreScreen(lead.id);
+    } catch (autoErr) {
+      console.warn('[leads] auto buybox/prescreen error:', autoErr.message);
+    }
+
+    res.status(201).json({ lead, source_was_normalized: source && source !== normalizedSource ? source : undefined, buyBox: buyBoxResult, preScreen: preScreenResult });
   } catch (err) {
     next(err);
   }
