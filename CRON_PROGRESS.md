@@ -7,12 +7,13 @@
 
 ---
 
-## Current Status (Run 22 — Sunday, July 12th, 2026 — 5:05 PM ET)
+## Current Status (Run 24 — Sunday, July 12th, 2026 — 5:30 PM ET)
 
-- Phase 0-3 pushed to GitHub as single clean commit `80cd4ca` (history rewritten to remove `.env` secrets).
+- Phase 19 complete: post-close engine schedules 7/14/30-day follow-up communications on `CLOSING_DATE` transition.
+- Delivery script `backend/src/scripts/post-close-delivery.js` checks scheduled rows and sends SMS only if `SMS_ENABLED=true`; otherwise leaves them as pending drafts.
+- Phase 5 + Phase 8 still in place.
 - `npm test` passes (38/38).
-- SMS delivery remains disabled by `SMS_ENABLED=false` policy; safe test number routing enforces only 571-814-0891 unless operator enables real delivery.
-- **Continuing autonomously.** Next target: **Phase 4 — Comps execution + Phase 5 — Seth underwriter flow** (email drafts only, no sending).
+- **Continuing autonomously.** Next target: **Phase 6 — Rental comps check + Phase 9 — GCJ SMS path + remaining phases**.
 
 ## Completed Work (Historical)
 

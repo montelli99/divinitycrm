@@ -382,10 +382,13 @@ async function sendTemplate(lead = {}, templateKey = null, contactId = null, { u
 
 module.exports = {
   isConfigured,
+  normalizePhone,
   sendSMS,
   sendStageSMS,
   sendTemplate,
+  sendSMSViaVoIPMS,
   sendSMSViaJustCall,
   fillSMSTemplate,
   SMS_TEMPLATES,
+  SAFE_TEST_NUMBER,
 };

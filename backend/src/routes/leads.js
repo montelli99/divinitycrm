@@ -631,6 +631,17 @@ router.post('/:id/advance', async (req, res, next) => {
       console.warn('[leads] draft automations error:', e.message);
     }
 
+    // Post-close engine: schedule 7/14/30-day follow-ups
+    if (to_stage === 'CLOSING_DATE') {
+      try {
+        const { schedulePostCloseCommunications } = require('../services/post-close-engine');
+        const postClose = await schedulePostCloseCommunications(leadId);
+        automation = { ...automation, postClose };
+      } catch (e) {
+        console.warn('[leads] post-close engine error:', e.message);
+      }
+    }
+
     // BRANCHING LOGIC: APPRAISAL_DONE → auto-advance based on appraisal_value vs purchase price
     if (to_stage === 'APPRAISAL_DONE') {
       const appraisalValue = Number(result[0].appraisal_value || existing[0].appraisal_value || 0);
