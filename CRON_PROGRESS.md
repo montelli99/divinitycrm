@@ -10,8 +10,9 @@
 
 ## Current Status
 - All-night build work is functionally complete, committed, and pushed.
-- Commit `5e76b89` pushed to `origin/master` at https://github.com/montelli99/divinitycrm.git.
-- Untracked temp scripts and data files remain in the worktree (intentionally not committed).
+- Commit `3b83328` is at HEAD and on `origin/master` at https://github.com/montelli99/divinitycrm.git.
+- No tracked changes remain. Untracked temp scripts and data files remain in the worktree (intentionally not committed).
+- Runs 12–15 were verification no-ops; the build is stable and green.
 
 ## Completed Work
 - (Run 1) Created CRON_PROGRESS.md; converted `backend/src/db/connection.js` to lazy pool.
@@ -22,8 +23,10 @@
 - (Run 6) Updated `backend/src/scripts/cron-daily.js` morning brief to include Emily's top-lead next-action list.
 - (Run 7) Added `frontend/src/components/EmilyWidget.jsx`, `api.getEmilyQueue()`, mounted widget on Dashboard, added `npm run smoke` script.
 - (Run 8) Added `backend/src/routes/calculator.test.js` with 2 supertest-based tests.
-- (Run 9) Ran final verification pass, committed 18 files as `5e76b89`, and removed `frontend/dist-smoke`.
-- (Run 10) Pushed commit `5e76b89` to origin/master and ran a final frontend production build.
+- (Run 9) Ran final verification pass, committed 18 files, and removed `frontend/dist-smoke`.
+- (Run 10) Pushed commit to origin/master and ran a final frontend production build.
+- (Run 11) Refined calculator decision matrix with `qualifiesForOffer` vs soft-pass cash-flow gates (`STACK_CASH_FLOW_MIN = 250`, `STACK_CASH_FLOW_SOFT = 200`), added a test, and amended/pushed the commit.
+- (Runs 12–15) Verified the pushed state remains green; no further code changes required.
 
 ## Blockers
 - None.
@@ -32,9 +35,10 @@
 - All-night build is finished and pushed. Operator may now:
   - Review/clean the remaining untracked temp files manually.
   - Deploy the backend/frontend to Render/Vercel.
+  - Consider the cron job complete. Future cron pings should be no-ops unless new work is requested.
 
 ## Verification
-- `npm test` (inside `backend/`) → 22 pass / 0 fail.
+- `npm test` (inside `backend/`) → 23 pass / 0 fail.
 - `vite build --outDir dist` (inside `frontend/`) → production build succeeds (54 modules transformed).
-- `git log --oneline -3` confirms commit `5e76b89` is at HEAD.
-- `git push origin master` → `Everything up-to-date` (commit is on remote).
+- `git log --oneline -3` confirms commit `3b83328` is at HEAD.
+- `git status --short` shows only untracked temp files and `CRON_PROGRESS.md` modified; no tracked work left uncommitted.
