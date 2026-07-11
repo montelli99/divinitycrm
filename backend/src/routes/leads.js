@@ -622,6 +622,15 @@ router.post('/:id/advance', async (req, res, next) => {
     // Execute automations
     let automation = await executeStageAutomations(leadId, userId, fromStage, to_stage, result[0], { body: req.body });
 
+    // Create notification/email drafts (no real email delivery per operator policy)
+    try {
+      const { runDraftAutomations } = require('../services/draft-automation-listener');
+      const drafts = await runDraftAutomations(leadId, fromStage, to_stage);
+      automation = { ...automation, drafts };
+    } catch (e) {
+      console.warn('[leads] draft automations error:', e.message);
+    }
+
     // BRANCHING LOGIC: APPRAISAL_DONE → auto-advance based on appraisal_value vs purchase price
     if (to_stage === 'APPRAISAL_DONE') {
       const appraisalValue = Number(result[0].appraisal_value || existing[0].appraisal_value || 0);

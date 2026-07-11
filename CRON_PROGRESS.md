@@ -7,17 +7,9 @@
 
 ---
 
-## Current Status (Run 22 — Sunday, July 12th, 2026 — 4:55 PM ET)
+## Current Status (Run 22 — Sunday, July 12th, 2026 — 5:05 PM ET)
 
-- Phase 0-3 committed and verified:
-  - Feature tiers + Emily flags (migration 001)
-  - `communications` + `sms_daily_log` + `phone_normalized` columns (migrations 002, 003)
-  - Calculator $250 cash-flow offer gate
-  - Auto buy-box/pre-screen on lead creation + stage 1
-  - SMS service with VoIP.ms integration, daily limit, safe test-number routing
-  - Stage transition SMS logging (dry-run while `SMS_ENABLED=false`)
-  - Retell call logging webhook
-  - VoIP.ms inbound SMS webhook
+- Phase 0-3 pushed to GitHub as single clean commit `80cd4ca` (history rewritten to remove `.env` secrets).
 - `npm test` passes (38/38).
 - SMS delivery remains disabled by `SMS_ENABLED=false` policy; safe test number routing enforces only 571-814-0891 unless operator enables real delivery.
 - **Continuing autonomously.** Next target: **Phase 4 — Comps execution + Phase 5 — Seth underwriter flow** (email drafts only, no sending).
