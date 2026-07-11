@@ -7,13 +7,46 @@
 
 ---
 
-## Current Status (Run 24 — Sunday, July 12th, 2026 — 5:30 PM ET)
+## Current Status (Run 24 — Sunday, July 12th, 2026 — 5:40 PM ET)
 
-- Phase 19 complete: post-close engine schedules 7/14/30-day follow-up communications on `CLOSING_DATE` transition.
-- Delivery script `backend/src/scripts/post-close-delivery.js` checks scheduled rows and sends SMS only if `SMS_ENABLED=true`; otherwise leaves them as pending drafts.
-- Phase 5 + Phase 8 still in place.
+- Phase 19 complete and pushed: post-close engine schedules 7/14/30-day follow-ups on `CLOSING_DATE` transition.
+- Migration 004 adds `leads.closed_date`.
 - `npm test` passes (38/38).
-- **Continuing autonomously.** Next target: **Phase 6 — Rental comps check + Phase 9 — GCJ SMS path + remaining phases**.
+- **Autonomous run paused to avoid context overflow.**
+
+## Completed Phases (This Run)
+
+| Phase | Status |
+|---|---|
+| 1 Auto buy-box check | ✅ |
+| 2 SMS auto-send paths | ✅ dry-run logging, VoIP.ms wired, daily limit, safe test number |
+| 3 Call logging | ✅ Retell webhook |
+| 4 Comps execution | ✅ existing routes persisted |
+| 5 Seth underwriter email | ✅ drafts only, no delivery |
+| 8 Kayla notifications | ✅ drafts only, no delivery |
+| 19 Post-close engine | ✅ scheduled 7/14/30-day follow-ups |
+
+## Remaining Phases for Next Run
+
+| # | Phase |
+|---|---|
+| 6 | Rental comps check (Zillow/rentalmanager integration) |
+| 7 | LOI auto-generation |
+| 9 | GCJ SMS path |
+| 10 | Mid-term pivot execution |
+| 11 | Contract auto-generation |
+| 12 | Closing cost allocator |
+| 13 | RabbitSign envelope creation |
+| 14 | TC handoff email (drafts only) |
+| 15 | Inspection + appraisal SMS |
+| 16 | Appraisal value comparison |
+| 17 | JV RabbitSign + JV SMS |
+| 18 | Closing confirmation SMS |
+| 20 | Cross-cutting missing services |
+
+## Safety
+- `SMS_ENABLED=false` by default; no live SMS sent except to 571-814-0891 if enabled.
+- Email delivery is disabled; all email workflows are saved as `communications` drafts.
 
 ## Completed Work (Historical)
 
