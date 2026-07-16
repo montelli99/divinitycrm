@@ -2,7 +2,11 @@
 // Divinity CRM Platform — Express Server Entry Point
 // =============================================================
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
+
+// Config validation — fail fast if required env vars are missing
+const { enforceConfig } = require('./config/config-validator');
+enforceConfig();
 
 const express = require('express');
 const cors = require('cors');
@@ -14,7 +18,7 @@ const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
 
 // Lazy-load routes
-let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter, emilyRouter, communicationsRouter;
+let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter, emilyRouter, communicationsRouter, integrationsRouter, voiceRouter;
 
 try { authRouter = require('./routes/auth'); console.log('auth route OK'); } catch(e) { console.error('auth route FAIL:', e.message); }
 try { leadsRouter = require('./routes/leads'); console.log('leads route OK'); } catch(e) { console.error('leads route FAIL:', e.message); }
@@ -32,6 +36,8 @@ try { trainingDocsRouter = require('./routes/training-docs'); console.log('train
 try { teleprompterRouter = require('./routes/teleprompter'); console.log('teleprompter route OK'); } catch(e) { console.error('teleprompter route FAIL:', e.message); }
 try { emilyRouter = require('./routes/emily'); console.log('emily route OK'); } catch(e) { console.error('emily route FAIL:', e.message); }
 try { communicationsRouter = require('./routes/communications'); console.log('communications route OK'); } catch(e) { console.error('communications route FAIL:', e.message); }
+try { integrationsRouter = require('./routes/integrations'); console.log('integrations route OK'); } catch(e) { console.error('integrations route FAIL:', e.message); }
+try { voiceRouter = require('./routes/voice'); console.log('voice route OK'); } catch(e) { console.error('voice route FAIL:', e.message); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,7 +54,12 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'http://127.0.0.1:5176',
+  'http://localhost:5176',
+];
+app.use(cors({ origin: allowedOrigins }));
 app.use(morgan('dev'));
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -114,6 +125,8 @@ if (trainingDocsRouter) app.use('/api/training-docs', authMiddleware, trainingDo
 if (teleprompterRouter) app.use('/api/teleprompter', authMiddleware, teleprompterRouter);
 if (emilyRouter) app.use('/api/emily', authMiddleware, emilyRouter);
 if (communicationsRouter) app.use('/api/communications', authMiddleware, communicationsRouter);
+if (integrationsRouter) app.use('/api/integrations', authMiddleware, integrationsRouter);
+if (voiceRouter) app.use('/api/voice', authMiddleware, voiceRouter);
 
 // Error handler
 app.use((err, req, res, next) => {
