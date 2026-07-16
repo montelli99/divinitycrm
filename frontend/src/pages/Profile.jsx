@@ -12,16 +12,27 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const isLocalPreview = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+  function readGoogleCallbackParams() {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has('google')) return searchParams;
+
+    const hash = window.location.hash || '';
+    const queryIndex = hash.indexOf('?');
+    if (queryIndex === -1) return searchParams;
+
+    return new URLSearchParams(hash.slice(queryIndex + 1));
+  }
+
   useEffect(() => {
     loadProfile();
     // Check for Google callback redirect
-    const params = new URLSearchParams(window.location.search);
+    const params = readGoogleCallbackParams();
     if (params.get('google') === 'connected') {
       setMessage('✅ Google account connected successfully!');
-      window.history.replaceState({}, '', '/profile');
+      window.history.replaceState({}, '', '/#/profile');
     } else if (params.get('google') === 'error') {
       setMessage('❌ Google connection failed: ' + (params.get('message') || 'Unknown error'));
-      window.history.replaceState({}, '', '/profile');
+      window.history.replaceState({}, '', '/#/profile');
     }
   }, []);
 

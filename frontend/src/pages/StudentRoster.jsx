@@ -66,11 +66,7 @@ export default function StudentRoster() {
 
   async function handleSetVacation(userId, data) {
     try {
-      await fetch('/api/users/' + userId + '/vacation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('divinity_token') },
-        body: JSON.stringify(data),
-      });
+      await api.setVacation(userId, data);
       setActionMsg({ type: 'success', text: 'Vacation mode set. Leads reassigned to substitute.' });
       setVacationModal(null);
       loadRoster();
@@ -81,10 +77,7 @@ export default function StudentRoster() {
 
   async function handleEndVacation(userId) {
     try {
-      await fetch('/api/users/' + userId + '/vacation/end', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + localStorage.getItem('divinity_token') },
-      });
+      await api.endVacation(userId);
       setActionMsg({ type: 'success', text: 'Vacation mode ended. Leads returned.' });
       loadRoster();
     } catch (err) {
@@ -94,11 +87,7 @@ export default function StudentRoster() {
 
   async function handleReassign(fromUserId, toUserId, reason) {
     try {
-      await fetch('/api/users/reassign/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('divinity_token') },
-        body: JSON.stringify({ fromUserId, toUserId, reason }),
-      });
+      await api.bulkReassign({ fromUserId, toUserId, reason });
       setActionMsg({ type: 'success', text: 'Bulk reassignment complete.' });
       setReassignModal(null);
       loadRoster();

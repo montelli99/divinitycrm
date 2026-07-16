@@ -68,11 +68,11 @@ router.get('/google/callback', async (req, res, next) => {
     const { tokens, profile } = await handleCallback(redirectUri, code);
     await saveGoogleTokens(userId, tokens, profile);
 
-    // Redirect back to frontend with success
-    res.redirect(`${FRONTEND_URL}/profile?google=connected`);
+    // Redirect back to the hash-routed frontend profile page.
+    res.redirect(`${FRONTEND_URL}/#/profile?google=connected`);
   } catch (err) {
     console.error('Google callback error:', err);
-    res.redirect(`${FRONTEND_URL}/profile?google=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect(`${FRONTEND_URL}/#/profile?google=error&message=${encodeURIComponent(err.message)}`);
   }
 });
 
