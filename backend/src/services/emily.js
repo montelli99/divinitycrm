@@ -83,10 +83,10 @@ const NEXT_ACTIONS = {
 async function getTodaysQueue(limit = 50) {
   const r = await query(`
     SELECT id, address, city, state, zip, stage, recommended_strategy,
-           cash_offer, f50_offer, f10_offer, subto_offer, novation_offer,
-           seller_name, agent_name, phone, email, updated_at
+           cash_offer, f50_offer, f10_offer, subto_offer,
+           seller_name, agent_name, seller_phone AS phone, seller_email AS email, updated_at
     FROM leads
-    WHERE stage NOT IN ('CLOSED', 'DEAD')
+    WHERE stage NOT IN ('ARCHIVED', 'DEAD')
       AND stage IS NOT NULL
     ORDER BY
       CASE stage
