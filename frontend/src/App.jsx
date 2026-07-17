@@ -8,6 +8,7 @@ import Calculator from './pages/Calculator';
 import Training from './pages/Training';
 import StudentRoster from './pages/StudentRoster';
 import AdminDashboard from './pages/AdminDashboard';
+import Emily from './pages/Emily';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import Teleprompter from './pages/Teleprompter';
@@ -179,6 +180,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/emily" element={<Emily />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/pipeline" element={<Pipeline />} />

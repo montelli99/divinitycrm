@@ -5,6 +5,7 @@ import { canViewTeam } from '../lib/access';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: DashboardIcon, accent: '#6d7ef7' },
+  { path: '/emily', label: 'Emily', icon: EmilyIcon, accent: '#f97316' },
   { path: '/pipeline', label: 'Pipeline', icon: PipelineIcon, accent: '#8b5cf6' },
   { path: '/teleprompter', label: 'Teleprompter', icon: TeleprompterIcon, accent: '#f59e0b' },
   { path: '/calculator', label: 'Calculator', icon: CalculatorIcon, accent: '#f59e0b' },
@@ -27,6 +28,15 @@ function DashboardIcon() {
   return (
     <IconShell>
       <path d="M4 5h7v7H4zM13 5h7v4h-7zM13 11h7v8h-7zM4 14h7v5H4z" fill="currentColor" />
+    </IconShell>
+  );
+}
+
+function EmilyIcon() {
+  return (
+    <IconShell>
+      <path d="M12 4.5c4.14 0 7.5 3.06 7.5 6.84 0 2.18-1.12 4.1-2.84 5.35l.56 2.8-2.8-.72A8.7 8.7 0 0 1 12 19.5c-4.14 0-7.5-3.06-7.5-6.84S7.86 4.5 12 4.5Z" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M8.25 10.25h7.5M8.25 13.25h4.8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </IconShell>
   );
 }
@@ -197,15 +207,16 @@ export default function Layout() {
 
   const ORDERED_NAV_ITEMS = [
     NAV_ITEMS[0], // Dashboard
-    NAV_ITEMS[1], // Pipeline
-    NAV_ITEMS[2], // Teleprompter
-    NAV_ITEMS[7], // Inbox
+    NAV_ITEMS[1], // Emily
+    NAV_ITEMS[2], // Pipeline
+    NAV_ITEMS[3], // Teleprompter
+    NAV_ITEMS[8], // Inbox
     ...TEAM_NAV_ITEMS,
-    NAV_ITEMS[3], // Calculator
-    ...(showBulkImport ? [NAV_ITEMS[4]] : []), // Bulk Import (admin/lead_manager only)
-    NAV_ITEMS[5], // Contracts
-    NAV_ITEMS[6], // Training
-    NAV_ITEMS[8], // Profile
+    NAV_ITEMS[4], // Calculator
+    ...(showBulkImport ? [NAV_ITEMS[5]] : []), // Bulk Import (admin/lead_manager only)
+    NAV_ITEMS[6], // Contracts
+    NAV_ITEMS[7], // Training
+    NAV_ITEMS[9], // Profile
   ];
 
   function handleLogout() {
