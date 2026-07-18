@@ -12,7 +12,7 @@
 4. Paste this block:
 
 ```
-DATABASE_URL=postgresql://neondb_owner:npg_FRI6QcAp0fJu@ep-divine-term-adcheii9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_URL=REPLACE_WITH_NEON_CONNECTION_STRING
 CLERK_SECRET_KEY=sk_test_i0i3s2Jq3F8WMCB0u11D
 CLERK_PUBLISHABLE_KEY=pk_test_bHVja3ktZG9lLTY4LmNsZXJrLmFjY291bnRzLmRldiQ
 CLERK_WEBHOOK_SECRET=whsec_nv8gVceMoP+2zvO9Q9J85eRQYUyGsx2a
