@@ -31,7 +31,7 @@ const RECIPIENTS = {
   KAYLA:   { name: 'Kayla Mauser', email: 'homewithkaylamauser@gmail.com' },
   JAXON:   { name: 'Jaxon Deason', email: 'JaxonDeasonHomes1@gmail.com' },
   TC_B:    { name: 'BGonzalez',    email: 'BGonzalez@sellsmartre.com' },
-  TC_M:    { name: 'Monique',      email: 'monique@sellsmartre.com' },
+  TC_COORDINATOR: { name: 'Transaction Coordinator', email: 'coordinator@divinityaligned.example' },
   TITLE:   { name: 'CLOSE Title',  email: 'order@closedtitle.com' },
   MONTELLI:{ name: 'Montelli Scott', email: 'montelliscottrei@gmail.com' },
 };
@@ -41,8 +41,7 @@ const PAUSED_RECIPIENT_EMAILS = new Set([
   'homewithkaylamauser@gmail.com',
   'info@divinityaligned.net',
   'kayla@divinityaligned.net',
-  'monique@sellsmartre.com',
-  'monique@prolificbuyer.com',
+  'coordinator@divinityaligned.example',
   'bgonzalez@sellsmartre.com',  // BGonzalez (TC_B) — disabled 2026-06-26 21:56 EDT
 ]);
 
@@ -167,7 +166,7 @@ function buildKaylaContractDraftEmail(lead) {
 
 /**
  * Stage 11→12: TC Handshake — Contract Out
- * Sends to BGonzalez + Monique with full deal package.
+ * Sends to the transaction coordination team with the full deal package.
  */
 function buildTCHandshakeEmail(lead) {
   const addr = lead.address || 'Unknown';
@@ -181,10 +180,10 @@ function buildTCHandshakeEmail(lead) {
   const agent = lead.agent_name || 'N/A';
 
   return {
-    to: [RECIPIENTS.TC_B, RECIPIENTS.TC_M],
+    to: [RECIPIENTS.TC_B, RECIPIENTS.TC_COORDINATOR],
     subject: `TC Handoff — ${addr}`,
     body: [
-      `Hi BGonzalez and Monique,`,
+      `Hi team,`,
       ``,
       `New deal for transaction coordination:`,
       ``,
@@ -213,10 +212,10 @@ function buildTCHandshakeEmail(lead) {
 function buildTCUnderContractEmail(lead) {
   const addr = lead.address || 'Unknown';
   return {
-    to: [RECIPIENTS.TC_B, RECIPIENTS.TC_M],
+    to: [RECIPIENTS.TC_B, RECIPIENTS.TC_COORDINATOR],
     subject: `Under Contract — ${addr}`,
     body: [
-      `Hi BGonzalez and Monique,`,
+      `Hi team,`,
       ``,
       `${addr} is now under contract. 14-day inspection countdown starts today.`,
       ``,
@@ -298,13 +297,29 @@ function buildKaylaJaxonCounterEmail(lead) {
  * @param {Object} opts — { to, subject, body }
  * @returns {Object} { sent, messageId, error? }
  */
+const MONTELLI_EMAIL = 'montelliscottrei@gmail.com';
+
 async function sendEmail(opts) {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
   const addresses = recipients.map(r => r?.email).filter(Boolean).join(', ');
-  if (recipients.some(r => isPausedRecipientEmail(r?.email))) {
-    console.warn(`[email-service] paused-recipient-block: dropping email "${opts.subject}" → ${addresses}`);
+
+  // HARD BLOCK: only Montelli gets email. Everyone else = app inbox only.
+  const nonMontelli = recipients.filter(r => {
+    const email = String(r?.email || '').toLowerCase();
+    return email !== MONTELLI_EMAIL.toLowerCase();
+  });
+  if (nonMontelli.length > 0) {
+    const blocked = nonMontelli.map(r => r?.email).filter(Boolean).join(', ');
+    console.warn(`[email-service] BLOCKED: non-Montelli recipient(s) "${opts.subject}" → ${blocked}`);
   }
-  return { sent: false, channel: 'disabled', reason: 'email delivery disabled; app inbox only' };
+
+  const hasMontelli = recipients.some(r => String(r?.email || '').toLowerCase() === MONTELLI_EMAIL.toLowerCase());
+  if (!hasMontelli) {
+    return { sent: false, channel: 'disabled', reason: 'email delivery disabled; app inbox only (non-Montelli blocked)' };
+  }
+
+  // Montelli-only path: still disabled until SMTP is configured
+  return { sent: false, channel: 'disabled', reason: 'email delivery disabled; SMTP not configured' };
 }
 
 // =============================================================
