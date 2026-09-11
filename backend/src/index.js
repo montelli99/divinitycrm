@@ -16,6 +16,8 @@ const morgan = require('morgan');
 const { testConnection, query } = require('./db/connection');
 const { seedUsers, authMiddleware } = require('./auth/auth');
 const { v4: uuid } = require('uuid');
+const { createPpcRuntime } = require('./services/ppc-worker');
+const { createPpcContextWebhook } = require('./routes/ppc-context-webhook');
 
 // Lazy-load routes
 let leadsRouter, contractsRouter, pipelineRouter, scriptsRouter, scriptPromptsRouter, usersRouter, webhooksRouter, authRouter, calculatorRouter, trainingRouter, adminRouter, notificationsRouter, trainingDocsRouter, teleprompterRouter, emilyRouter, communicationsRouter, integrationsRouter, voiceRouter;
@@ -41,6 +43,7 @@ try { voiceRouter = require('./routes/voice'); console.log('voice route OK'); } 
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const ppcRuntime = createPpcRuntime();
 
 app.use(helmet({
   contentSecurityPolicy: {
@@ -83,6 +86,8 @@ app.get('/api/health', async (req, res) => {
   const dbOk = await testConnection();
   res.json({ status: 'ok', database: dbOk ? 'connected' : 'disconnected', timestamp: new Date().toISOString() });
 });
+app.get('/api/ppc/health', async (_req,res) => res.json(await ppcRuntime.health()));
+app.use('/api/webhooks/ppc-context',createPpcContextWebhook({runtime:ppcRuntime,secret:process.env.PPC_CONTEXT_WEBHOOK_SECRET}));
 
 // Auth routes (no auth required)
 if (authRouter) app.use('/api/auth', authRouter);
@@ -148,7 +153,21 @@ async function start() {
     // Seed admin users
     await seedUsers();
     
-    app.listen(PORT, '0.0.0.0', () => console.log(`Divinity CRM API running on port ${PORT}`));
+    await ppcRuntime.start().catch(error => {
+      ppcRuntime.state.error='PPC_RUNTIME_START_FAILED';
+      console.error('PPC runtime failed to start:',error.message);
+    });
+    const server=app.listen(PORT, '0.0.0.0', () => console.log(`Divinity CRM API running on port ${PORT}`));
+    let shuttingDown=false;
+    async function shutdown(signal){
+      if(shuttingDown)return;shuttingDown=true;
+      console.log(`Received ${signal}; draining services`);
+      server.close();
+      await ppcRuntime.stop().catch(()=>{});
+      process.exit(0);
+    }
+    process.once('SIGTERM',()=>void shutdown('SIGTERM'));
+    process.once('SIGINT',()=>void shutdown('SIGINT'));
   } catch (err) {
     console.error('FATAL STARTUP ERROR:', err.message);
     console.error(err.stack);

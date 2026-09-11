@@ -1,0 +1,47 @@
+{
+  "source_repository": "montelli99/prolific-ghl-webhook",
+  "source_commit": "ed4789a0bcee9e656a7ad3da1f90eef87614d76d",
+  "entry": "ppc-team-note-service.cjs",
+  "files": [
+    {
+      "file": "ppc-api-budget.cjs",
+      "sha256": "4bc3ee917ddec4bb7b68cf03a6b441f841ba4c15a073f764c341bb500e475226"
+    },
+    {
+      "file": "ppc-campaign-guard-runner.cjs",
+      "sha256": "c6c86990b3ea1f766f4ceafb5605e532bf0f4596a0c1a2842eeee2f48e74f944"
+    },
+    {
+      "file": "ppc-campaign-guard-store.cjs",
+      "sha256": "d63ec5ff02a572235aeb6a36557d77509e6f360b704a3405353bc0a17667393f"
+    },
+    {
+      "file": "ppc-campaign-guard.cjs",
+      "sha256": "7d74a0fb718177d6e6b3617aeb3d39613995d9112b4f284df65e1bef2bdc5d54"
+    },
+    {
+      "file": "ppc-campaign-membership-policy.cjs",
+      "sha256": "656994967962acaaa629ad8a2be9e07354a4eb0ad8eb0a44e692cb8978e62dab"
+    },
+    {
+      "file": "ppc-campaign-scanner.cjs",
+      "sha256": "dda96fb57c19a72c4cb04a46c0dcdf0ac03d8e22dcdcb668fa38ce7cc2878772"
+    },
+    {
+      "file": "ppc-sales-dialer-webhook-inbox.cjs",
+      "sha256": "41c5b99c99460b1c999d597245c2e5107f54ae50421a81dc8e8a4e3fa16a6da3"
+    },
+    {
+      "file": "ppc-team-note-refresh.cjs",
+      "sha256": "6379ade6d38d9e7d0e96cc3b2ba227508a700ed2a30c461106a0a39e1a91d17f"
+    },
+    {
+      "file": "ppc-team-note-service.cjs",
+      "sha256": "d2105488be8afec5b995f28112c101984749711daf3583373246b17862de29de"
+    },
+    {
+      "file": "ppc-underwriting-disposition.cjs",
+      "sha256": "4a835a459655f45746fe6396fd761e1e35e7c4ae18ba5feef07ba006a36fe682"
+    }
+  ]
+}
