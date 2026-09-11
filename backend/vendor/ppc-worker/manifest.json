@@ -1,6 +1,6 @@
 {
   "source_repository": "montelli99/prolific-ghl-webhook",
-  "source_commit": "a4bd12104737e32d3dec22a434c9116937aaa77b",
+  "source_commit": "a0f0526d0c0f8e3a9aa2c393d1710d80e9614b34",
   "entry": "ppc-team-note-service.cjs",
   "files": [
     {
@@ -37,7 +37,7 @@
     },
     {
       "file": "ppc-team-note-service.cjs",
-      "sha256": "3eab4ec3e0ebc56243baa4474f1405f8a343c02c463c29853ef7031fa2bf1a24"
+      "sha256": "8e5f4272fc4c7f7d341cb1155d178f91976883063f76ada7eeea72cc92d6c0e3"
     },
     {
       "file": "ppc-underwriting-disposition.cjs",
